@@ -417,14 +417,14 @@
     </footer>
 
     <script>
-        // Placeholder for server-side variable
-        const betaAvailable = __BETA_AVAILABLE__;
+        // Mindig elérhető a béta
+        const betaAvailable = true;
 
         const versionToggle = document.getElementById('version-toggle');
         const betaUnavailableText = document.getElementById('beta-unavailable-text');
-        const bodyElement = document.body; // Get body element
+        const bodyElement = document.body;
         const betaWarning = document.getElementById('beta-warning');
-        const betaWarningTextElement = document.getElementById('beta-warning-text'); // Get the span for text
+        const betaWarningTextElement = document.getElementById('beta-warning-text');
 
         // Array of random endings for the beta warning
         const betaWarningEndings = [
@@ -446,9 +446,8 @@
             // Ensure labels reflect disabled state visually
              document.getElementById('beta-label').style.opacity = '0.5';
              document.getElementById('beta-label').style.cursor = 'default';
-             // Prevent clicking disabled label from doing anything
              document.getElementById('beta-label').onclick = null;
-             document.getElementById('stable-label').onclick = null; // Also disable stable label click if beta unavailable? Maybe not.
+             document.getElementById('stable-label').onclick = null;
         } else {
              // Make labels clickable to toggle the switch
              document.getElementById('stable-label').onclick = () => { if (versionToggle.checked) versionToggle.click(); };
