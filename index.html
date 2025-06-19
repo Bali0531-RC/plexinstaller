@@ -21,13 +21,18 @@
             --code-color: #f1c40f; /* Yellow */
             --header-animation: pulse;
             --header-animation-color: var(--accent);
+<<<<<<< HEAD
             --body-transition: all 0.4s ease; /* Smooth theme transition */
+=======
+            --body-transition: background-color 0.4s ease, color 0.4s ease; /* More specific transition */
+>>>>>>> 9dbd4d0 (Push)
         }
 
         /* Beta Theme Variables (Applied when body has .beta-theme class) */
         body.beta-theme {
             --bg-primary: #0a0a0a; /* Darker black */
             --bg-secondary: #111;
+<<<<<<< HEAD
             --text-primary: #00ff00; /* Bright Green */
             --text-secondary: #00aa00; /* Darker Green */
             --accent: #ff9900; /* Amber/Orange */
@@ -40,6 +45,22 @@
             --code-color: #00ffcc; /* Cyan */
             --header-animation: glitch; /* Different animation */
             --header-animation-color: var(--accent);
+=======
+            --text-primary: #f1c40f; /* Yellow text for construction feel */
+            --text-secondary: #b8860b; /* Darker yellow */
+            --accent: #f39c12; /* Orange/Yellow accent */
+            --accent-dark: #e67e22;
+            --success: #27ae60; /* Slightly muted green */
+            --warning: #f39c12; /* Keep warning orange/yellow */
+            --danger: #ff4444; /* Brighter Red */
+            --card-bg: #1a1a1a; /* Slightly different dark */
+            --border-color: #444;
+            --code-color: #e4e4e4; /* Light code on dark bg */
+            --header-animation: sway; /* Different animation */
+            --header-animation-color: var(--accent);
+            --shake-intensity: 0.5deg;
+            --shake-intensity-alt: -0.4deg;
+>>>>>>> 9dbd4d0 (Push)
         }
 
         /* --- Basic Styles --- */
@@ -52,7 +73,13 @@
             max-width: 900px;
             margin: 0 auto;
             padding: 20px;
+<<<<<<< HEAD
             transition: var(--body-transition); /* Use variable for transition */
+=======
+            transition: var(--body-transition);
+            position: relative; /* Needed for pseudo-element background */
+            overflow-x: hidden; /* Prevent horizontal scroll from animations */
+>>>>>>> 9dbd4d0 (Push)
         }
         h1, h2, h3 { color: var(--text-primary); margin: 1.5rem 0 1rem 0; }
         h1 {
@@ -62,6 +89,10 @@
             margin-bottom: 1.5rem;
             position: relative;
             text-shadow: 0 0 5px var(--accent); /* Add subtle glow */
+<<<<<<< HEAD
+=======
+            transition: transform 0.5s ease, border-color 0.4s ease, text-shadow 0.4s ease;
+>>>>>>> 9dbd4d0 (Push)
         }
         /* Header animation */
         h1::after {
@@ -72,8 +103,21 @@
             width: 120px;
             height: 2px;
             background-color: var(--header-animation-color);
+<<<<<<< HEAD
             animation: var(--header-animation) 2s infinite; /* Use variable */
         }
+=======
+            /* Animation applied via body class */
+        }
+        /* Apply animation based on theme */
+        body:not(.beta-theme) h1::after {
+             animation: pulse 2s infinite;
+        }
+        body.beta-theme h1::after {
+             animation: var(--header-animation) 4s ease-in-out infinite alternate; /* Use variable */
+        }
+
+>>>>>>> 9dbd4d0 (Push)
         h2 { font-size: 1.8rem; margin-top: 2rem; }
         p { margin: 1rem 0; color: var(--text-secondary); }
         a { color: var(--accent); text-decoration: none; transition: color 0.3s ease; }
@@ -90,15 +134,51 @@
             box-shadow: 0 2px 5px rgba(0,0,0,0.3);
             transition: all 0.3s ease;
         }
+<<<<<<< HEAD
         .code-block:hover { box-shadow: 0 4px 10px rgba(0,0,0,0.4); transform: translateY(-1px); border-color: var(--accent); }
+=======
+        .code-block:hover {
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+            transform: translateY(-2px);
+            border-color: var(--accent);
+        }
+>>>>>>> 9dbd4d0 (Push)
         .code-block code { color: var(--code-color); } /* Use variable */
         .code-block::before { content: "$ "; opacity: 0.5; }
         .code-block .copy-btn { position: absolute; top: 10px; right: 10px; background: var(--accent); color: var(--bg-primary); border: none; border-radius: 4px; padding: 5px 10px; cursor: pointer; font-size: 0.8rem; opacity: 0; transition: all 0.3s ease; font-weight: bold; }
         .code-block:hover .copy-btn { opacity: 1; }
         .code-block .copy-btn:hover { background: var(--accent-dark); }
+<<<<<<< HEAD
         .card { background-color: var(--card-bg); border-radius: 8px; padding: 20px; margin: 20px 0; box-shadow: 0 2px 5px rgba(0,0,0,0.3); transition: all 0.3s ease; border-left: 4px solid var(--accent); }
         .card:hover { box-shadow: 0 4px 10px rgba(0,0,0,0.4); transform: translateY(-1px); }
         .warning { background-color: rgba(243, 156, 18, 0.1); border-left: 4px solid var(--warning); padding: 15px; margin: 20px 0; border-radius: 4px; color: var(--warning); }
+=======
+        .card {
+            background-color: var(--card-bg);
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            transition: all 0.3s ease;
+            border-left: 4px solid var(--accent);
+            position: relative; /* Needed for potential pseudo-elements */
+            overflow: hidden; /* Contain pseudo-elements */
+        }
+        .card:hover {
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+            transform: translateY(-2px);
+        }
+        .warning {
+            background-color: rgba(243, 156, 18, 0.1);
+            border-left: 4px solid var(--warning);
+            padding: 15px; margin: 20px 0;
+            border-radius: 4px;
+            color: var(--warning);
+            position: relative; /* For potential pseudo-elements */
+            overflow: hidden; /* Contain pseudo-elements */
+            transition: background-color 0.4s ease, border-color 0.4s ease, color 0.4s ease;
+        }
+>>>>>>> 9dbd4d0 (Push)
         .warning strong { color: var(--warning); }
         .official-note { background-color: rgba(52, 152, 219, 0.1); border-left: 4px solid var(--accent); padding: 15px; margin: 20px 0; border-radius: 4px; color: var(--accent); }
         .official-note strong { color: var(--accent); }
@@ -112,6 +192,7 @@
         /* --- Animations --- */
         @keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+<<<<<<< HEAD
         /* Glitch animation for Beta */
         @keyframes glitch {
           0% { transform: translate(0); opacity: 1; }
@@ -121,6 +202,131 @@
           80% { transform: translate(2px, -2px); opacity: 1; }
           100% { transform: translate(0); opacity: 0.9; }
         }
+=======
+        /* Sway animation for Beta */
+        @keyframes sway {
+          0% { transform: rotate(-1.5deg); } /* Increased sway */
+          50% { transform: rotate(1.5deg); }
+          100% { transform: rotate(-1.5deg); }
+        }
+        /* Shake animation */
+        @keyframes shake {
+          0%, 100% { transform: rotate(0); } /* Relative rotation for animation */
+          25% { transform: rotate(var(--shake-intensity)); }
+          50% { transform: rotate(0); }
+          75% { transform: rotate(var(--shake-intensity-alt)); }
+        }
+        /* Flicker animation */
+        @keyframes flicker {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.6; }
+        }
+        /* Falling debris animation - multiple layers */
+        @keyframes falling-1 {
+          0% { background-position: 0 0; }
+          100% { background-position: -20px 100vh; } /* Add horizontal movement */
+        }
+        @keyframes falling-2 {
+          0% { background-position: 0 0; }
+          100% { background-position: 30px 100vh; }
+        }
+        @keyframes falling-3 {
+          0% { background-position: 0 0; }
+          100% { background-position: 0 100vh; }
+        }
+
+        /* --- Beta Theme Specific Overrides & Additions --- */
+        /* Falling Debris Background - More Random */
+        body.beta-theme::before {
+            content: "";
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            /* Layer 1: Small, fast dots */
+            background-image: radial-gradient(circle, rgba(243, 156, 18, 0.1) 1px, transparent 1px);
+            background-size: 25px 25px;
+            background-repeat: repeat;
+            animation: falling-1 15s linear infinite;
+            opacity: 0.3;
+            z-index: -1;
+            pointer-events: none;
+        }
+        body.beta-theme::after { /* Use ::after for a second layer */
+            content: "";
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            /* Layer 2: Larger, slower dots */
+            background-image: radial-gradient(circle, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+            background-size: 50px 50px;
+            background-repeat: repeat;
+            animation: falling-2 30s linear infinite;
+            opacity: 0.2;
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        body.beta-theme h1 {
+            transform: rotate(-1.5deg);
+            transform-origin: bottom left;
+            animation: shake 8s ease-in-out infinite alternate;
+        }
+        body.beta-theme .card {
+            border-left-color: var(--warning);
+            transform: rotate(0.5deg);
+            animation: shake 10s ease-in-out infinite alternate;
+            --shake-intensity: var(--shake-intensity); /* Use variables */
+            --shake-intensity-alt: var(--shake-intensity-alt);
+        }
+        body.beta-theme .card:nth-child(odd) {
+            transform: rotate(-0.3deg);
+            animation-duration: 12s;
+            animation-direction: alternate-reverse;
+            --shake-intensity: -0.3deg;
+            --shake-intensity-alt: 0.4deg;
+        }
+        body.beta-theme .card::after {
+            content: '';
+            position: absolute;
+            bottom: -5px;
+            right: -5px;
+            width: 50px;
+            height: 40px;
+            background: linear-gradient(135deg, transparent 45%, var(--warning) 46%, var(--warning) 54%, transparent 55%),
+                        linear-gradient(125deg, transparent 45%, var(--warning) 46%, var(--warning) 54%, transparent 55%);
+            background-size: 15px 15px;
+            background-repeat: no-repeat;
+            transform: rotate(10deg);
+            opacity: 0.4;
+        }
+        body.beta-theme .code-block {
+            border-color: var(--warning);
+            transform: rotate(0.2deg);
+            animation: shake 15s ease-in-out infinite alternate;
+            --shake-intensity: 0.2deg;
+            --shake-intensity-alt: -0.1deg;
+        }
+        body.beta-theme #beta-warning::before {
+            content: "";
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: repeating-linear-gradient(
+                45deg,
+                rgba(0, 0, 0, 0.2),
+                rgba(0, 0, 0, 0.2) 10px,
+                rgba(243, 156, 18, 0.2) 10px,
+                rgba(243, 156, 18, 0.2) 20px
+            );
+            opacity: 0.5;
+            z-index: 0;
+        }
+        body.beta-theme #beta-warning > * {
+            position: relative;
+            z-index: 1;
+        }
+        body.beta-theme #beta-warning strong {
+            animation: flicker 1.5s linear infinite;
+        }
+        /* End Beta Theme Specifics */
+>>>>>>> 9dbd4d0 (Push)
 
         @media (max-width: 768px) { body { padding: 15px; } h1 { font-size: 2rem; } .tabs { flex-direction: column; } }
 
@@ -160,6 +366,11 @@
         input:focus + .slider { box-shadow: 0 0 2px var(--accent); }
         input:checked + .slider:before { transform: translateX(20px); }
         #beta-warning { display: none; margin-top: 10px; }
+<<<<<<< HEAD
+=======
+        /* Add specific style for the warning text content */
+        #beta-warning-text { display: inline; }
+>>>>>>> 9dbd4d0 (Push)
         #beta-unavailable-text { margin-left: 10px; color: var(--danger); font-size: 0.8em; display: none; }
     </style>
 </head>
@@ -186,18 +397,30 @@
             Quick Installation
             <!-- Version Toggle (Refined Layout) -->
             <div class="switch-container">
+<<<<<<< HEAD
                 <span class="switch-text stable-text" id="stable-label" onclick="document.getElementById('version-toggle').click()">Stable</span>
+=======
+                <span class="switch-text stable-text" id="stable-label">Stable</span>
+>>>>>>> 9dbd4d0 (Push)
                 <label class="switch">
                     <input type="checkbox" id="version-toggle" onchange="toggleVersion()">
                     <span class="slider"></span>
                 </label>
+<<<<<<< HEAD
                 <span class="switch-text beta-text" id="beta-label" onclick="document.getElementById('version-toggle').click()">Beta</span>
+=======
+                <span class="switch-text beta-text" id="beta-label">Beta</span>
+>>>>>>> 9dbd4d0 (Push)
                 <span id="beta-unavailable-text">(Beta script not available)</span>
             </div>
         </h2>
         <!-- Beta Warning Message -->
         <div class="warning" id="beta-warning">
+<<<<<<< HEAD
             <strong>Heads Up!</strong> You've selected the Beta version. This version might have bugs or unfinished features. Use it at your own risk! Engage terminal velocity!
+=======
+            <strong>🚧 Heads Up! 🚧</strong> <span id="beta-warning-text">You've selected the Beta version. This version might have bugs or unfinished features. Use it at your own risk!</span>
+>>>>>>> 9dbd4d0 (Push)
         </div>
         <p>Copy and paste this command into your server's terminal. It downloads and runs the installer script automatically.</p>
         <div class="code-block" id="quick-install-block">
@@ -213,6 +436,7 @@
         <p><i>(Note: Use the toggle above to switch between Stable/Beta commands)</i></p>
 
         <div id="manual-steps">
+<<<<<<< HEAD
             <p><strong>Step 1: Download</strong></p>
             <div class="code-block">
                 <code id="manual-download-code">curl -sSL -o install.sh https://plexdev.live/install.sh</code>
@@ -229,6 +453,29 @@
             <div class="code-block">
                 <code id="manual-run-code">./install.sh</code>
                 <button class="copy-btn" onclick="copyToClipboard(document.getElementById('manual-run-code').textContent)">Copy</button>
+=======
+             <!-- Card container for steps -->
+            <div class="card">
+                <p><strong>Step 1: Download</strong></p>
+                <div class="code-block">
+                    <code id="manual-download-code">curl -sSL -o install.sh https://plexdev.live/install.sh</code>
+                    <button class="copy-btn" onclick="copyToClipboard(document.getElementById('manual-download-code').textContent)">Copy</button>
+                </div>
+            </div>
+             <div class="card">
+                <p><strong>Step 2: Make it Executable</strong></p>
+                <div class="code-block">
+                    <code id="manual-chmod-code">chmod +x install.sh</code>
+                    <button class="copy-btn" onclick="copyToClipboard(document.getElementById('manual-chmod-code').textContent)">Copy</button>
+                </div>
+            </div>
+             <div class="card">
+                <p><strong>Step 3: Run It</strong></p>
+                <div class="code-block">
+                    <code id="manual-run-code">./install.sh</code>
+                    <button class="copy-btn" onclick="copyToClipboard(document.getElementById('manual-run-code').textContent)">Copy</button>
+                </div>
+>>>>>>> 9dbd4d0 (Push)
             </div>
         </div>
     </div>
@@ -263,6 +510,25 @@
         const versionToggle = document.getElementById('version-toggle');
         const betaUnavailableText = document.getElementById('beta-unavailable-text');
         const bodyElement = document.body; // Get body element
+<<<<<<< HEAD
+=======
+        const betaWarning = document.getElementById('beta-warning');
+        const betaWarningTextElement = document.getElementById('beta-warning-text'); // Get the span for text
+
+        // Array of random endings for the beta warning
+        const betaWarningEndings = [
+            "Things might be wobbly!",
+            "Expect some turbulence!",
+            "Handle with care!",
+            "May contain nuts... and bolts.",
+            "Proceed with caution!",
+            "It's alive... maybe?",
+            "Don't feed after midnight.",
+            "Under construction (literally)."
+        ];
+        const baseBetaWarningText = "You've selected the Beta version. This version might have bugs or unfinished features. Use it at your own risk! ";
+
+>>>>>>> 9dbd4d0 (Push)
 
         if (!betaAvailable) {
             versionToggle.disabled = true;
@@ -270,6 +536,12 @@
             // Ensure labels reflect disabled state visually
              document.getElementById('beta-label').style.opacity = '0.5';
              document.getElementById('beta-label').style.cursor = 'default';
+<<<<<<< HEAD
+=======
+             // Prevent clicking disabled label from doing anything
+             document.getElementById('beta-label').onclick = null;
+             document.getElementById('stable-label').onclick = null; // Also disable stable label click if beta unavailable? Maybe not.
+>>>>>>> 9dbd4d0 (Push)
         } else {
              // Make labels clickable to toggle the switch
              document.getElementById('stable-label').onclick = () => { if (versionToggle.checked) versionToggle.click(); };
@@ -297,7 +569,14 @@
 
         function copyToClipboard(text) {
             navigator.clipboard.writeText(text).then(() => {
+<<<<<<< HEAD
                 const btn = event.target;
+=======
+                // Use currentTarget if event is passed, otherwise fallback might be needed
+                const btn = event ? event.currentTarget : document.querySelector(`button[onclick*="${text}"]`); // Basic fallback
+                if (!btn) return; // Exit if button not found
+
+>>>>>>> 9dbd4d0 (Push)
                 const originalText = btn.textContent;
                 btn.textContent = "Copied!";
                 // Change color briefly on success
@@ -314,7 +593,11 @@
 
         function toggleVersion() {
             const isBeta = versionToggle.checked;
+<<<<<<< HEAD
             const betaWarning = document.getElementById('beta-warning');
+=======
+            console.log('Toggling Beta Theme:', isBeta); // Debugging line
+>>>>>>> 9dbd4d0 (Push)
             const quickCode = document.getElementById('quick-install-code');
             const manualDownloadCode = document.getElementById('manual-download-code');
             const manualChmodCode = document.getElementById('manual-chmod-code');
@@ -323,8 +606,17 @@
             const betaLabel = document.getElementById('beta-label');
 
             if (isBeta && betaAvailable) {
+<<<<<<< HEAD
                 bodyElement.classList.add('beta-theme'); // Add beta theme class
                 betaWarning.style.display = 'block';
+=======
+                bodyElement.classList.add('beta-theme');
+
+                const randomIndex = Math.floor(Math.random() * betaWarningEndings.length);
+                betaWarningTextElement.textContent = baseBetaWarningText + betaWarningEndings[randomIndex];
+                betaWarning.style.display = 'block';
+
+>>>>>>> 9dbd4d0 (Push)
                 quickCode.textContent = 'curl -sSL https://plexdev.live/beta.sh | bash -i';
                 manualDownloadCode.textContent = 'curl -sSL -o beta.sh https://plexdev.live/beta.sh';
                 manualChmodCode.textContent = 'chmod +x beta.sh';
@@ -332,16 +624,27 @@
                 stableLabel.style.opacity = '0.5';
                 betaLabel.style.opacity = '1';
             } else {
+<<<<<<< HEAD
                 bodyElement.classList.remove('beta-theme'); // Remove beta theme class
                 // Force back to stable if beta isn't available or toggle is off
                 if (!betaAvailable) versionToggle.checked = false;
                 betaWarning.style.display = 'none';
+=======
+                bodyElement.classList.remove('beta-theme');
+                if (!betaAvailable) versionToggle.checked = false;
+                betaWarning.style.display = 'none';
+
+>>>>>>> 9dbd4d0 (Push)
                 quickCode.textContent = 'curl -sSL https://plexdev.live/install.sh | bash -i';
                 manualDownloadCode.textContent = 'curl -sSL -o install.sh https://plexdev.live/install.sh';
                 manualChmodCode.textContent = 'chmod +x install.sh';
                 manualRunCode.textContent = './install.sh';
                 stableLabel.style.opacity = '1';
+<<<<<<< HEAD
                 betaLabel.style.opacity = '0.5';
+=======
+                betaLabel.style.opacity = betaAvailable ? '0.5' : '0.5';
+>>>>>>> 9dbd4d0 (Push)
             }
         }
 

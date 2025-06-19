@@ -66,7 +66,21 @@ app.get('/install.sh', (req, res) => {
     res.status(404).send('Stable installer script (install.sh) not found or unreadable.');
   }
 });
+<<<<<<< HEAD
 
+=======
+// --- Script Serving Routes ---
+app.get('/.well-known/discord', (req, res) => {
+  const filePath = path.join(__dirname, '.well-known/discord');
+  const data = readFileSafe(filePath);
+
+  if (data !== null) {
+    res.send(data);
+  } else {
+    res.status(404).send('Well... shit.....');
+  }
+});
+>>>>>>> 9dbd4d0 (Push)
 app.get('/beta.sh', (req, res) => {
   const filePath = path.join(__dirname, 'beta.sh');
   const data = readFileSafe(filePath); // Uses the safe reader
@@ -92,4 +106,8 @@ app.listen(port, () => {
   } else {
     console.warn('Beta installer script (beta.sh) not found. Beta toggle will be disabled on the website.');
   }
+<<<<<<< HEAD
 });
+=======
+});
+>>>>>>> 9dbd4d0 (Push)

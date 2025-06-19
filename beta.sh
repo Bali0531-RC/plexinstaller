@@ -395,15 +395,23 @@ setup_nginx() {
         print_step "Overwriting existing Nginx config..."
     fi
 
+<<<<<<< HEAD
     # Create Nginx config content
     local nginx_config_content
     if [[ "$product" == "plexstore" ]]; then
         # Special config for PlexStore with 502 page
+=======
+    # Create Nginx config content - UPDATED to initially create HTTP-only config
+    local nginx_config_content
+    if [[ "$product" == "plexstore" ]]; then
+        # Special config for PlexStore with 502 page - HTTPS disabled initially
+>>>>>>> 9dbd4d0 (Push)
         nginx_config_content=$(cat <<EOF
 server {
     listen 80;
     server_name $domain;
 
+<<<<<<< HEAD
     # Redirect HTTP to HTTPS (Certbot usually handles this, but good practice)
     location / {
         return 301 https://\$host\$request_uri;
@@ -420,6 +428,10 @@ server {
     # include /etc/letsencrypt/options-ssl-nginx.conf;
     # ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 
+=======
+    # We'll configure HTTPS redirect after obtaining certificate
+    
+>>>>>>> 9dbd4d0 (Push)
     location / {
         proxy_pass http://localhost:$port;
         proxy_http_version 1.1;
@@ -443,6 +455,7 @@ server {
 }
 EOF
 )
+<<<<<<< HEAD
         # Create the 502 error page
         print_step "Creating custom 502 error page for PlexStore..."
         sudo mkdir -p "$install_path" # Ensure directory exists
@@ -455,11 +468,16 @@ EOF
 
     else
         # Standard config for other products
+=======
+    else
+        # Standard config for other products - HTTPS disabled initially
+>>>>>>> 9dbd4d0 (Push)
         nginx_config_content=$(cat <<EOF
 server {
     listen 80;
     server_name $domain;
 
+<<<<<<< HEAD
     # Redirect HTTP to HTTPS (Certbot usually handles this, but good practice)
     location / {
         return 301 https://\$host\$request_uri;
@@ -476,6 +494,10 @@ server {
     # include /etc/letsencrypt/options-ssl-nginx.conf;
     # ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 
+=======
+    # We'll configure HTTPS redirect after obtaining certificate
+    
+>>>>>>> 9dbd4d0 (Push)
     location / {
         proxy_pass http://localhost:$port;
         proxy_http_version 1.1;
@@ -539,6 +561,7 @@ setup_ssl() {
             return 0
         fi
         print_step "Attempting to renew/reinstall SSL certificate..."
+<<<<<<< HEAD
         # Use --force-renewal or just run it again to update Nginx config
         sudo certbot --nginx -d "$domain" --non-interactive --agree-tos --email "$email" --redirect --keep-until-expiring
     else
@@ -558,6 +581,31 @@ setup_ssl() {
         print_error "Certbot failed to obtain/update SSL certificate for $domain."
         print_warning "Check Certbot logs (/var/log/letsencrypt/letsencrypt.log) for details."
         print_warning "The application might work over HTTP if Nginx is running, but HTTPS will fail."
+=======
+    fi
+    
+    # Now use --nginx flag to auto-configure Nginx for SSL
+    # This will modify the Nginx config to add SSL and redirection
+    sudo certbot --nginx -d "$domain" --non-interactive --agree-tos --email "$email" --redirect --keep-until-expiring
+
+    if [ $? -eq 0 ]; then
+        print_success "SSL certificate obtained/updated and Nginx configured successfully for $domain."
+        print_step "Verifying Nginx configuration after SSL setup..."
+        if sudo nginx -t; then
+            print_step "Reloading Nginx to apply SSL changes..."
+            sudo systemctl reload nginx
+            check_command "Nginx reload after SSL setup"
+        else
+            print_error "Nginx configuration test failed after SSL setup!"
+            print_warning "Certbot may have created an invalid Nginx configuration."
+            print_warning "You may need to manually fix the Nginx config at $NGINX_AVAILABLE/$domain.conf"
+        fi
+    else
+        print_error "Certbot failed to obtain/update SSL certificate for $domain."
+        print_warning "Check Certbot logs (/var/log/letsencrypt/letsencrypt.log) for details."
+        print_warning "The application will work over HTTP if Nginx is running, but HTTPS will fail."
+        print_warning "Try running: sudo certbot --nginx -d \"$domain\" manually to debug."
+>>>>>>> 9dbd4d0 (Push)
         # Don't exit here, allow installation to finish but warn user
     fi
 }
@@ -592,6 +640,7 @@ create_systemd_service() {
     service_content=$(cat <<EOF
 [Unit]
 Description=PlexDevelopment - $product Service
+<<<<<<< HEAD
 After=network.target nginx.service # Ensure network and nginx are up
 
 [Service]
@@ -624,6 +673,23 @@ SyslogIdentifier=$service_name
 # RestrictAddressFamilies=AF_INET AF_INET6
 # RestrictRealtime=true
 
+=======
+After=network.target nginx.service 
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=$install_path
+ExecStart=$NODE_EXECUTABLE .
+Restart=on-failure
+RestartSec=10 
+TimeoutStartSec=30s
+StandardOutput=syslog 
+StandardError=syslog
+SyslogIdentifier=$service_name
+
+>>>>>>> 9dbd4d0 (Push)
 [Install]
 WantedBy=multi-user.target
 EOF
@@ -2135,7 +2201,11 @@ display_banner() {
     echo "                                                  | |                             "
     echo "                                                  |_|                             "
     echo -e "${NC}"
+<<<<<<< HEAD
     echo -e "${BOLD}${PURPLE}Installation Script for PlexDevelopment Products${NC}\n"
+=======
+    echo -e "${BOLD}${PURPLE} UNOFFICIAL Installation Script for PlexDevelopment Products${NC}\n"
+>>>>>>> 9dbd4d0 (Push)
 }
 
 #--- Script Entry Point ---#
