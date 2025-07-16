@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple Guide - PlexDev.live Unofficial Installer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        /* --- Reuse Styles from Main Page --- */
+         :root { 
+            --bg-primary: #0a0a0a; 
+            --bg-secondary: #1a1a1a; 
+            --bg-tertiary: #2a2a2a;
+            --text-primary: #f0f0f0; 
+            --text-secondary: #b0b0b0; 
+            --text-muted: #808080;
+            --accent: #00d4ff; 
+            --accent-dark: #0099cc; 
+            --accent-light: #66e6ff;
+            --success: #00ff88; 
+            --warning: #ffaa00; 
+            --danger: #ff4444; 
+            --card-bg: #1e1e1e; 
+            --border-color: #333; 
+            --border-color-light: #444;
+            --shadow: rgba(0, 0, 0, 0.5);
+            --shadow-light: rgba(0, 0, 0, 0.3);
+            --gradient-primary: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
+            --gradient-card: linear-gradient(145deg, var(--card-bg) 0%, var(--bg-secondary) 100%);
+            --border-radius: 12px;
+            --border-radius-small: 8px;
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { 
+            font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; 
+            line-height: 1.6; 
+            color: var(--text-primary); 
+            background: var(--bg-primary); 
+            max-width: 1000px; 
+            margin: 0 auto; 
+            padding: 40px 20px; 
+            min-height: 100vh;
+        }
+        
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: radial-gradient(circle at 20% 80%, rgba(0, 212, 255, 0.1) 0%, transparent 50%),
+                        radial-gradient(circle at 80% 20%, rgba(0, 255, 136, 0.1) 0%, transparent 50%);
+            z-index: -1;
+            pointer-events: none;
+        }
+        
+        h1, h2, h3 { color: var(--text-primary); margin: 2rem 0 1.5rem 0; font-weight: 600; }
+        h1 { 
+            font-size: clamp(2rem, 5vw, 3rem); 
+            background: var(--gradient-primary);
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            border-bottom: 2px solid var(--accent); 
+            padding-bottom: 15px; 
+            margin-bottom: 2rem; 
+            text-align: center;
+        }
+        h2 { font-size: 1.8rem; margin-top: 3rem; }
+        p { margin: 1rem 0; color: var(--text-secondary); }
+        /* --- Adjusted List Styles --- */
+        ul, ol {
+            margin-top: 0.5rem; /* Space above the list */
+            margin-bottom: 1rem; /* Space below the list */
+            padding-left: 40px; /* Indent the entire list (including numbers/bullets) */
+            color: var(--text-secondary); /* Inherit text color */
+        }
+        li {
+            margin-bottom: 0.5rem; /* Space between list items */
+            padding-left: 5px; /* Small space between bullet/number and text */
+        }
+        /* --- End Adjusted List Styles --- */
+        a { color: var(--accent); text-decoration: none; transition: var(--transition); }
+        a:hover { color: var(--accent-light); text-decoration: underline; }
+        .code-block { 
+            background: var(--bg-secondary); 
+            border: 1px solid var(--border-color); 
+            border-radius: var(--border-radius); 
+            padding: 20px; 
+            margin: 20px 0; 
+            font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Consolas', 'Courier New', monospace; 
+            overflow-x: auto; 
+            position: relative;
+            box-shadow: 0 4px 16px var(--shadow-light);
+        }
+        .code-block code { color: var(--accent); font-size: 0.9rem; }
+        .code-block::before { content: "$ "; opacity: 0.6; color: var(--accent); font-weight: bold; }
+        .card { 
+            background: var(--gradient-card); 
+            border-radius: var(--border-radius); 
+            padding: 32px; 
+            margin: 32px 0; 
+            border: 1px solid var(--border-color);
+            box-shadow: 0 8px 32px var(--shadow-light);
+            backdrop-filter: blur(10px);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--gradient-primary);
+            opacity: 0.8;
+        }
+        
+        .card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 48px var(--shadow);
+        }
+        .warning { 
+            background: rgba(255, 170, 0, 0.1); 
+            border: 1px solid var(--warning);
+            border-left: 4px solid var(--warning); 
+            padding: 20px; 
+            margin: 24px 0; 
+            border-radius: var(--border-radius);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 16px rgba(255, 170, 0, 0.2);
+        }
+        .danger { 
+            background: rgba(255, 68, 68, 0.1); 
+            border: 1px solid var(--danger);
+            border-left: 4px solid var(--danger); 
+            padding: 20px; 
+            margin: 24px 0; 
+            border-radius: var(--border-radius);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 16px rgba(255, 68, 68, 0.2);
+        }
+        strong { color: var(--text-primary); font-weight: 600; }
+        footer { 
+            margin-top: 60px; 
+            color: var(--text-muted); 
+            text-align: center; 
+            border-top: 1px solid var(--border-color); 
+            padding-top: 30px; 
+            font-size: 0.9rem; 
+        }
+        
+        @media (max-width: 768px) {
+            body {
+                padding: 20px 15px;
+            }
+            
+            h1 {
+                font-size: clamp(1.5rem, 6vw, 2.5rem);
+            }
+            
+            .card {
+                padding: 20px;
+                margin: 20px 0;
+            }
+            
+            .code-block {
+                padding: 16px;
+                font-size: 0.85rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>Super Simple Guide to the Installer</h1>
+    <p>Hey there! So you want to install some cool stuff from PlexDevelopment, but maybe you're not a computer wizard? No problem! This guide explains things like you're five (okay, maybe ten).</p>
+    <p><a href="/">&laquo; Back to Installer</a></p>
+
+    <h2>What is This Thing?</h2>
+    <div class="card">
+        <p>Think of this installer as a helpful robot. You tell it what Plex product you want (like PlexTickets, PlexStore, or the new PlexLinks and PlexPaste), and it does all the tricky setup stuff on your Linux server for you.</p>
+        <p>Normally, setting these things up involves lots of typing weird commands. This robot does most of that typing for you!</p>
+        <div class="danger">
+            <strong>Super Important:</strong> This robot is built by someone else (bali0531), NOT the official PlexDevelopment team. It's like getting help from a friendly neighbor instead of the official company. It usually works great, but it's not official support.
+        </div>
+    </div>
+
+    <h2>How Do I Use the Robot? (Quick Install)</h2>
+    <div class="card">
+        <p>This is the easiest way. It's like telling your robot helper, "Go do the thing!"</p>
+        <ol>
+            <li><strong>Connect to Your Server:</strong> You need to be talking to your Linux server. This usually means using a program like PuTTY (on Windows) or Terminal (on Mac/Linux) and logging in. You'll see a blinking cursor waiting for commands.</li>
+            <li><strong>Choose Stable or Beta:</strong> On the <a href="/">main installer page</a>, there's a little switch next to "Quick Installation".
+                <ul>
+                    <li><strong>Stable (Green):</strong> Safer, tested more. Use this normally. Supports PlexTickets, PlexStaff, PlexStatus, PlexStore, and PlexForms.</li>
+                    <li><strong>Beta (Orange):</strong> Newer, might break. Use if you like testing. Includes all stable products plus the new PlexLinks and PlexPaste!</li>
+                </ul>
+                Make sure the switch is set how you want it.
+            </li>
+            <li><strong>Copy the Magic Spell:</strong> Find the black box below the switch with the command inside (it starts with <code>curl</code>). Click the "Copy" button next to it.</li>
+            <li><strong>Paste and Go:</strong> Go back to your server terminal window. Right-click (or use Shift+Insert or Cmd+V) to paste the command you copied. It should look something like this:
+                <div class="code-block"><code>curl -sSL https://plexdev.live/install.sh | bash -i</code></div>
+                (Or it might say <code>beta.sh</code> if you chose the Beta option).
+            </li>
+            <li><strong>Hit Enter:</strong> Press the Enter key on your keyboard.</li>
+            <li><strong>Follow Instructions:</strong> The robot (installer script) will start working. It will ask you some questions, like:
+                <ul>
+                    <li>Which product do you want to install?</li>
+                    <li>What website address (domain) do you want to use? (e.g., <code>tickets.mycoolsite.com</code>) - *Only asked for products that need a website.*</li>
+                    <li>What's your email? (For website security stuff) - *Only asked if setting up a website.*</li>
+                </ul>
+                Just answer the questions carefully. If you're unsure, the script often suggests a default answer.
+            </li>
+        </ol>
+        <p>That's it for starting! The robot does the rest.</p>
+    </div>
+
+     <h2>What About Manual Install?</h2>
+    <div class="card">
+        <p>If you like doing things step-by-step, use the "Manual Install" tab on the main page.</p>
+        <ol>
+            <li>Choose Stable/Beta using the switch (it changes the commands in this tab too).</li>
+            <li>Copy the command from "Step 1: Download" and run it on your server.</li>
+            <li>Copy the command from "Step 2: Make it Executable" and run it.</li>
+            <li>Copy the command from "Step 3: Run It" and run it.</li>
+            <li>Now, follow the instructions the script gives you (same as step 6 in Quick Install).</li>
+        </ol>
+    </div>
+
+    <h2>What Does the Robot Actually Do?</h2>
+    <div class="card">
+        <p>While you watch the text scroll by, the installer is busy doing these things:</p>
+        <ul>
+            <li><strong>Checks Your Server:</strong> Figures out what kind of Linux you have (like Ubuntu, Debian, etc.).</li>
+            <li><strong>Gets Tools:</strong> Installs programs your new Plex product needs to run (like Node.js, which is a runtime; Nginx, which is a web server; Certbot, for security).</li>
+            <li><strong>Unpacks the Product:</strong> Takes the product files (which you provide as a .zip or .rar) and puts them in the right place (usually <code>/var/www/plex/PRODUCT_NAME</code>).</li>
+            <li><strong>Installs More Tools (for the product):</strong> Runs <code>npm install</code> inside the product's folder to get any extra bits it needs.</li>
+            <li><strong>Sets Up the Website (If Needed):</strong> Configures the Nginx web server so when people visit your chosen domain (like <code>tickets.mycoolsite.com</code>), they see the Plex product. *Doesn't do this for bot-only products like PlexTickets without the dashboard.*</li>
+            <li><strong>Adds Security (HTTPS) (If Needed):</strong> Uses Certbot and Let's Encrypt to get a free SSL certificate. This makes the little padlock appear in browsers and keeps connections secure (HTTPS instead of HTTP). *Only done if a website is set up.*</li>
+            <li><strong>Makes it Run Forever (Almost):</strong> Creates a 'systemd service'. This is like telling the server, "Make sure this program is always running, even if you restart."</li>
+        </ul>
+        <div class="warning">
+            <strong>Note:</strong> If you're using the beta installer, you also get access to PlexLinks (link management) and PlexPaste (pastebin service) - these are the newest additions and follow the same setup process as other products!
+        </div>
+    </div>
+
+    <h2>Okay, It Finished. Now What?</h2>
+    <div class="card">
+        <p>If everything went well, the script will tell you it's done and usually show you:</p>
+        <ul>
+            <li><strong>The Website Address (If Applicable):</strong> The <code>https://your.domain.com</code> address you can visit in your web browser.</li>
+            <li><strong>How to Control the Service:</strong> Commands like:
+                <ul>
+                    <li><code>sudo systemctl status plex-PRODUCT_NAME</code> (Check if it's running)</li>
+                    <li><code>sudo systemctl stop plex-PRODUCT_NAME</code> (Stop it)</li>
+                    <li><code>sudo systemctl start plex-PRODUCT_NAME</code> (Start it)</li>
+                    <li><code>sudo systemctl restart plex-PRODUCT_NAME</code> (Restart it if you change config)</li>
+                </ul>
+                (Replace <code>PRODUCT_NAME</code> with the actual product, like <code>plextickets</code>).
+            </li>
+            <li><strong>How to See Logs:</strong> A command like <code>sudo journalctl -u plex-PRODUCT_NAME -f</code> lets you see messages from the running program, useful if something seems wrong.</li>
+            <li><strong>Configuration File:</strong> It might tell you where the product's settings file is (like <code>config.yml</code>) so you can customize it later. You might need to edit this file to add bot tokens or other settings!</li>
+        </ul>
+        <p>If it installed a website, go visit the address it gave you! Otherwise, make sure you configure the product using its config file and then start/restart the service.</p>
+    </div>
+
+    <h2>Something Went Wrong!</h2>
+    <div class="card">
+        <p>Uh oh. Sometimes things break.</p>
+        <ul>
+            <li><strong>Read the Red Text:</strong> The installer usually prints error messages in <span style="color: var(--danger);">RED</span>. Read those carefully, they often give clues.</li>
+            <li><strong>Check Logs:</strong> If the product installed but isn't working right, use the <code>journalctl</code> command mentioned above to see its logs.</li>
+            <li><strong>Ask for Help (Unofficially):</strong> Since this is unofficial, you can try asking in places where the creator (bali0531) might be, but remember there's no guarantee of official support. Provide the error messages you saw!</li>
+            <li><strong>Try Again?:</strong> Sometimes just running the installer again fixes temporary glitches. If it asks to remove an existing installation first, say yes.</li>
+        </ul>
+    </div>
+
+    <footer>
+        Hope this helps! Remember, this is unofficial. | <a href="/">Back to Installer</a> | <a href="https://plexdevelopment.net" target="_blank">Official Site</a>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,1103 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PlexDev.live - Unofficial Installer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        /* --- Theme Variables --- */
+        :root {
+            /* Stable Theme (Default) */
+            --bg-primary: #0a0a0a;
+            --bg-secondary: #1a1a1a;
+            --bg-tertiary: #2a2a2a;
+            --text-primary: #f0f0f0;
+            --text-secondary: #b0b0b0;
+            --text-muted: #808080;
+            --accent: #00d4ff; /* Cyan */
+            --accent-dark: #0099cc;
+            --accent-light: #66e6ff;
+            --success: #00ff88; /* Green */
+            --warning: #ffaa00; /* Orange */
+            --danger: #ff4444; /* Red */
+            --card-bg: #1e1e1e;
+            --card-bg-hover: #252525;
+            --border-color: #333;
+            --border-color-light: #444;
+            --shadow: rgba(0, 0, 0, 0.5);
+            --shadow-light: rgba(0, 0, 0, 0.3);
+            --code-bg: #0d1117;
+            --code-color: #58a6ff; /* Blue */
+            --gradient-primary: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
+            --gradient-card: linear-gradient(145deg, var(--card-bg) 0%, var(--bg-secondary) 100%);
+            --border-radius: 12px;
+            --border-radius-small: 8px;
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            --header-animation: pulse;
+            --header-animation-color: var(--accent);
+            --body-transition: background-color 0.4s ease, color 0.4s ease; /* More specific transition */
+        }
+
+        /* Beta Theme Variables (Applied when body has .beta-theme class) */
+        body.beta-theme {
+            --bg-primary: #1a1a1a; /* Construction site dark */
+            --bg-secondary: #2a2a2a;
+            --bg-tertiary: #333;
+            --text-primary: #ffeb3b; /* Bright construction yellow */
+            --text-secondary: #ffc107; /* Warning tape yellow */
+            --text-muted: #ff9800;
+            --accent: #ff9800; /* Construction orange */
+            --accent-dark: #f57500;
+            --accent-light: #ffb74d;
+            --success: #4caf50; /* Safety green */
+            --warning: #ff5722; /* Danger orange */
+            --danger: #f44336; /* Emergency red */
+            --card-bg: #2a2a2a; /* Darker construction bg */
+            --card-bg-hover: #413f3f;
+            --border-color: #ff9800; /* Orange construction borders */
+            --border-color-light: #ffb74d;
+            --shadow: rgba(255, 152, 0, 0.3); /* Orange shadows */
+            --shadow-light: rgba(255, 152, 0, 0.1);
+            --code-bg: #1e1e1e;
+            --code-color: #ffeb3b;
+            --gradient-primary: linear-gradient(135deg, var(--accent) 0%, var(--warning) 100%);
+            --gradient-card: linear-gradient(145deg, var(--card-bg) 0%, var(--bg-secondary) 100%);
+            --header-animation: sway; /* Different animation */
+            --header-animation-color: var(--accent);
+            --shake-intensity: 0.5deg;
+            --shake-intensity-alt: -0.4deg;
+        }
+
+        /* --- Basic Styles --- */
+        * { 
+            box-sizing: border-box; 
+            margin: 0; 
+            padding: 0; 
+        }
+        
+        body {
+            font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: var(--text-primary);
+            background: var(--bg-primary);
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            transition: var(--transition);
+            position: relative;
+            overflow-x: hidden;
+            min-height: 100vh;
+        }
+        
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: radial-gradient(circle at 20% 80%, rgba(0, 212, 255, 0.1) 0%, transparent 50%),
+                        radial-gradient(circle at 80% 20%, rgba(0, 255, 136, 0.1) 0%, transparent 50%);
+            z-index: -1;
+            pointer-events: none;
+        }
+        
+        h1, h2, h3 { 
+            color: var(--text-primary); 
+            margin: 2rem 0 1.5rem 0; 
+            font-weight: 600;
+        }
+        
+        h1 {
+            font-size: clamp(2rem, 5vw, 3rem);
+            background: var(--gradient-primary);
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            border-bottom: 2px solid var(--accent);
+            padding-bottom: 15px;
+            margin-bottom: 2rem;
+            position: relative;
+            text-align: center;
+            text-shadow: 0 0 5px var(--accent);
+            transition: transform 0.5s ease, border-color 0.4s ease, text-shadow 0.4s ease;
+        }
+        /* Header animation */
+        h1::after {
+            content: "";
+            position: absolute;
+            bottom: -2px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 120px;
+            height: 2px;
+            background-color: var(--header-animation-color);
+            /* Animation applied via body class */
+        }
+        /* Apply animation based on theme */
+        body:not(.beta-theme) h1::after {
+             animation: pulse 2s infinite;
+        }
+        body.beta-theme h1::after {
+             animation: var(--header-animation) 4s ease-in-out infinite alternate; /* Use variable */
+        }
+
+        h2 { font-size: 1.8rem; margin-top: 2rem; }
+        p { margin: 1rem 0; color: var(--text-secondary); }
+        a { color: var(--accent); text-decoration: none; transition: color 0.3s ease; }
+        a:hover { color: var(--accent-dark); text-decoration: underline; }
+        .code-block {
+            background: var(--code-bg);
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            padding: 24px;
+            margin: 24px 0;
+            font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Consolas', 'Courier New', monospace;
+            overflow-x: auto;
+            position: relative;
+            box-shadow: 0 8px 32px var(--shadow-light);
+            backdrop-filter: blur(10px);
+            transition: var(--transition);
+            border-left: 4px solid var(--accent);
+        }
+        
+        .code-block:hover {
+            box-shadow: 0 12px 48px var(--shadow);
+            transform: translateY(-4px);
+            border-color: var(--accent-light);
+            background: var(--bg-secondary);
+        }
+        
+        .code-block code { 
+            color: var(--code-color); 
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+        
+        .code-block::before { 
+            content: "$ "; 
+            opacity: 0.6; 
+            color: var(--accent);
+            font-weight: bold;
+        }
+        
+        .code-block .copy-btn { 
+            position: absolute; 
+            top: 12px; 
+            right: 12px; 
+            background: var(--gradient-primary); 
+            color: white; 
+            border: none; 
+            border-radius: var(--border-radius-small); 
+            padding: 8px 16px; 
+            cursor: pointer; 
+            font-size: 0.8rem; 
+            opacity: 0; 
+            transition: var(--transition); 
+            font-weight: 600;
+            box-shadow: 0 4px 16px rgba(0, 212, 255, 0.3);
+        }
+        
+        .code-block:hover .copy-btn { 
+            opacity: 1; 
+        }
+        
+        .code-block .copy-btn:hover { 
+            transform: scale(1.05);
+            box-shadow: 0 6px 24px rgba(0, 212, 255, 0.5);
+        }
+        
+        .card {
+            background: var(--gradient-card);
+            border-radius: var(--border-radius);
+            padding: 32px;
+            margin: 32px 0;
+            box-shadow: 0 8px 32px var(--shadow-light);
+            backdrop-filter: blur(10px);
+            transition: var(--transition);
+            border: 1px solid var(--border-color);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--gradient-primary);
+            opacity: 0.8;
+        }
+        
+        .card:hover {
+            box-shadow: 0 16px 64px var(--shadow);
+            transform: translateY(-8px);
+            border-color: var(--border-color-light);
+            background: var(--card-bg-hover);
+        }
+        .warning {
+            background: rgba(255, 170, 0, 0.1);
+            border: 1px solid var(--warning);
+            border-left: 4px solid var(--warning);
+            padding: 20px; 
+            margin: 24px 0;
+            border-radius: var(--border-radius);
+            color: var(--warning);
+            position: relative;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 16px rgba(255, 170, 0, 0.2);
+            overflow: hidden;
+            transition: var(--transition);
+        }
+        
+        .warning strong { 
+            color: var(--warning); 
+            font-weight: 600;
+        }
+        
+        .official-note { 
+            background: rgba(0, 212, 255, 0.1); 
+            border: 1px solid var(--accent);
+            border-left: 4px solid var(--accent); 
+            padding: 20px; 
+            margin: 24px 0; 
+            border-radius: var(--border-radius); 
+            color: var(--accent);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 16px rgba(0, 212, 255, 0.2);
+        }
+        
+        .official-note strong { 
+            color: var(--accent); 
+            font-weight: 600;
+        }
+        footer { 
+            margin-top: 60px; 
+            color: var(--text-muted); 
+            text-align: center; 
+            border-top: 1px solid var(--border-color); 
+            padding-top: 30px; 
+            font-size: 0.9rem; 
+        }
+        
+        .tabs { 
+            display: flex; 
+            margin: 32px 0; 
+            border-bottom: 1px solid var(--border-color);
+            background: var(--bg-secondary);
+            border-radius: var(--border-radius) var(--border-radius) 0 0;
+            overflow: hidden;
+        }
+        
+        .tab { 
+            padding: 16px 24px; 
+            cursor: pointer; 
+            color: var(--text-secondary); 
+            transition: var(--transition); 
+            border-bottom: 3px solid transparent; 
+            background: var(--bg-primary);
+            font-weight: 600;
+            position: relative;
+            flex: 1;
+            text-align: center;
+        }
+        
+        .tab:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+        
+        .tab.active { 
+            color: var(--accent); 
+            border-bottom: 3px solid var(--accent);
+            background: var(--gradient-card);
+        }
+        
+        .tab-content { 
+            display: none; 
+            background: var(--gradient-card);
+            border-radius: 0 0 var(--border-radius) var(--border-radius);
+            padding: 32px;
+            border: 1px solid var(--border-color);
+            border-top: none;
+        }
+        
+        .tab-content.active { 
+            display: block; 
+            background: var(--gradient-card);
+            animation: fadeIn 0.5s ease-out; 
+        }
+
+        /* Ensure tab content uses proper gradient background in stable theme */
+        body:not(.beta-theme) .tab-content {
+            background: var(--gradient-card) !important;
+        }
+        
+        /* Specific override for quick install tab */
+        body:not(.beta-theme) #quick.tab-content {
+            background: var(--gradient-card) !important;
+        }
+        
+        /* Override for all tab contents in stable theme */
+        body:not(.beta-theme) #quick.tab-content,
+        body:not(.beta-theme) #manual.tab-content,
+        body:not(.beta-theme) #about.tab-content {
+            background: var(--gradient-card) !important;
+        }
+
+        /* Ensure tabs and cards use theme colors properly */
+        body.beta-theme .tab-content {
+            background: var(--card-bg);
+            border-color: var(--warning);
+        }
+        
+        body.beta-theme .tabs {
+            background: var(--bg-secondary);
+            border-color: var(--warning);
+        }
+        
+        body.beta-theme .tab {
+            background: var(--bg-secondary);
+            border-color: var(--warning);
+        }
+        
+        body.beta-theme .tab:hover {
+            background: var(--bg-tertiary);
+        }
+        
+        body.beta-theme .tab.active {
+            background: var(--card-bg);
+            border-bottom-color: var(--warning);
+            color: var(--warning);
+        }
+
+        /* --- Animations --- */
+        @keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        /* Sway animation for Beta */
+        @keyframes sway {
+          0% { transform: rotate(-1.5deg); } /* Increased sway */
+          50% { transform: rotate(1.5deg); }
+          100% { transform: rotate(-1.5deg); }
+        }
+        /* Shake animation */
+        @keyframes shake {
+          0%, 100% { transform: rotate(0); } /* Relative rotation for animation */
+          25% { transform: rotate(var(--shake-intensity)); }
+          50% { transform: rotate(0); }
+          75% { transform: rotate(var(--shake-intensity-alt)); }
+        }
+        /* Flicker animation */
+        @keyframes flicker {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.6; }
+        }
+        /* Falling debris animation - multiple layers */
+        @keyframes falling-1 {
+          0% { background-position: 0 0; }
+          100% { background-position: -20px 100vh; } /* Add horizontal movement */
+        }
+        @keyframes falling-2 {
+          0% { background-position: 0 0; }
+          100% { background-position: 30px 100vh; }
+        }
+        @keyframes falling-3 {
+          0% { background-position: 0 0; }
+          100% { background-position: 0 100vh; }
+        }
+
+        /* --- Beta Theme Specific Overrides & Additions --- */
+        /* Construction site background patterns */
+        body.beta-theme::before {
+            content: "";
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            /* Warning tape diagonal stripes */
+            background-image: 
+                repeating-linear-gradient(
+                    45deg,
+                    rgba(255, 152, 0, 0.1) 0px,
+                    rgba(255, 152, 0, 0.1) 20px,
+                    transparent 20px,
+                    transparent 40px
+                ),
+                repeating-linear-gradient(
+                    -45deg,
+                    rgba(255, 235, 59, 0.05) 0px,
+                    rgba(255, 235, 59, 0.05) 30px,
+                    transparent 30px,
+                    transparent 60px
+                );
+            animation: constructionMove 20s linear infinite;
+            opacity: 0.3;
+            z-index: -2;
+            pointer-events: none;
+        }
+        
+        body.beta-theme::after {
+            content: "";
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            /* Caution dots pattern */
+            background-image: 
+                radial-gradient(circle, rgba(255, 152, 0, 0.2) 2px, transparent 2px),
+                radial-gradient(circle, rgba(255, 235, 59, 0.1) 1px, transparent 1px);
+            background-size: 80px 80px, 40px 40px;
+            background-position: 0 0, 20px 20px;
+            animation: constructionDrift 30s ease-in-out infinite;
+            opacity: 0.15;
+            z-index: -1;
+            pointer-events: none;
+        }
+        
+        @keyframes constructionMove {
+            0% { transform: translateX(-40px) translateY(-40px); }
+            100% { transform: translateX(40px) translateY(40px); }
+        }
+        
+        @keyframes constructionDrift {
+            0%, 100% { transform: translate(0, 0) rotate(0deg); }
+            33% { transform: translate(10px, -5px) rotate(1deg); }
+            66% { transform: translate(-5px, 10px) rotate(-1deg); }
+        }
+
+        body.beta-theme h1 {
+            transform: rotate(-1.5deg);
+            transform-origin: bottom left;
+            animation: shake 8s ease-in-out infinite alternate;
+            text-shadow: 0 0 20px rgba(255, 152, 0, 0.5);
+            position: relative;
+        }
+        
+        body.beta-theme h1::before {
+            content: "🚧";
+            position: absolute;
+            left: -60px;
+            top: 50%;
+            transform: translateY(-50%) rotate(-15deg);
+            font-size: 2rem;
+            animation: bounce 2s ease-in-out infinite;
+        }
+        
+        body.beta-theme h1::after {
+            content: "⚠️";
+            position: absolute;
+            right: -60px;
+            top: 50%;
+            transform: translateY(-50%) rotate(15deg);
+            font-size: 2rem;
+            animation: bounce 2s ease-in-out infinite 0.5s;
+        }
+        
+        @keyframes bounce {
+            0%, 100% { transform: translateY(-50%) scale(1); }
+            50% { transform: translateY(-60%) scale(1.1); }
+        }
+        
+        body.beta-theme .card {
+            border: 2px solid var(--warning);
+            border-left: 6px solid var(--warning);
+            transform: rotate(0.5deg);
+            animation: shake 10s ease-in-out infinite alternate;
+            position: relative;
+            background: var(--card-bg);
+            box-shadow: 
+                0 8px 32px rgba(255, 152, 0, 0.3),
+                inset 0 1px 0 rgba(255, 235, 59, 0.1);
+        }
+        
+        body.beta-theme .card:hover {
+            background: var(--card-bg-hover);
+            border-color: var(--warning);
+        }
+        
+        body.beta-theme .card:nth-child(odd) {
+            transform: rotate(-0.3deg);
+            animation-duration: 12s;
+            animation-direction: alternate-reverse;
+        }
+        
+        body.beta-theme .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: repeating-linear-gradient(
+                90deg,
+                var(--warning) 0px,
+                var(--warning) 10px,
+                var(--danger) 10px,
+                var(--danger) 20px
+            );
+            opacity: 0.8;
+        }
+        
+        body.beta-theme .card::after {
+            content: '🚧 BETA 🚧';
+            position: absolute;
+            bottom: 10px;
+            right: 15px;
+            background: var(--warning);
+            color: var(--bg-primary);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: bold;
+            transform: rotate(15deg);
+            opacity: 0.8;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+        
+        body.beta-theme .code-block {
+            border: 2px dashed var(--warning);
+            transform: rotate(0.2deg);
+            animation: shake 15s ease-in-out infinite alternate;
+            background: var(--code-bg);
+            border-left: 4px solid var(--warning);
+        }
+        
+        body.beta-theme .code-block:hover {
+            background: var(--bg-secondary);
+            border-color: var(--warning);
+        }
+        
+        body.beta-theme .official-note,
+        body.beta-theme .warning {
+            border-style: dashed;
+            animation: cautionBlink 3s ease-in-out infinite;
+            background: var(--card-bg);
+        }
+        
+        @keyframes cautionBlink {
+            0%, 100% { border-color: var(--warning); }
+            50% { border-color: var(--danger); }
+        }
+        
+        body.beta-theme #beta-warning::before {
+            content: "⚠️ CONSTRUCTION ZONE ⚠️";
+            display: block;
+            text-align: center;
+            font-weight: bold;
+            color: var(--warning);
+            margin-bottom: 10px;
+            animation: flicker 2s linear infinite;
+        }
+        
+        body.beta-theme #beta-warning > * {
+            position: relative;
+            z-index: 1;
+            animation: shake 4s ease-in-out infinite;
+        }
+        
+        body.beta-theme #beta-warning strong {
+            animation: flicker 1.5s linear infinite;
+        }
+        
+        /* Beta theme overrides for product cards in About section */
+        body.beta-theme #about .card > div > div {
+            background: var(--gradient-card) !important;
+            border: 1px solid var(--warning);
+        }
+        /* End Beta Theme Specifics */
+
+        @media (max-width: 768px) { 
+            body { 
+                padding: 20px 15px; 
+                max-width: 100%;
+            } 
+            
+            h1 { 
+                font-size: clamp(1.5rem, 6vw, 2.5rem); 
+                text-align: center;
+            } 
+            
+            .tabs { 
+                flex-direction: column; 
+                border-radius: var(--border-radius);
+            }
+            
+            .tab {
+                text-align: center;
+                border-bottom: 1px solid var(--border-color);
+                border-radius: 0;
+            }
+            
+            .tab:last-child {
+                border-bottom: none;
+            }
+            
+            .tab-content {
+                border-radius: var(--border-radius);
+                border: 1px solid var(--border-color);
+                margin-top: 1px;
+            }
+            
+            /* Construction theme mobile styles */
+            body.beta-theme h1 {
+                animation: shake 3s ease-in-out infinite;
+            }
+            
+            body.beta-theme .card {
+                border: 3px solid var(--warning);
+                background: var(--card-bg);
+                box-shadow: 0 0 15px rgba(255, 152, 0, 0.3);
+            }
+            
+            body.beta-theme .tab {
+                background: var(--card-bg);
+                border: 2px solid var(--warning);
+                position: relative;
+                overflow: hidden;
+            }
+            
+            body.beta-theme .tab::before {
+                content: "🚧";
+                position: absolute;
+                left: 5px;
+                top: 50%;
+                transform: translateY(-50%);
+                font-size: 0.8em;
+                opacity: 0.7;
+            }
+            
+            .card {
+                padding: 20px;
+                background: var(--gradient-card);
+                margin: 20px 0;
+            }
+            
+            .code-block {
+                padding: 16px;
+                font-size: 0.85rem;
+            }
+            
+            .switch-container {
+                margin-left: 10px;
+                padding: 6px 12px;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            body {
+                padding: 15px 10px;
+            }
+            
+            .official-note,
+            .warning,
+            .card {
+                padding: 16px;
+                background: var(--gradient-card);
+                margin: 16px 0;
+            }
+            
+            .switch-container {
+                margin-left: 0;
+                margin-top: 10px;
+                display: flex;
+                justify-content: center;
+            }
+            
+            /* Construction theme extra mobile styles */
+            body.beta-theme {
+                background-size: 20px 20px; /* Smaller construction tape pattern for mobile */
+            }
+            
+            body.beta-theme .card {
+                animation: shake 4s ease-in-out infinite, cautionBlink 1.5s linear infinite;
+                border-width: 2px; /* Thinner borders for mobile */
+            }
+            
+            body.beta-theme .switch-container {
+                background: var(--card-bg);
+                border: 2px solid var(--warning);
+                box-shadow: 0 0 10px rgba(255, 152, 0, 0.4);
+            }
+            
+            body.beta-theme h1::after {
+                content: " 🚧⚠️";
+                font-size: 0.7em;
+                margin-left: 5px;
+            }
+        }
+
+        /* --- Toggle Switch Styles (Modern) --- */
+        .switch-container {
+            display: inline-flex;
+            align-items: center;
+            margin-left: 20px;
+            vertical-align: middle;
+            background: var(--gradient-card);
+            padding: 8px 16px;
+            border-radius: 25px;
+            border: 1px solid var(--border-color);
+            transition: var(--transition);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 16px var(--shadow-light);
+        }
+        
+        .switch-container:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 24px var(--shadow);
+        }
+        
+        .switch-text {
+            font-size: 0.85em;
+            font-weight: 600;
+            cursor: pointer;
+            padding: 0 8px;
+            transition: var(--transition);
+        }
+        
+        .stable-text { 
+            color: var(--success); 
+        }
+        
+        .beta-text { 
+            color: var(--warning); 
+        }
+        
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 26px;
+            margin: 0 8px;
+        }
+        
+        .switch input { 
+            opacity: 0; 
+            width: 0; 
+            height: 0; 
+        }
+        
+        .slider { 
+            position: absolute; 
+            cursor: pointer; 
+            top: 0; 
+            left: 0; 
+            right: 0; 
+            bottom: 0; 
+            background: var(--success); 
+            transition: var(--transition); 
+            border-radius: 26px;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+        
+        .slider:before { 
+            position: absolute; 
+            content: ""; 
+            height: 20px; 
+            width: 20px; 
+            left: 3px; 
+            bottom: 3px; 
+            background: white; 
+            transition: var(--transition); 
+            border-radius: 50%;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+        
+        input:checked + .slider { 
+            background: var(--warning); 
+        }
+        
+        input:focus + .slider { 
+            box-shadow: 0 0 8px var(--accent), inset 0 2px 4px rgba(0, 0, 0, 0.2); 
+        }
+        
+        input:checked + .slider:before { 
+            transform: translateX(24px); 
+        }
+        
+        /* Beta theme styling for switch container */
+        body.beta-theme .switch-container {
+            background: var(--card-bg);
+            border-color: var(--warning);
+            box-shadow: 0 4px 16px rgba(255, 152, 0, 0.2);
+        }
+        
+        body.beta-theme .switch-container:hover {
+            box-shadow: 0 6px 24px rgba(255, 152, 0, 0.4);
+        }
+        
+        #beta-warning { 
+            display: none; 
+            margin-top: 16px; 
+        }
+        
+        #beta-warning-text { 
+            display: inline; 
+        }
+        
+        #beta-unavailable-text { 
+            margin-left: 16px; 
+            color: var(--danger); 
+            font-size: 0.8em; 
+            display: none; 
+        }
+    </style>
+</head>
+<body> <!-- Class will be added/removed here -->
+    <h1>PlexDev.live Unofficial Installer</h1>
+    <div class="official-note">
+        <strong>⚠️ Important:</strong> This is an unofficial installer. The official PlexDevelopment website is
+        <a href="https://plexdevelopment.net" target="_blank">plexdevelopment.net</a>.
+    </div>
+
+    <p>Welcome! This tool helps you easily set up various Plex products on your Linux server.</p>
+
+    <!-- Tabs -->
+    <div class="tabs">
+        <div class="tab active" onclick="switchTab('quick')">Quick Install</div>
+        <div class="tab" onclick="switchTab('manual')">Manual Install</div>
+        <div class="tab" onclick="switchTab('about')">About</div>
+        <div class="tab" onclick="window.location.href='/guide'">Guide</div> <!-- Link to guide page -->
+    </div>
+
+    <!-- Quick Install Tab -->
+    <div id="quick" class="tab-content active">
+        <h2>
+            Quick Installation
+            <!-- Version Toggle (Refined Layout) -->
+            <div class="switch-container">
+                <span class="switch-text stable-text" id="stable-label">Stable</span>
+                <label class="switch">
+                    <input type="checkbox" id="version-toggle" onchange="toggleVersion()">
+                    <span class="slider"></span>
+                </label>
+                <span class="switch-text beta-text" id="beta-label">Beta</span>
+                <span id="beta-unavailable-text">(Beta script not available)</span>
+            </div>
+        </h2>
+        <!-- Beta Warning Message -->
+        <div class="warning" id="beta-warning">
+            <strong>🚧 Heads Up! 🚧</strong> <span id="beta-warning-text">You've selected the Beta version. This version might have bugs or unfinished features. Use it at your own risk!</span>
+        </div>
+        <p>Copy and paste this command into your server's terminal. It downloads and runs the installer script automatically.</p>
+        <div class="code-block" id="quick-install-block">
+            <code id="quick-install-code">curl -sSL https://plexdev.live/install.sh | bash -i</code>
+            <button class="copy-btn" onclick="copyToClipboard(document.getElementById('quick-install-code').textContent)">Copy</button>
+        </div>
+    </div>
+
+    <!-- Manual Install Tab -->
+    <div id="manual" class="tab-content">
+        <h2>Manual Installation</h2>
+        <p>If you prefer, download the script first, make it runnable, and then execute it.</p>
+        <p><i>(Note: Use the toggle above to switch between Stable/Beta commands)</i></p>
+
+        <div id="manual-steps">
+             <!-- Card container for steps -->
+            <div class="card">
+                <p><strong>Step 1: Download</strong></p>
+                <div class="code-block">
+                    <code id="manual-download-code">curl -sSL -o install.sh https://plexdev.live/install.sh</code>
+                    <button class="copy-btn" onclick="copyToClipboard(document.getElementById('manual-download-code').textContent)">Copy</button>
+                </div>
+            </div>
+             <div class="card">
+                <p><strong>Step 2: Make it Executable</strong></p>
+                <div class="code-block">
+                    <code id="manual-chmod-code">chmod +x install.sh</code>
+                    <button class="copy-btn" onclick="copyToClipboard(document.getElementById('manual-chmod-code').textContent)">Copy</button>
+                </div>
+            </div>
+             <div class="card">
+                <p><strong>Step 3: Run It</strong></p>
+                <div class="code-block">
+                    <code id="manual-run-code">./install.sh</code>
+                    <button class="copy-btn" onclick="copyToClipboard(document.getElementById('manual-run-code').textContent)">Copy</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- About Tab -->
+    <div id="about" class="tab-content">
+        <h2>About This Project</h2>
+        <div class="card">
+            <p>This project was created by <strong>bali0531</strong> to simplify the setup process for PlexDevelopment products.</p>
+            <p>The installer automatically:</p>
+            <ul style="margin-left: 40px; padding-left: 5px; color: var(--text-secondary);">
+                <li style="margin-bottom: 0.5rem;">Detects your Linux distribution</li>
+                <li style="margin-bottom: 0.5rem;">Installs all necessary dependencies (like Node.js, Nginx)</li>
+                <li style="margin-bottom: 0.5rem;">Sets up Nginx web server configuration</li>
+                <li style="margin-bottom: 0.5rem;">Configures free SSL certificates (HTTPS) using Let's Encrypt</li>
+                <li style="margin-bottom: 0.5rem;">Creates systemd services to keep the products running</li>
+            </ul>
+        </div>
+        
+        <h3>Supported Products</h3>
+        <div class="card">
+            <p>This installer supports the following PlexDevelopment products:</p>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; margin-top: 16px;">
+                <div style="padding: 12px; background: var(--gradient-card); border-radius: var(--border-radius-small); border-left: 3px solid var(--accent);">
+                    <strong style="color: var(--accent);">PlexTickets</strong><br>
+                    <small style="color: var(--text-muted);">Support ticket system</small>
+                </div>
+                <div style="padding: 12px; background: var(--gradient-card); border-radius: var(--border-radius-small); border-left: 3px solid var(--success);">
+                    <strong style="color: var(--success);">PlexStaff</strong><br>
+                    <small style="color: var(--text-muted);">Staff management</small>
+                </div>
+                <div style="padding: 12px; background: var(--gradient-card); border-radius: var(--border-radius-small); border-left: 3px solid var(--warning);">
+                    <strong style="color: var(--warning);">PlexStatus</strong><br>
+                    <small style="color: var(--text-muted);">Service status page</small>
+                </div>
+                <div style="padding: 12px; background: var(--gradient-card); border-radius: var(--border-radius-small); border-left: 3px solid var(--danger);">
+                    <strong style="color: var(--danger);">PlexStore</strong><br>
+                    <small style="color: var(--text-muted);">Digital store</small>
+                </div>
+                <div style="padding: 12px; background: var(--gradient-card); border-radius: var(--border-radius-small); border-left: 3px solid #9b59b6;">
+                    <strong style="color: #9b59b6;">PlexForms</strong><br>
+                    <small style="color: var(--text-muted);">Form builder</small>
+                </div>
+                <div style="padding: 12px; background: var(--gradient-card); border-radius: var(--border-radius-small); border-left: 3px solid #e67e22;">
+                    <strong style="color: #e67e22;">PlexLinks</strong><br>
+                    <small style="color: var(--text-muted);">Link management (Beta)</small>
+                </div>
+                <div style="padding: 12px; background: var(--gradient-card); border-radius: var(--border-radius-small); border-left: 3px solid #2ecc71;">
+                    <strong style="color: #2ecc71;">PlexPaste</strong><br>
+                    <small style="color: var(--text-muted);">Pastebin service (Beta)</small>
+                </div>
+            </div>
+            <p style="margin-top: 16px; font-size: 0.9em; color: var(--text-muted);">
+                <strong>Note:</strong> PlexLinks and PlexPaste are currently available in the beta installer only.
+            </p>
+        </div>
+        
+        <div class="warning">
+            <strong>Disclaimer:</strong> This is an unofficial tool and is not officially supported by PlexDevelopment. Use at your own discretion.
+        </div>
+    </div>
+
+    <footer>
+        PlexDev.live made by: bali0531 | <a href="https://plexdevelopment.net" target="_blank">Official Site</a> | <a href="/guide">Simple Guide</a>
+    </footer>
+
+    <script>
+        // Set beta availability (change this to false if beta.sh is not available)
+        const betaAvailable = true; // Changed from __BETA_AVAILABLE__ placeholder
+
+        const versionToggle = document.getElementById('version-toggle');
+        const betaUnavailableText = document.getElementById('beta-unavailable-text');
+        const bodyElement = document.body; // Get body element
+        const betaWarning = document.getElementById('beta-warning');
+        const betaWarningTextElement = document.getElementById('beta-warning-text'); // Get the span for text
+
+        // Array of random endings for the beta warning
+        const betaWarningEndings = [
+            "Things might be wobbly!",
+            "Expect some turbulence!",
+            "Handle with care!",
+            "May contain nuts... and bolts.",
+            "Proceed with caution!",
+            "It's alive... maybe?",
+            "Don't feed after midnight.",
+            "Under construction (literally)."
+        ];
+        const baseBetaWarningText = "You've selected the Beta version. This version might have bugs or unfinished features. Use it at your own risk! ";
+
+
+        if (!betaAvailable) {
+            versionToggle.disabled = true;
+            betaUnavailableText.style.display = 'inline';
+            // Ensure labels reflect disabled state visually
+             document.getElementById('beta-label').style.opacity = '0.5';
+             document.getElementById('beta-label').style.cursor = 'default';
+             // Prevent clicking disabled label from doing anything
+             document.getElementById('beta-label').onclick = null;
+             document.getElementById('stable-label').onclick = null; // Also disable stable label click if beta unavailable? Maybe not.
+        } else {
+             // Make labels clickable to toggle the switch
+             document.getElementById('stable-label').onclick = () => { if (versionToggle.checked) versionToggle.click(); };
+             document.getElementById('beta-label').onclick = () => { if (!versionToggle.checked) versionToggle.click(); };
+        }
+
+
+        function switchTab(tabId) {
+            // Check if the target tab exists before proceeding
+            const targetTabContent = document.getElementById(tabId);
+            const targetTab = document.querySelector(`.tab[onclick="switchTab('${tabId}')"]`);
+
+            if (!targetTabContent || !targetTab) {
+                console.error(`Tab or content not found for ID: ${tabId}`);
+                return; // Exit if elements don't exist
+            }
+
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+
+            targetTabContent.classList.add('active');
+            targetTab.classList.add('active');
+        }
+
+
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                // Use currentTarget if event is passed, otherwise fallback might be needed
+                const btn = event ? event.currentTarget : document.querySelector(`button[onclick*="${text}"]`); // Basic fallback
+                if (!btn) return; // Exit if button not found
+
+                const originalText = btn.textContent;
+                btn.textContent = "Copied!";
+                // Change color briefly on success
+                btn.style.backgroundColor = 'var(--success)';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.style.backgroundColor = ''; // Revert color
+                 }, 1500);
+            }).catch(err => {
+                console.error('Failed to copy text: ', err);
+                alert('Failed to copy text.'); // Simpler fallback
+            });
+        }
+
+        function toggleVersion() {
+            const isBeta = versionToggle.checked;
+            console.log('Toggling Beta Theme:', isBeta); // Debugging line
+            const quickCode = document.getElementById('quick-install-code');
+            const manualDownloadCode = document.getElementById('manual-download-code');
+            const manualChmodCode = document.getElementById('manual-chmod-code');
+            const manualRunCode = document.getElementById('manual-run-code');
+            const stableLabel = document.getElementById('stable-label');
+            const betaLabel = document.getElementById('beta-label');
+
+            if (isBeta && betaAvailable) {
+                bodyElement.classList.add('beta-theme');
+
+                const randomIndex = Math.floor(Math.random() * betaWarningEndings.length);
+                betaWarningTextElement.textContent = baseBetaWarningText + betaWarningEndings[randomIndex];
+                betaWarning.style.display = 'block';
+
+                quickCode.textContent = 'curl -sSL https://plexdev.live/beta.sh | bash -i';
+                manualDownloadCode.textContent = 'curl -sSL -o beta.sh https://plexdev.live/beta.sh';
+                manualChmodCode.textContent = 'chmod +x beta.sh';
+                manualRunCode.textContent = './beta.sh';
+                stableLabel.style.opacity = '0.5';
+                betaLabel.style.opacity = '1';
+            } else {
+                bodyElement.classList.remove('beta-theme');
+                if (!betaAvailable) versionToggle.checked = false;
+                betaWarning.style.display = 'none';
+
+                quickCode.textContent = 'curl -sSL https://plexdev.live/install.sh | bash -i';
+                manualDownloadCode.textContent = 'curl -sSL -o install.sh https://plexdev.live/install.sh';
+                manualChmodCode.textContent = 'chmod +x install.sh';
+                manualRunCode.textContent = './install.sh';
+                stableLabel.style.opacity = '1';
+                betaLabel.style.opacity = betaAvailable ? '0.5' : '0.5';
+            }
+        }
+
+        // Initial setup on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            // Activate the first tab ('quick')
+            switchTab('quick');
+            // Set initial state based on toggle (default is stable)
+            toggleVersion();
+        });
+    </script>
+</body>
+</html>
