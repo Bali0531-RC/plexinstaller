@@ -91,6 +91,33 @@ app.get('/beta.sh', (req, res) => {
   }
 });
 
+// --- Affiliate Banner Image Route ---
+app.get('/images.jpeg', (req, res) => {
+  const filePath = path.join(__dirname, 'images.jpeg');
+  
+  if (fs.existsSync(filePath)) {
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.setHeader('Cache-Control', 'public, max-age=3600'); // 1 hour cache
+    res.sendFile(filePath);
+  } else {
+    res.status(404).send('ZAP-Hosting banner image not found.');
+  }
+});
+
+// --- Ads.txt Route ---
+app.get('/ads.txt', (req, res) => {
+  const filePath = path.join(__dirname, 'ads.txt');
+  const data = readFileSafe(filePath);
+
+  if (data !== null) {
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=86400'); // 24 hour cache
+    res.send(data);
+  } else {
+    res.status(404).send('ads.txt file not found.');
+  }
+});
+
 
 // --- Server Start ---
 app.listen(port, () => {

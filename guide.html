@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Simple Guide - PlexDev.live Unofficial Installer</title>
+    <title>Installation Guide - PlexDev.live Unofficial Installer</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         /* --- Reuse Styles from Main Page --- */
@@ -67,7 +67,319 @@
             text-align: center;
         }
         h2 { font-size: 1.8rem; margin-top: 3rem; }
+        h3 { font-size: 1.4rem; margin-top: 2rem; }
+        h4 { font-size: 1.2rem; margin-top: 1.5rem; color: var(--accent); }
         p { margin: 1rem 0; color: var(--text-secondary); }
+        /* --- Adjusted List Styles --- */
+        ul, ol {
+            margin-top: 0.5rem; 
+            margin-bottom: 1rem; 
+            padding-left: 40px; 
+            color: var(--text-secondary); 
+        }
+        li {
+            margin-bottom: 0.5rem; 
+            padding-left: 5px; 
+        }
+        /* --- End Adjusted List Styles --- */
+        a { color: var(--accent); text-decoration: none; transition: var(--transition); }
+        a:hover { color: var(--accent-light); text-decoration: underline; }
+        .code-block { 
+            background: var(--bg-secondary); 
+            border: 1px solid var(--border-color); 
+            border-radius: var(--border-radius); 
+            padding: 20px; 
+            margin: 20px 0; 
+            font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Consolas', 'Courier New', monospace; 
+            overflow-x: auto; 
+            position: relative;
+            box-shadow: 0 4px 16px var(--shadow-light);
+        }
+        .code-block code { color: var(--accent); font-size: 0.9rem; }
+        .code-block::before { content: "$ "; opacity: 0.6; color: var(--accent); font-weight: bold; }
+        .card { 
+            background: var(--gradient-card); 
+            border-radius: var(--border-radius); 
+            padding: 32px; 
+            margin: 32px 0; 
+            border: 1px solid var(--border-color);
+            box-shadow: 0 8px 32px var(--shadow-light);
+            backdrop-filter: blur(10px);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--gradient-primary);
+            opacity: 0.8;
+        }
+        
+        .card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 48px var(--shadow);
+        }
+        .warning { 
+            background: rgba(255, 170, 0, 0.1); 
+            border: 1px solid var(--warning);
+            border-left: 4px solid var(--warning); 
+            padding: 20px; 
+            margin: 24px 0; 
+            border-radius: var(--border-radius);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 16px rgba(255, 170, 0, 0.2);
+        }
+        .danger { 
+            background: rgba(255, 68, 68, 0.1); 
+            border: 1px solid var(--danger);
+            border-left: 4px solid var(--danger); 
+            padding: 20px; 
+            margin: 24px 0; 
+            border-radius: var(--border-radius);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 16px rgba(255, 68, 68, 0.2);
+        }
+        .info { 
+            background: rgba(0, 212, 255, 0.1); 
+            border: 1px solid var(--accent);
+            border-left: 4px solid var(--accent); 
+            padding: 20px; 
+            margin: 24px 0; 
+            border-radius: var(--border-radius);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 16px rgba(0, 212, 255, 0.2);
+        }
+        strong { color: var(--text-primary); font-weight: 600; }
+        footer { 
+            margin-top: 60px; 
+            color: var(--text-muted); 
+            text-align: center; 
+            border-top: 1px solid var(--border-color); 
+            padding-top: 30px; 
+            font-size: 0.9rem; 
+        }
+
+        /* Guide Toggle Switch */
+        .guide-switch-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 2rem 0;
+            background: var(--gradient-card);
+            padding: 16px 24px;
+            border-radius: 30px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 4px 16px var(--shadow-light);
+        }
+        
+        .guide-switch-text {
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            padding: 0 12px;
+            transition: var(--transition);
+        }
+        
+        .basic-text { color: var(--success); }
+        .advanced-text { color: var(--warning); }
+        
+        .guide-switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 30px;
+            margin: 0 12px;
+        }
+        
+        .guide-switch input { 
+            opacity: 0; 
+            width: 0; 
+            height: 0; 
+        }
+        
+        .guide-slider { 
+            position: absolute; 
+            cursor: pointer; 
+            top: 0; 
+            left: 0; 
+            right: 0; 
+            bottom: 0; 
+            background: var(--success); 
+            transition: var(--transition); 
+            border-radius: 30px;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+        
+        .guide-slider:before { 
+            position: absolute; 
+            content: ""; 
+            height: 22px; 
+            width: 22px; 
+            left: 4px; 
+            bottom: 4px; 
+            background: white; 
+            transition: var(--transition); 
+            border-radius: 50%;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+        
+        input:checked + .guide-slider { 
+            background: var(--warning); 
+        }
+        
+        input:checked + .guide-slider:before { 
+            transform: translateX(30px); 
+        }
+
+        /* Content visibility */
+        .basic-content {
+            display: block;
+        }
+        
+        .advanced-content {
+            display: none;
+        }
+        
+        .basic-content.hidden,
+        .advanced-content.hidden {
+            display: none;
+        }
+        
+        .advanced-content.visible {
+            display: block;
+        }
+
+        /* Runtime Flow Styles */
+        .runtime-flow {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            margin: 2rem 0;
+            overflow: hidden;
+        }
+
+        .flow-step {
+            border-bottom: 1px solid var(--border-color);
+            padding: 20px;
+            transition: var(--transition);
+            cursor: pointer;
+        }
+
+        .flow-step:last-child {
+            border-bottom: none;
+        }
+
+        .flow-step:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .flow-step-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .flow-step-number {
+            background: var(--gradient-primary);
+            color: white;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 0.9rem;
+            flex-shrink: 0;
+        }
+
+        .flow-step-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin: 0;
+        }
+
+        .flow-step-description {
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+            line-height: 1.5;
+        }
+
+        .flow-step-details {
+            background: var(--bg-primary);
+            border-radius: var(--border-radius-small);
+            padding: 16px;
+            border-left: 3px solid var(--accent);
+        }
+
+        .flow-step-details ul {
+            margin: 0;
+            padding-left: 20px;
+        }
+
+        .flow-step-details li {
+            margin-bottom: 6px;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        .flow-time {
+            background: var(--accent);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            margin-left: auto;
+        }
+        
+        @media (max-width: 768px) {
+            body {
+                padding: 20px 15px;
+            }
+            
+            h1 {
+                font-size: clamp(1.5rem, 6vw, 2.5rem);
+            }
+            
+            .card {
+                padding: 20px;
+                margin: 20px 0;
+            }
+            
+            .code-block {
+                padding: 16px;
+                font-size: 0.85rem;
+            }
+
+            .guide-switch-container {
+                padding: 12px 16px;
+                margin: 1rem 0;
+            }
+
+            .guide-switch-text {
+                font-size: 0.9rem;
+                padding: 0 8px;
+            }
+
+            .flow-step-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+            }
+
+            .flow-time {
+                margin-left: 0;
+                align-self: flex-start;
+            }
+        }
         /* --- Adjusted List Styles --- */
         ul, ol {
             margin-top: 0.5rem; /* Space above the list */
@@ -174,9 +486,22 @@
     </style>
 </head>
 <body>
-    <h1>Super Simple Guide to the Installer</h1>
-    <p>Hey there! So you want to install some cool stuff from PlexDevelopment, but maybe you're not a computer wizard? No problem! This guide explains things like you're five (okay, maybe ten).</p>
+    <h1>Installation Guide</h1>
     <p><a href="/">&laquo; Back to Installer</a></p>
+
+    <!-- Guide Level Toggle -->
+    <div class="guide-switch-container">
+        <span class="guide-switch-text basic-text" id="basic-label">🟢 Basic Guide</span>
+        <label class="guide-switch">
+            <input type="checkbox" id="guide-toggle" onchange="toggleGuideLevel()">
+            <span class="guide-slider"></span>
+        </label>
+        <span class="guide-switch-text advanced-text" id="advanced-label">🔧 Advanced Guide</span>
+    </div>
+
+    <!-- BASIC CONTENT -->
+    <div class="basic-content" id="basic-content">
+        <p>Hey there! So you want to install some cool stuff from PlexDevelopment, but maybe you're not a computer wizard? No problem! This guide explains things like you're five (okay, maybe ten).</p>
 
     <h2>What is This Thing?</h2>
     <div class="card">
@@ -276,6 +601,358 @@
             <li><strong>Try Again?:</strong> Sometimes just running the installer again fixes temporary glitches. If it asks to remove an existing installation first, say yes.</li>
         </ul>
     </div>
+
+    </div>
+
+    <!-- ADVANCED CONTENT -->
+    <div class="advanced-content" id="advanced-content">
+        <p>Comprehensive technical guide for system administrators and advanced users. This guide covers the complete installation process, runtime flow, and technical details of the PlexDevelopment installer.</p>
+
+        <div class="info">
+            <strong>💡 For Developers & SysAdmins:</strong> This guide explains the complete technical workflow, script architecture, and system integration details. Perfect for understanding what happens under the hood or for troubleshooting complex installations.
+        </div>
+
+        <h2>🔧 Complete Runtime Flow Analysis</h2>
+        <p>Understanding the complete execution flow helps with troubleshooting and customization. Here's what happens from start to finish:</p>
+
+        <div class="runtime-flow">
+            <div class="flow-step">
+                <div class="flow-step-header">
+                    <div class="flow-step-number">1</div>
+                    <h4 class="flow-step-title">System Detection & Initialization</h4>
+                    <span class="flow-time">~5-10s</span>
+                </div>
+                <div class="flow-step-description">
+                    The script begins by performing comprehensive system analysis and environment preparation.
+                </div>
+                <div class="flow-step-details">
+                    <ul>
+                        <li><strong>OS Detection:</strong> Identifies Linux distribution (Ubuntu, Debian, CentOS, Fedora, Arch, openSUSE)</li>
+                        <li><strong>Package Manager Detection:</strong> Determines available package manager (apt, dnf, yum, pacman, zypper)</li>
+                        <li><strong>Root Privilege Check:</strong> Ensures script is running with sufficient permissions</li>
+                        <li><strong>Network Connectivity Test:</strong> Validates internet access for downloads</li>
+                        <li><strong>Directory Structure Setup:</strong> Creates base directories (<code>/var/www/plex</code>)</li>
+                        <li><strong>Log Initialization:</strong> Sets up logging mechanisms for troubleshooting</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="flow-step">
+                <div class="flow-step-header">
+                    <div class="flow-step-number">2</div>
+                    <h4 class="flow-step-title">Dependency Installation</h4>
+                    <span class="flow-time">~30-120s</span>
+                </div>
+                <div class="flow-step-description">
+                    Installs all required system packages and tools needed for PlexDevelopment products.
+                </div>
+                <div class="flow-step-details">
+                    <ul>
+                        <li><strong>Package Lists Update:</strong> Updates repository indexes</li>
+                        <li><strong>Core Dependencies:</strong> curl, wget, git, unzip, tar, sudo</li>
+                        <li><strong>Node.js Runtime:</strong> Installs Node.js v20+ with npm</li>
+                        <li><strong>Web Server:</strong> Nginx for reverse proxy and static file serving</li>
+                        <li><strong>SSL Tools:</strong> Certbot and Let's Encrypt client</li>
+                        <li><strong>System Utils:</strong> systemctl, firewall tools, DNS utilities</li>
+                        <li><strong>Archive Tools:</strong> unzip, unrar (if needed)</li>
+                        <li><strong>Development Tools:</strong> build-essential, python3 (for npm builds)</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="flow-step">
+                <div class="flow-step-header">
+                    <div class="flow-step-number">3</div>
+                    <h4 class="flow-step-title">Product Selection & Archive Processing</h4>
+                    <span class="flow-time">~10-30s</span>
+                </div>
+                <div class="flow-step-description">
+                    Interactive product selection and intelligent archive file detection/processing.
+                </div>
+                <div class="flow-step-details">
+                    <ul>
+                        <li><strong>Product Menu:</strong> Displays available products (5 stable + 2 beta)</li>
+                        <li><strong>Archive Search:</strong> Scans multiple directories (/home, /root, /tmp, current) with depth 5</li>
+                        <li><strong>Pattern Matching:</strong> Searches for product-specific archive patterns</li>
+                        <li><strong>Prioritization:</strong> Unobfuscated versions get priority over obfuscated</li>
+                        <li><strong>Validation:</strong> Verifies archive integrity and format (ZIP/RAR)</li>
+                        <li><strong>Fallback Options:</strong> Manual path input if auto-detection fails</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="flow-step">
+                <div class="flow-step-header">
+                    <div class="flow-step-number">4</div>
+                    <h4 class="flow-step-title">Archive Extraction & Analysis</h4>
+                    <span class="flow-time">~15-45s</span>
+                </div>
+                <div class="flow-step-description">
+                    Sophisticated extraction with automatic Node.js project detection and structure analysis.
+                </div>
+                <div class="flow-step-details">
+                    <ul>
+                        <li><strong>Temporary Extraction:</strong> Uses secure temp directory for initial extraction</li>
+                        <li><strong>Structure Analysis:</strong> Detects single subdirectory vs multi-file layouts</li>
+                        <li><strong>Node.js Detection:</strong> Searches for package.json, index.js, app.js, server.js, main.js</li>
+                        <li><strong>Smart Path Resolution:</strong> Handles repackaged archives and nested structures</li>
+                        <li><strong>File Movement:</strong> Moves content to final location (/var/www/plex/PRODUCT)</li>
+                        <li><strong>Permissions Setup:</strong> Sets proper ownership (root:root) and permissions (755/644)</li>
+                        <li><strong>Cleanup:</strong> Removes temporary files and directories</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="flow-step">
+                <div class="flow-step-header">
+                    <div class="flow-step-number">5</div>
+                    <h4 class="flow-step-title">NPM Dependencies Installation</h4>
+                    <span class="flow-time">~30-180s</span>
+                </div>
+                <div class="flow-step-description">
+                    Installs Node.js dependencies and handles compilation of native modules.
+                </div>
+                <div class="flow-step-details">
+                    <ul>
+                        <li><strong>Package.json Validation:</strong> Ensures valid Node.js project structure</li>
+                        <li><strong>NPM Install:</strong> Runs <code>npm install --unsafe-perm --loglevel error</code></li>
+                        <li><strong>Native Module Compilation:</strong> Handles packages requiring compilation</li>
+                        <li><strong>Dependency Tree Resolution:</strong> Resolves all direct and transitive dependencies</li>
+                        <li><strong>Error Handling:</strong> Provides detailed error messages for failed installations</li>
+                        <li><strong>Security:</strong> Validates package integrity and handles audit warnings</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="flow-step">
+                <div class="flow-step-header">
+                    <div class="flow-step-number">6</div>
+                    <h4 class="flow-step-title">Network Configuration</h4>
+                    <span class="flow-time">~5-15s</span>
+                </div>
+                <div class="flow-step-description">
+                    Configures network access, firewall rules, and DNS validation.
+                </div>
+                <div class="flow-step-details">
+                    <ul>
+                        <li><strong>Port Selection:</strong> Prompts for or uses default port assignment</li>
+                        <li><strong>Domain Configuration:</strong> Collects domain/subdomain information</li>
+                        <li><strong>DNS Validation:</strong> Verifies domain points to server IP</li>
+                        <li><strong>Firewall Management:</strong> Opens required ports (UFW, firewalld, iptables)</li>
+                        <li><strong>Public IP Detection:</strong> Uses multiple methods to determine server IP</li>
+                        <li><strong>DNS Lookup Tools:</strong> Uses dig, nslookup, or host for validation</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="flow-step">
+                <div class="flow-step-header">
+                    <div class="flow-step-number">7</div>
+                    <h4 class="flow-step-title">Nginx Reverse Proxy Setup</h4>
+                    <span class="flow-time">~10-20s</span>
+                </div>
+                <div class="flow-step-description">
+                    Configures Nginx as a reverse proxy with custom error pages and optimization.
+                </div>
+                <div class="flow-step-details">
+                    <ul>
+                        <li><strong>Configuration Generation:</strong> Creates domain-specific Nginx config</li>
+                        <li><strong>Reverse Proxy:</strong> Proxies requests to Node.js application port</li>
+                        <li><strong>WebSocket Support:</strong> Enables WebSocket upgrade headers</li>
+                        <li><strong>Security Headers:</strong> Adds security-focused HTTP headers</li>
+                        <li><strong>Custom 502 Pages:</strong> Creates user-friendly error pages with auto-refresh</li>
+                        <li><strong>Configuration Testing:</strong> Validates Nginx config before activation</li>
+                        <li><strong>Site Activation:</strong> Enables site and reloads Nginx</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="flow-step">
+                <div class="flow-step-header">
+                    <div class="flow-step-number">8</div>
+                    <h4 class="flow-step-title">SSL Certificate & HTTPS Setup</h4>
+                    <span class="flow-time">~30-90s</span>
+                </div>
+                <div class="flow-step-description">
+                    Automated SSL certificate provisioning with comprehensive error handling and rollback.
+                </div>
+                <div class="flow-step-details">
+                    <ul>
+                        <li><strong>Certificate Check:</strong> Verifies if certificate already exists</li>
+                        <li><strong>Config Backup:</strong> Backs up Nginx config before SSL modification</li>
+                        <li><strong>Certbot Execution:</strong> Runs Certbot with --nginx flag for automatic config</li>
+                        <li><strong>Domain Validation:</strong> Let's Encrypt validates domain ownership</li>
+                        <li><strong>HTTPS Redirect:</strong> Automatically configures HTTP to HTTPS redirection</li>
+                        <li><strong>Error Handling:</strong> Comprehensive rollback on failure</li>
+                        <li><strong>Certificate Cleanup:</strong> Removes partial certificates on failure</li>
+                        <li><strong>Diagnostic Output:</strong> Detailed troubleshooting information</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="flow-step">
+                <div class="flow-step-header">
+                    <div class="flow-step-number">9</div>
+                    <h4 class="flow-step-title">SSL Auto-Renewal Configuration</h4>
+                    <span class="flow-time">~10-25s</span>
+                </div>
+                <div class="flow-step-description">
+                    Sets up automated SSL certificate renewal with monitoring and logging.
+                </div>
+                <div class="flow-step-details">
+                    <ul>
+                        <li><strong>Crontab Management:</strong> Backs up and modifies root crontab</li>
+                        <li><strong>Dual Schedule:</strong> Sets up renewal checks twice daily at random times</li>
+                        <li><strong>Deploy Hooks:</strong> Configures Nginx reload on successful renewal</li>
+                        <li><strong>Logging Setup:</strong> Creates dedicated renewal log file</li>
+                        <li><strong>Dry Run Testing:</strong> Validates renewal process without actual renewal</li>
+                        <li><strong>Error Recovery:</strong> Restores original crontab on setup failure</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="flow-step">
+                <div class="flow-step-header">
+                    <div class="flow-step-number">10</div>
+                    <h4 class="flow-step-title">Systemd Service Creation</h4>
+                    <span class="flow-time">~5-15s</span>
+                </div>
+                <div class="flow-step-description">
+                    Creates and configures systemd service for automatic startup and management.
+                </div>
+                <div class="flow-step-details">
+                    <ul>
+                        <li><strong>Service File Generation:</strong> Creates /etc/systemd/system/plex-PRODUCT.service</li>
+                        <li><strong>Dependency Configuration:</strong> Sets network and Nginx dependencies</li>
+                        <li><strong>User/Group Setup:</strong> Configures service to run as root</li>
+                        <li><strong>Restart Policies:</strong> Sets up automatic restart on failure</li>
+                        <li><strong>Logging Configuration:</strong> Directs output to systemd journal</li>
+                        <li><strong>Service Activation:</strong> Enables and starts the service</li>
+                        <li><strong>Status Validation:</strong> Verifies service started successfully</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="flow-step">
+                <div class="flow-step-header">
+                    <div class="flow-step-number">11</div>
+                    <h4 class="flow-step-title">Configuration & Post-Install</h4>
+                    <span class="flow-time">~5-30s</span>
+                </div>
+                <div class="flow-step-description">
+                    Final configuration steps and user guidance for post-installation setup.
+                </div>
+                <div class="flow-step-details">
+                    <ul>
+                        <li><strong>Config File Detection:</strong> Locates configuration files (config.yml, config.json)</li>
+                        <li><strong>Editor Integration:</strong> Offers to open config file in nano</li>
+                        <li><strong>Service Management Info:</strong> Provides systemctl commands for management</li>
+                        <li><strong>Access URLs:</strong> Displays final access URLs and endpoints</li>
+                        <li><strong>Log Viewing Commands:</strong> Shows journalctl commands for troubleshooting</li>
+                        <li><strong>Next Steps:</strong> Guides user through initial configuration requirements</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <h2>🏗️ Architecture & Design Patterns</h2>
+        <div class="card">
+            <h4>Script Architecture</h4>
+            <ul>
+                <li><strong>Modular Design:</strong> Functions separated by responsibility (system, network, SSL, services)</li>
+                <li><strong>Error Handling:</strong> Comprehensive error checking with rollback mechanisms</li>
+                <li><strong>State Management:</strong> Maintains installation state throughout process</li>
+                <li><strong>Logging:</strong> Multi-level logging with color-coded output</li>
+                <li><strong>Configuration Management:</strong> Template-based config generation</li>
+            </ul>
+
+            <h4>Integration Points</h4>
+            <ul>
+                <li><strong>Package Managers:</strong> Abstracted package installation across distributions</li>
+                <li><strong>Init Systems:</strong> Systemd integration for service management</li>
+                <li><strong>Web Servers:</strong> Nginx integration with configuration templates</li>
+                <li><strong>SSL Providers:</strong> Let's Encrypt integration with automatic renewal</li>
+                <li><strong>Firewall Systems:</strong> Multi-firewall support (UFW, firewalld, iptables)</li>
+            </ul>
+        </div>
+
+        <h2>🔍 Advanced Troubleshooting</h2>
+        <div class="card">
+            <h4>Common Failure Points & Solutions</h4>
+            <ul>
+                <li><strong>DNS Issues:</strong> Use DNS propagation checkers, verify A records</li>
+                <li><strong>SSL Failures:</strong> Check port 80/443 accessibility, validate domain ownership</li>
+                <li><strong>Archive Problems:</strong> Verify archive format, check extraction permissions</li>
+                <li><strong>NPM Failures:</strong> Install build-essential, check Node.js version compatibility</li>
+                <li><strong>Service Startup:</strong> Review systemd logs, check port conflicts</li>
+            </ul>
+
+            <h4>Diagnostic Commands</h4>
+            <div class="code-block">
+                <code># Service status and logs<br/>
+sudo systemctl status plex-PRODUCT<br/>
+sudo journalctl -u plex-PRODUCT -f<br/><br/>
+# SSL certificate status<br/>
+sudo certbot certificates<br/>
+sudo certbot renew --dry-run<br/><br/>
+# Nginx configuration test<br/>
+sudo nginx -t<br/>
+sudo nginx -s reload</code>
+            </div>
+        </div>
+
+        <h2>🔐 Security Considerations</h2>
+        <div class="card">
+            <ul>
+                <li><strong>Root Execution:</strong> Script requires root privileges for system modification</li>
+                <li><strong>SSL/TLS:</strong> Automatic HTTPS setup with modern cipher suites</li>
+                <li><strong>Firewall Integration:</strong> Only opens required ports</li>
+                <li><strong>Certificate Management:</strong> Automatic renewal prevents expiration</li>
+                <li><strong>Service Isolation:</strong> Each product runs as separate systemd service</li>
+                <li><strong>File Permissions:</strong> Strict permission model (755/644)</li>
+            </ul>
+        </div>
+
+        <h2>📊 Performance & Scaling</h2>
+        <div class="card">
+            <ul>
+                <li><strong>Nginx Optimization:</strong> Configured for reverse proxy performance</li>
+                <li><strong>Node.js Tuning:</strong> Production-ready Node.js configuration</li>
+                <li><strong>Resource Management:</strong> Systemd resource limits and restart policies</li>
+                <li><strong>Monitoring:</strong> Built-in systemd journal integration</li>
+                <li><strong>Load Balancing:</strong> Nginx can be extended for multiple instances</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        function toggleGuideLevel() {
+            const toggle = document.getElementById('guide-toggle');
+            const basicContent = document.getElementById('basic-content');
+            const advancedContent = document.getElementById('advanced-content');
+            const basicLabel = document.getElementById('basic-label');
+            const advancedLabel = document.getElementById('advanced-label');
+
+            if (toggle.checked) {
+                // Switch to Advanced
+                basicContent.classList.add('hidden');
+                advancedContent.classList.add('visible');
+                basicLabel.style.opacity = '0.5';
+                advancedLabel.style.opacity = '1';
+            } else {
+                // Switch to Basic
+                basicContent.classList.remove('hidden');
+                advancedContent.classList.remove('visible');
+                basicLabel.style.opacity = '1';
+                advancedLabel.style.opacity = '0.5';
+            }
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            toggleGuideLevel(); // Set initial state
+        });
+    </script>
 
     <footer>
         Hope this helps! Remember, this is unofficial. | <a href="/">Back to Installer</a> | <a href="https://plexdevelopment.net" target="_blank">Official Site</a>

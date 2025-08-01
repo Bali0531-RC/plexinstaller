@@ -723,6 +723,275 @@
             }
         }
 
+        /* --- Changelog Styles --- */
+        .changelog-filter {
+            display: flex;
+            margin: 20px 0;
+            border-bottom: 1px solid var(--border-color);
+            background: var(--bg-secondary);
+            border-radius: var(--border-radius) var(--border-radius) 0 0;
+            overflow: hidden;
+        }
+
+        .changelog-tab {
+            padding: 12px 20px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            transition: var(--transition);
+            border-bottom: 3px solid transparent;
+            background: var(--bg-primary);
+            font-weight: 600;
+            font-size: 0.9rem;
+            flex: 1;
+            text-align: center;
+        }
+
+        .changelog-tab:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .changelog-tab.active {
+            color: var(--accent);
+            border-bottom: 3px solid var(--accent);
+            background: var(--gradient-card);
+        }
+
+        .changelog-entries {
+            background: var(--gradient-card);
+            border-radius: 0 0 var(--border-radius) var(--border-radius);
+            border: 1px solid var(--border-color);
+            border-top: none;
+            max-height: 600px;
+            overflow-y: auto;
+            padding: 0;
+        }
+
+        .changelog-entry {
+            border-bottom: 1px solid var(--border-color);
+            padding: 24px;
+            transition: var(--transition);
+        }
+
+        .changelog-entry:last-child {
+            border-bottom: none;
+        }
+
+        .changelog-entry:hover {
+            background: var(--card-bg-hover);
+        }
+
+        .changelog-entry.hidden {
+            display: none;
+        }
+
+        .changelog-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .changelog-version {
+            font-weight: 700;
+            font-size: 1.1rem;
+            padding: 6px 12px;
+            border-radius: var(--border-radius-small);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .beta-badge {
+            background: linear-gradient(135deg, var(--warning), var(--danger));
+            color: white;
+            box-shadow: 0 2px 8px rgba(255, 152, 0, 0.3);
+        }
+
+        .stable-badge {
+            background: linear-gradient(135deg, var(--success), var(--accent));
+            color: white;
+            box-shadow: 0 2px 8px rgba(0, 255, 136, 0.3);
+        }
+
+        .changelog-date {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        .changelog-content h4 {
+            color: var(--text-primary);
+            margin: 0 0 12px 0;
+            font-size: 1.2rem;
+        }
+
+        .changelog-description {
+            color: var(--text-secondary);
+            margin-bottom: 20px;
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+
+        .changelog-section {
+            margin: 20px 0;
+        }
+
+        .changelog-section h5 {
+            color: var(--accent);
+            margin: 0 0 12px 0;
+            font-size: 1rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .changelog-section ul {
+            margin: 0;
+            padding-left: 20px;
+            color: var(--text-secondary);
+        }
+
+        .changelog-section li {
+            margin-bottom: 8px;
+            line-height: 1.5;
+        }
+
+        .changelog-section li strong {
+            color: var(--text-primary);
+        }
+
+        .changelog-section li code {
+            background: var(--code-bg);
+            color: var(--code-color);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+        }
+
+        .changelog-note {
+            background: rgba(0, 212, 255, 0.1);
+            border: 1px solid var(--accent);
+            border-left: 4px solid var(--accent);
+            padding: 16px;
+            border-radius: var(--border-radius-small);
+            margin-top: 20px;
+            font-size: 0.9rem;
+        }
+
+        .changelog-note strong {
+            color: var(--accent);
+        }
+
+        .changelog-footer {
+            text-align: center;
+            padding: 24px;
+            border-top: 1px solid var(--border-color);
+            background: var(--bg-secondary);
+            border-radius: 0 0 var(--border-radius) var(--border-radius);
+            margin-top: 0;
+        }
+
+        .changelog-footer p {
+            margin: 8px 0;
+        }
+
+        .changelog-footer small {
+            color: var(--text-muted);
+        }
+
+        /* Beta theme overrides for changelog */
+        body.beta-theme .changelog-filter {
+            background: var(--bg-secondary);
+            border-color: var(--warning);
+        }
+
+        body.beta-theme .changelog-tab {
+            background: var(--bg-secondary);
+            border-color: var(--warning);
+        }
+
+        body.beta-theme .changelog-tab:hover {
+            background: var(--bg-tertiary);
+        }
+
+        body.beta-theme .changelog-tab.active {
+            background: var(--card-bg);
+            border-bottom-color: var(--warning);
+            color: var(--warning);
+        }
+
+        body.beta-theme .changelog-entries {
+            background: var(--card-bg);
+            border-color: var(--warning);
+        }
+
+        body.beta-theme .changelog-entry {
+            border-color: rgba(255, 152, 0, 0.2);
+        }
+
+        body.beta-theme .changelog-entry:hover {
+            background: var(--card-bg-hover);
+        }
+
+        body.beta-theme .changelog-section h5 {
+            color: var(--warning);
+        }
+
+        body.beta-theme .changelog-note {
+            background: rgba(255, 152, 0, 0.1);
+            border-color: var(--warning);
+        }
+
+        body.beta-theme .changelog-note strong {
+            color: var(--warning);
+        }
+
+        body.beta-theme .changelog-footer {
+            background: var(--bg-secondary);
+            border-color: var(--warning);
+        }
+
+        /* Mobile responsive for changelog */
+        @media (max-width: 768px) {
+            .changelog-filter {
+                flex-direction: column;
+            }
+
+            .changelog-tab {
+                text-align: center;
+                border-bottom: 1px solid var(--border-color);
+                border-radius: 0;
+            }
+
+            .changelog-tab:last-child {
+                border-bottom: none;
+            }
+
+            .changelog-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+            }
+
+            .changelog-entries {
+                max-height: 500px;
+                border-radius: var(--border-radius);
+                border: 1px solid var(--border-color);
+                margin-top: 1px;
+            }
+
+            .changelog-entry {
+                padding: 16px;
+            }
+
+            .changelog-section ul {
+                padding-left: 16px;
+            }
+        }
+
         /* --- Toggle Switch Styles (Modern) --- */
         .switch-container {
             display: inline-flex;
@@ -837,7 +1106,222 @@
             font-size: 0.8em; 
             display: none; 
         }
+
+        /* --- Affiliate Banner Styles --- */
+        .affiliate-banner {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            max-width: 300px;
+            background: var(--gradient-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            padding: 16px;
+            box-shadow: 0 8px 32px var(--shadow);
+            backdrop-filter: blur(10px);
+            transition: var(--transition);
+            z-index: 1000;
+            opacity: 0;
+            transform: translateY(100px);
+            animation: slideInUp 0.5s ease-out forwards;
+        }
+
+        .affiliate-banner.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .affiliate-banner.hide {
+            animation: slideOutDown 0.3s ease-in forwards;
+        }
+
+        .affiliate-banner-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .affiliate-banner-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin: 0;
+        }
+
+        .affiliate-banner-close {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 1.2rem;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: var(--transition);
+            line-height: 1;
+        }
+
+        .affiliate-banner-close:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .affiliate-banner-content {
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .affiliate-partner {
+            opacity: 0;
+            transform: translateX(100%);
+            transition: all 0.5s ease-in-out;
+            position: absolute;
+            width: 100%;
+            top: 0;
+            left: 0;
+        }
+
+        .affiliate-partner.active {
+            opacity: 1;
+            transform: translateX(0);
+            position: relative;
+        }
+
+        .affiliate-partner.exit {
+            opacity: 0;
+            transform: translateX(-100%);
+        }
+
+        .affiliate-banner-text {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+            line-height: 1.4;
+        }
+
+        .affiliate-banner img {
+            max-width: 100%;
+            height: auto;
+            border-radius: var(--border-radius-small);
+            transition: var(--transition);
+        }
+
+        .affiliate-banner a {
+            display: block;
+            text-decoration: none;
+        }
+
+        .affiliate-banner a:hover img {
+            transform: scale(1.02);
+            box-shadow: 0 4px 16px var(--shadow-light);
+        }
+
+        .affiliate-banner a:hover .affiliate-banner-text {
+            color: var(--accent);
+        }
+
+        /* SparkedHost logo styling */
+        .sparkedhost-logo {
+            max-height: 40px;
+            width: auto;
+            filter: brightness(0.9);
+        }
+
+        body.beta-theme .sparkedhost-logo {
+            filter: brightness(1.1) sepia(0.3) hue-rotate(15deg);
+        }
+
+        /* Rotation indicator dots */
+        .affiliate-indicators {
+            display: flex;
+            justify-content: center;
+            gap: 6px;
+            margin-top: 8px;
+        }
+
+        .affiliate-indicator {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--text-muted);
+            transition: var(--transition);
+            opacity: 0.5;
+        }
+
+        .affiliate-indicator.active {
+            background: var(--accent);
+            opacity: 1;
+        }
+
+        /* Beta theme styling for affiliate banner */
+        body.beta-theme .affiliate-banner {
+            border: 2px solid var(--warning);
+            background: var(--card-bg);
+            box-shadow: 0 8px 32px rgba(255, 152, 0, 0.3);
+            animation: slideInUp 0.5s ease-out forwards, shake 8s ease-in-out infinite 2s;
+        }
+
+        body.beta-theme .affiliate-banner::before {
+            content: '🚧';
+            position: absolute;
+            top: -8px;
+            left: -8px;
+            font-size: 1.2rem;
+            animation: bounce 2s ease-in-out infinite;
+        }
+
+        /* Animations */
+        @keyframes slideInUp {
+            from {
+                opacity: 0;
+                transform: translateY(100px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes slideOutDown {
+            from {
+                opacity: 1;
+                transform: translateY(0);
+            }
+            to {
+                opacity: 0;
+                transform: translateY(100px);
+            }
+        }
+
+        /* Mobile responsive */
+        @media (max-width: 768px) {
+            .affiliate-banner {
+                bottom: 10px;
+                right: 10px;
+                left: 10px;
+                max-width: none;
+                margin: 0 auto;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .affiliate-banner {
+                padding: 12px;
+                bottom: 10px;
+            }
+
+            .affiliate-banner-text {
+                font-size: 0.75rem;
+            }
+        }
     </style>
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7983111910687324"
+     crossorigin="anonymous"></script>
 </head>
 <body> <!-- Class will be added/removed here -->
     <h1>PlexDev.live Unofficial Installer</h1>
@@ -852,6 +1336,7 @@
     <div class="tabs">
         <div class="tab active" onclick="switchTab('quick')">Quick Install</div>
         <div class="tab" onclick="switchTab('manual')">Manual Install</div>
+        <div class="tab" onclick="switchTab('changelog')">Changelog</div>
         <div class="tab" onclick="switchTab('about')">About</div>
         <div class="tab" onclick="window.location.href='/guide'">Guide</div> <!-- Link to guide page -->
     </div>
@@ -914,6 +1399,117 @@
         </div>
     </div>
 
+    <!-- Changelog Tab -->
+    <div id="changelog" class="tab-content">
+        <h2>📋 Installer Changelog</h2>
+        <p>Track all changes and improvements to both Beta and Stable installer versions.</p>
+        
+        <!-- Version Filter Tabs -->
+        <div class="changelog-filter">
+            <div class="changelog-tab active" onclick="showChangelogVersion('all')">All Versions</div>
+            <div class="changelog-tab" onclick="showChangelogVersion('beta')">🚧 Beta Only</div>
+            <div class="changelog-tab" onclick="showChangelogVersion('stable')">✅ Stable Only</div>
+        </div>
+
+        <!-- Changelog Entries -->
+        <div class="changelog-entries">
+            
+            <!-- Beta v2.2 - August 2025 -->
+            <div class="changelog-entry beta-version" data-version="beta">
+                <div class="changelog-header">
+                    <span class="changelog-version beta-badge">🚧 Beta v2.2</span>
+                    <span class="changelog-date">August 1, 2025</span>
+                </div>
+                <div class="changelog-content">
+                    <h4>🔥 New Beta Version Available!</h4>
+                    <p class="changelog-description">
+                        Major update with SSL auto-renewal, enhanced error handling, and comprehensive management features.
+                        <strong>Note:</strong> This beta version contains all latest improvements but stable version remains unchanged for now.
+                    </p>
+                    
+                    <div class="changelog-section">
+                        <h5>🆕 New Features</h5>
+                        <ul>
+                            <li><strong>SSL Auto-Renewal:</strong> Automatic SSL certificate renewal with crontab setup</li>
+                            <li><strong>SSL Management Menu:</strong> Complete SSL certificate management from main menu</li>
+                            <li><strong>Enhanced Product Management:</strong> SSL status and renewal logs in product menus</li>
+                            <li><strong>New Products:</strong> PlexLinks and PlexPaste now available in beta</li>
+                            <li><strong>502 Error Pages:</strong> Custom user-friendly error pages for all products</li>
+                        </ul>
+                    </div>
+
+                    <div class="changelog-section">
+                        <h5>🔧 Improvements</h5>
+                        <ul>
+                            <li><strong>SSL Cleanup:</strong> Comprehensive rollback mechanism for failed SSL setups</li>
+                            <li><strong>Debian Support:</strong> Added missing environment variables for Debian systems</li>
+                            <li><strong>Archive Detection:</strong> Improved archive search algorithm (maxdepth 5, better Node.js detection)</li>
+                            <li><strong>Error Messages:</strong> Detailed troubleshooting information for SSL failures</li>
+                            <li><strong>User Experience:</strong> Better feedback and progress indicators</li>
+                        </ul>
+                    </div>
+
+                    <div class="changelog-section">
+                        <h5>🐛 Bug Fixes</h5>
+                        <ul>
+                            <li>Fixed nginx configuration rollback on SSL setup failures</li>
+                            <li>Improved archive extraction for repackaged/nested archives</li>
+                            <li>Better handling of partial certificate cleanup</li>
+                            <li>Enhanced DNS verification error messages</li>
+                        </ul>
+                    </div>
+
+                    <div class="changelog-section">
+                        <h5>⚡ Technical Details</h5>
+                        <ul>
+                            <li><strong>SSL Cron Jobs:</strong> Twice daily certificate checks at random times</li>
+                            <li><strong>Nginx Integration:</strong> Automatic reload on successful renewals</li>
+                            <li><strong>Logging:</strong> Comprehensive logs at <code>/var/log/certbot-renewal.log</code></li>
+                            <li><strong>Menu Structure:</strong> Reorganized management options with SSL tools</li>
+                            <li><strong>Backup System:</strong> Config backup/restore for failed SSL attempts</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stable Placeholder -->
+            <div class="changelog-entry stable-version" data-version="stable">
+                <div class="changelog-header">
+                    <span class="changelog-version stable-badge">✅ Stable v2.1</span>
+                    <span class="changelog-date">Current</span>
+                </div>
+                <div class="changelog-content">
+                    <h4>Current Stable Release</h4>
+                    <p class="changelog-description">
+                        This is the current stable version in production. New features are being tested in beta before being merged here.
+                    </p>
+                    
+                    <div class="changelog-section">
+                        <h5>📦 Current Features</h5>
+                        <ul>
+                            <li>Support for 5 core PlexDevelopment products</li>
+                            <li>Multi-distro Linux support (apt, dnf, yum, pacman, zypper)</li>
+                            <li>Automatic SSL certificate setup with Let's Encrypt</li>
+                            <li>Nginx reverse proxy configuration</li>
+                            <li>Systemd service management</li>
+                            <li>Comprehensive installation management</li>
+                        </ul>
+                    </div>
+
+                    <div class="changelog-note">
+                        <strong>Coming Soon:</strong> Beta features will be merged to stable after thorough testing.
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="changelog-footer">
+            <p><strong>Want to help test new features?</strong> Switch to Beta version using the toggle in Quick Install tab!</p>
+            <p><small><em>Beta versions may contain bugs and are for testing purposes only.</em></small></p>
+        </div>
+    </div>
+
     <!-- About Tab -->
     <div id="about" class="tab-content">
         <h2>About This Project</h2>
@@ -969,6 +1565,35 @@
         
         <div class="warning">
             <strong>Disclaimer:</strong> This is an unofficial tool and is not officially supported by PlexDevelopment. Use at your own discretion.
+        </div>
+    </div>
+
+    <!-- Affiliate Banner -->
+    <div id="affiliate-banner" class="affiliate-banner">
+        <div class="affiliate-banner-header">
+            <h4 class="affiliate-banner-title">Need VPS Hosting?</h4>
+            <button class="affiliate-banner-close" onclick="closeAffiliateBanner()" aria-label="Close">&times;</button>
+        </div>
+        <div class="affiliate-banner-content">
+            <!-- ZAP-Hosting Partner -->
+            <div class="affiliate-partner active" id="partner-zap">
+                <p class="affiliate-banner-text">Get 20% off your Linux VPS with ZAP-Hosting!</p>
+                <a href="https://zap-hosting.com/plexdevlive?voucher=bali0531-a-6918" target="_blank" rel="noopener noreferrer" onclick="showZapCoupon(event)">
+                    <img src="images.jpeg" alt="ZAP-Hosting - Get 20% off Linux VPS">
+                </a>
+            </div>
+            <!-- SparkedHost Partner -->
+            <div class="affiliate-partner" id="partner-sparked">
+                <p class="affiliate-banner-text">Professional Linux VPS hosting with SparkedHost!</p>
+                <a href="https://billing.sparkedhost.com/aff.php?aff=2901" target="_blank" rel="noopener noreferrer">
+                    <img src="https://sparkedhost.com/_astro/logo-text.DvJcWMew_1pr0t.webp" alt="SparkedHost - Professional Linux VPS" class="sparkedhost-logo">
+                </a>
+            </div>
+            <!-- Rotation indicators -->
+            <div class="affiliate-indicators">
+                <div class="affiliate-indicator active" data-partner="0"></div>
+                <div class="affiliate-indicator" data-partner="1"></div>
+            </div>
         </div>
     </div>
 
@@ -1031,6 +1656,12 @@
 
             targetTabContent.classList.add('active');
             targetTab.classList.add('active');
+
+            // Initialize changelog filter if switching to changelog tab
+            if (tabId === 'changelog') {
+                // Reset to show all versions by default
+                showChangelogVersion('all');
+            }
         }
 
 
@@ -1091,12 +1722,190 @@
             }
         }
 
+        // Affiliate Banner Management
+        let currentPartnerIndex = 0;
+        let partnerRotationInterval = null;
+        const partners = ['partner-zap', 'partner-sparked'];
+        const rotationDelay = 5000; // 5 seconds
+
+        function rotatePartners() {
+            const currentPartner = document.getElementById(partners[currentPartnerIndex]);
+            const indicators = document.querySelectorAll('.affiliate-indicator');
+            
+            // Remove active class from current partner and indicator
+            if (currentPartner) {
+                currentPartner.classList.add('exit');
+                setTimeout(() => {
+                    currentPartner.classList.remove('active', 'exit');
+                }, 250);
+            }
+            indicators[currentPartnerIndex]?.classList.remove('active');
+            
+            // Move to next partner
+            currentPartnerIndex = (currentPartnerIndex + 1) % partners.length;
+            
+            // Activate next partner and indicator
+            setTimeout(() => {
+                const nextPartner = document.getElementById(partners[currentPartnerIndex]);
+                if (nextPartner) {
+                    nextPartner.classList.add('active');
+                }
+                indicators[currentPartnerIndex]?.classList.add('active');
+            }, 250);
+        }
+
+        function startPartnerRotation() {
+            // Start rotation after initial display
+            setTimeout(() => {
+                partnerRotationInterval = setInterval(rotatePartners, rotationDelay);
+            }, rotationDelay);
+        }
+
+        function stopPartnerRotation() {
+            if (partnerRotationInterval) {
+                clearInterval(partnerRotationInterval);
+                partnerRotationInterval = null;
+            }
+        }
+
+        function showAffiliateBanner() {
+            // Check if user has previously closed the banner
+            if (localStorage.getItem('affiliate-banner-closed') === 'true') {
+                return; // Don't show if previously closed
+            }
+
+            const banner = document.getElementById('affiliate-banner');
+            if (banner) {
+                // Show banner after a short delay for better UX
+                setTimeout(() => {
+                    banner.classList.add('show');
+                    startPartnerRotation(); // Start rotation when banner is shown
+                }, 2000); // 2 second delay
+            }
+        }
+
+        function closeAffiliateBanner() {
+            const banner = document.getElementById('affiliate-banner');
+            if (banner) {
+                stopPartnerRotation(); // Stop rotation
+                banner.classList.add('hide');
+                // Store in localStorage that user closed the banner
+                localStorage.setItem('affiliate-banner-closed', 'true');
+                
+                // Remove from DOM after animation completes
+                setTimeout(() => {
+                    banner.remove();
+                }, 300);
+            }
+        }
+
+        // Add click handlers for manual partner switching
+        function setupPartnerIndicators() {
+            const indicators = document.querySelectorAll('.affiliate-indicator');
+            indicators.forEach((indicator, index) => {
+                indicator.addEventListener('click', () => {
+                    if (index === currentPartnerIndex) return; // Already active
+                    
+                    // Stop automatic rotation temporarily
+                    stopPartnerRotation();
+                    
+                    const currentPartner = document.getElementById(partners[currentPartnerIndex]);
+                    const targetPartner = document.getElementById(partners[index]);
+                    
+                    // Switch partners
+                    if (currentPartner) {
+                        currentPartner.classList.add('exit');
+                        setTimeout(() => {
+                            currentPartner.classList.remove('active', 'exit');
+                        }, 250);
+                    }
+                    indicators[currentPartnerIndex]?.classList.remove('active');
+                    
+                    setTimeout(() => {
+                        if (targetPartner) {
+                            targetPartner.classList.add('active');
+                        }
+                        indicators[index]?.classList.add('active');
+                        currentPartnerIndex = index;
+                    }, 250);
+                    
+                    // Restart automatic rotation after 10 seconds
+                    setTimeout(() => {
+                        startPartnerRotation();
+                    }, 10000);
+                });
+            });
+        }
+
+        // ZAP-Hosting coupon notification
+        function showZapCoupon(event) {
+            // Show coupon code before opening the link
+            const couponCode = 'bali0531-a-6918';
+            const message = `🎉 ZAP-Hosting 20% Discount!\n\nCoupon Code: ${couponCode}\n\n✅ This code should auto-apply, but if not, use it manually at checkout!\n\nClick OK to continue to ZAP-Hosting...`;
+            
+            if (confirm(message)) {
+                // User clicked OK, copy coupon to clipboard and let the link open normally
+                navigator.clipboard.writeText(couponCode).then(() => {
+                    // Show a brief notification that coupon was copied
+                    const notification = document.createElement('div');
+                    notification.innerHTML = '📋 Coupon code copied to clipboard!';
+                    notification.style.cssText = `
+                        position: fixed;
+                        top: 20px;
+                        right: 20px;
+                        background: var(--success);
+                        color: white;
+                        padding: 12px 20px;
+                        border-radius: 8px;
+                        z-index: 10000;
+                        font-weight: 600;
+                        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+                    `;
+                    document.body.appendChild(notification);
+                    
+                    // Remove notification after 3 seconds
+                    setTimeout(() => {
+                        notification.remove();
+                    }, 3000);
+                }).catch(err => {
+                    console.error('Failed to copy coupon code:', err);
+                });
+                return true;
+            } else {
+                // User clicked Cancel, prevent the link from opening
+                event.preventDefault();
+                return false;
+            }
+        }
+
+        // Changelog version filtering
+        function showChangelogVersion(version) {
+            // Update active tab
+            document.querySelectorAll('.changelog-tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelector(`.changelog-tab[onclick="showChangelogVersion('${version}')"]`).classList.add('active');
+            
+            // Show/hide entries based on version
+            const entries = document.querySelectorAll('.changelog-entry');
+            entries.forEach(entry => {
+                const entryVersion = entry.getAttribute('data-version');
+                if (version === 'all' || entryVersion === version) {
+                    entry.classList.remove('hidden');
+                } else {
+                    entry.classList.add('hidden');
+                }
+            });
+        }
+
         // Initial setup on page load
         document.addEventListener('DOMContentLoaded', () => {
             // Activate the first tab ('quick')
             switchTab('quick');
             // Set initial state based on toggle (default is stable)
             toggleVersion();
+            // Show affiliate banner if not previously closed
+            showAffiliateBanner();
+            // Setup partner indicator click handlers
+            setupPartnerIndicators();
         });
     </script>
 </body>
