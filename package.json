@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "compression": "^1.8.1",
     "expres": "^0.0.5",
     "express": "^4.21.2",
     "fs": "^0.0.1-security",

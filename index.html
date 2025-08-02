@@ -1,24 +1,26 @@
 <!DOCTYPE html>
-<html>
+<html lang="hu">
 <head>
+    <meta charset="UTF-8">
     <title>PlexDev.live - Unofficial Installer</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Automated installer for Plex Development bots and websites on Linux systems. Easy SSL setup, domain configuration, and user-friendly interface with one-click installation.">
+    <meta name="keywords" content="Plex, PlexDevelopment, PlexTickets, PlexStaff, Discord bots, websites, Linux, installer, SSL, automated, Docker">
+    <meta name="author" content="Plex Installer">
     <style>
-        /* --- Theme Variables --- */
         :root {
-            /* Stable Theme (Default) */
             --bg-primary: #0a0a0a;
             --bg-secondary: #1a1a1a;
             --bg-tertiary: #2a2a2a;
             --text-primary: #f0f0f0;
             --text-secondary: #b0b0b0;
             --text-muted: #808080;
-            --accent: #00d4ff; /* Cyan */
+            --accent: #00d4ff;
             --accent-dark: #0099cc;
             --accent-light: #66e6ff;
-            --success: #00ff88; /* Green */
-            --warning: #ffaa00; /* Orange */
-            --danger: #ff4444; /* Red */
+            --success: #00ff88;
+            --warning: #ffaa00;
+            --danger: #ff4444;
             --card-bg: #1e1e1e;
             --card-bg-hover: #252525;
             --border-color: #333;
@@ -26,7 +28,7 @@
             --shadow: rgba(0, 0, 0, 0.5);
             --shadow-light: rgba(0, 0, 0, 0.3);
             --code-bg: #0d1117;
-            --code-color: #58a6ff; /* Blue */
+            --code-color: #58a6ff;
             --gradient-primary: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
             --gradient-card: linear-gradient(145deg, var(--card-bg) 0%, var(--bg-secondary) 100%);
             --border-radius: 12px;
@@ -34,40 +36,38 @@
             --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             --header-animation: pulse;
             --header-animation-color: var(--accent);
-            --body-transition: background-color 0.4s ease, color 0.4s ease; /* More specific transition */
+            --body-transition: background-color 0.4s ease, color 0.4s ease;
         }
 
-        /* Beta Theme Variables (Applied when body has .beta-theme class) */
         body.beta-theme {
-            --bg-primary: #1a1a1a; /* Construction site dark */
+            --bg-primary: #1a1a1a;
             --bg-secondary: #2a2a2a;
             --bg-tertiary: #333;
-            --text-primary: #ffeb3b; /* Bright construction yellow */
-            --text-secondary: #ffc107; /* Warning tape yellow */
+            --text-primary: #ffeb3b;
+            --text-secondary: #ffc107;
             --text-muted: #ff9800;
-            --accent: #ff9800; /* Construction orange */
+            --accent: #ff9800;
             --accent-dark: #f57500;
             --accent-light: #ffb74d;
-            --success: #4caf50; /* Safety green */
-            --warning: #ff5722; /* Danger orange */
-            --danger: #f44336; /* Emergency red */
-            --card-bg: #2a2a2a; /* Darker construction bg */
+            --success: #4caf50;
+            --warning: #ff5722;
+            --danger: #f44336;
+            --card-bg: #2a2a2a;
             --card-bg-hover: #413f3f;
-            --border-color: #ff9800; /* Orange construction borders */
+            --border-color: #ff9800;
             --border-color-light: #ffb74d;
-            --shadow: rgba(255, 152, 0, 0.3); /* Orange shadows */
+            --shadow: rgba(255, 152, 0, 0.3);
             --shadow-light: rgba(255, 152, 0, 0.1);
             --code-bg: #1e1e1e;
             --code-color: #ffeb3b;
             --gradient-primary: linear-gradient(135deg, var(--accent) 0%, var(--warning) 100%);
             --gradient-card: linear-gradient(145deg, var(--card-bg) 0%, var(--bg-secondary) 100%);
-            --header-animation: sway; /* Different animation */
+            --header-animation: sway;
             --header-animation-color: var(--accent);
             --shake-intensity: 0.5deg;
             --shake-intensity-alt: -0.4deg;
         }
 
-        /* --- Basic Styles --- */
         * { 
             box-sizing: border-box; 
             margin: 0; 
@@ -121,7 +121,6 @@
             text-shadow: 0 0 5px var(--accent);
             transition: transform 0.5s ease, border-color 0.4s ease, text-shadow 0.4s ease;
         }
-        /* Header animation */
         h1::after {
             content: "";
             position: absolute;
@@ -131,20 +130,34 @@
             width: 120px;
             height: 2px;
             background-color: var(--header-animation-color);
-            /* Animation applied via body class */
         }
-        /* Apply animation based on theme */
+
         body:not(.beta-theme) h1::after {
              animation: pulse 2s infinite;
         }
         body.beta-theme h1::after {
-             animation: var(--header-animation) 4s ease-in-out infinite alternate; /* Use variable */
+             animation: var(--header-animation) 4s ease-in-out infinite alternate;
         }
 
         h2 { font-size: 1.8rem; margin-top: 2rem; }
         p { margin: 1rem 0; color: var(--text-secondary); }
-        a { color: var(--accent); text-decoration: none; transition: color 0.3s ease; }
-        a:hover { color: var(--accent-dark); text-decoration: underline; }
+        a { 
+            color: var(--accent); 
+            text-decoration: underline; 
+            text-decoration-color: var(--accent);
+            text-underline-offset: 2px;
+            transition: all 0.3s ease; 
+        }
+        a:hover { 
+            color: var(--accent-light); 
+            text-decoration-color: var(--accent-light);
+            text-shadow: 0 0 5px var(--accent);
+        }
+        a:focus {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+            border-radius: 2px;
+        }
         .code-block {
             background: var(--code-bg);
             border: 1px solid var(--border-color);
@@ -329,24 +342,20 @@
             animation: fadeIn 0.5s ease-out; 
         }
 
-        /* Ensure tab content uses proper gradient background in stable theme */
         body:not(.beta-theme) .tab-content {
             background: var(--gradient-card) !important;
         }
         
-        /* Specific override for quick install tab */
         body:not(.beta-theme) #quick.tab-content {
             background: var(--gradient-card) !important;
         }
         
-        /* Override for all tab contents in stable theme */
         body:not(.beta-theme) #quick.tab-content,
         body:not(.beta-theme) #manual.tab-content,
         body:not(.beta-theme) #about.tab-content {
             background: var(--gradient-card) !important;
         }
 
-        /* Ensure tabs and cards use theme colors properly */
         body.beta-theme .tab-content {
             background: var(--card-bg);
             border-color: var(--warning);
@@ -372,7 +381,6 @@
             color: var(--warning);
         }
 
-        /* --- Animations --- */
         @keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         /* Sway animation for Beta */
@@ -1112,7 +1120,7 @@
             position: fixed;
             bottom: 20px;
             right: 20px;
-            max-width: 300px;
+            max-width: 380px;
             background: var(--gradient-card);
             border: 1px solid var(--border-color);
             border-radius: var(--border-radius);
@@ -1319,9 +1327,29 @@
                 font-size: 0.75rem;
             }
         }
+
+        /* Accessibility improvements */
+        .affiliate-banner a:focus {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+
+        .affiliate-banner-close:focus {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
     </style>
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7983111910687324"
-     crossorigin="anonymous"></script>
+    <!-- Google AdSense with proper consent management 
+    <script data-ad-client="ca-pub-7983111910687324" async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js" crossorigin="anonymous"></script>
+    <script>
+        // Consent Management to reduce CORS issues
+        window.gtag = window.gtag || function() { (gtag.q = gtag.q || []).push(arguments); };
+        window.gtag('consent', 'default', {
+            'ad_storage': 'granted',
+            'analytics_storage': 'granted'
+        });
+    </script>
+    -->
 </head>
 <body> <!-- Class will be added/removed here -->
     <h1>PlexDev.live Unofficial Installer</h1>
@@ -1349,7 +1377,7 @@
             <div class="switch-container">
                 <span class="switch-text stable-text" id="stable-label">Stable</span>
                 <label class="switch">
-                    <input type="checkbox" id="version-toggle" onchange="toggleVersion()">
+                    <input type="checkbox" id="version-toggle" onchange="toggleVersion()" aria-label="Toggle between stable and beta installer versions">
                     <span class="slider"></span>
                 </label>
                 <span class="switch-text beta-text" id="beta-label">Beta</span>
@@ -1571,7 +1599,7 @@
     <!-- Affiliate Banner -->
     <div id="affiliate-banner" class="affiliate-banner">
         <div class="affiliate-banner-header">
-            <h4 class="affiliate-banner-title">Need VPS Hosting?</h4>
+            <h3 class="affiliate-banner-title">Need VPS Hosting?</h3>
             <button class="affiliate-banner-close" onclick="closeAffiliateBanner()" aria-label="Close">&times;</button>
         </div>
         <div class="affiliate-banner-content">
@@ -1579,14 +1607,18 @@
             <div class="affiliate-partner active" id="partner-zap">
                 <p class="affiliate-banner-text">Get 20% off your Linux VPS with ZAP-Hosting!</p>
                 <a href="https://zap-hosting.com/plexdevlive?voucher=bali0531-a-6918" target="_blank" rel="noopener noreferrer" onclick="showZapCoupon(event)">
-                    <img src="images.jpeg" alt="ZAP-Hosting - Get 20% off Linux VPS">
+                    <picture>
+                        <source srcset="images-optimized.webp 1x, images-1.5x.webp 1.5x, images-2x.webp 2x" type="image/webp" width="350" height="47">
+                        <source srcset="images-optimized.jpeg 1x, images-1.5x.jpeg 1.5x, images-2x.jpeg 2x" type="image/jpeg" width="350" height="47">
+                        <img src="images-optimized.jpeg" alt="ZAP-Hosting - Get 20% off Linux VPS" width="350" height="47" loading="lazy" style="max-width: 350px; height: auto;">
+                    </picture>
                 </a>
             </div>
             <!-- SparkedHost Partner -->
             <div class="affiliate-partner" id="partner-sparked">
                 <p class="affiliate-banner-text">Professional Linux VPS hosting with SparkedHost!</p>
                 <a href="https://billing.sparkedhost.com/aff.php?aff=2901" target="_blank" rel="noopener noreferrer">
-                    <img src="https://sparkedhost.com/_astro/logo-text.DvJcWMew_1pr0t.webp" alt="SparkedHost - Professional Linux VPS" class="sparkedhost-logo">
+                    <img src="https://sparkedhost.com/_astro/logo-text.DvJcWMew_1pr0t.webp" alt="SparkedHost - Professional Linux VPS" class="sparkedhost-logo" loading="lazy" style="max-width: 266px; height: auto;">
                 </a>
             </div>
             <!-- Rotation indicators -->
@@ -1598,7 +1630,8 @@
     </div>
 
     <footer>
-        PlexDev.live made by: bali0531 | <a href="https://plexdevelopment.net" target="_blank">Official Site</a> | <a href="/guide">Simple Guide</a>
+        PlexDev.live made by: bali0531 | <a href="https://plexdevelopment.net" target="_blank">Official Site</a> | <a href="/guide">Simple Guide</a><br>
+        <a href="/privacy.html">Privacy Policy</a> | <a href="/terms.html">Terms of Service</a> | <a href="/faq.html">FAQ</a>
     </footer>
 
     <script>
