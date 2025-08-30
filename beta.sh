@@ -1441,7 +1441,7 @@ install_product() {
         find_archive_files "$dashboard_product" # Sets global ARCHIVE_PATH again
         dashboard_archive_path="$ARCHIVE_PATH"
 
-        local dashboard_base_path="$install_path/addons/dashboard" # Install into addons/dashboard subdir
+        local dashboard_base_path="$install_path/addons/Dashboard" # Install into addons/dashboard subdir
 
         # Extract dashboard addon
         local dashboard_install_path
