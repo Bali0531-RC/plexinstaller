@@ -910,7 +910,7 @@ sudo nginx -s reload</code>
             <p><strong>Automatic MongoDB Installation & Configuration:</strong></p>
             <ul>
                 <li><strong>Auto-Detection:</strong> Installer checks if MongoDB is already installed</li>
-                <li><strong>Official Repository:</strong> Installs MongoDB 7.0 from official MongoDB repositories</li>
+                <li><strong>Official Repository:</strong> Installs MongoDB 8.2 from official MongoDB repositories</li>
                 <li><strong>Service Management:</strong> Automatically starts and enables MongoDB systemd service</li>
                 <li><strong>User & Database Creation:</strong> Creates dedicated MongoDB user and database per instance</li>
                 <li><strong>Secure Credentials:</strong> Generates 16-character random passwords</li>
@@ -920,9 +920,9 @@ sudo nginx -s reload</code>
 
             <h4>MongoDB Installation Commands (Manual Setup)</h4>
             <div class="code-block">
-                <code># Ubuntu/Debian - MongoDB 7.0<br/>
-curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | sudo gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg<br/>
-echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu $(lsb_release -cs)/mongodb-org/7.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list<br/>
+                <code># Ubuntu/Debian - MongoDB 8.2<br/>
+curl -fsSL https://www.mongodb.org/static/pgp/server-8.2.asc | sudo gpg --dearmor -o /usr/share/keyrings/mongodb-server-8.2.gpg<br/>
+echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.2.gpg ] https://repo.mongodb.org/apt/ubuntu $(lsb_release -cs)/mongodb-org/8.2 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-8.2.list<br/>
 sudo apt update && sudo apt install -y mongodb-org<br/><br/>
 # Start and enable service<br/>
 sudo systemctl start mongod<br/>

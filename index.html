@@ -1502,7 +1502,7 @@
                     <div class="changelog-section">
                         <h5>🆕 New Features</h5>
                         <ul>
-                            <li><strong>MongoDB Auto-Setup:</strong> Automatic MongoDB 7.0 installation and configuration</li>
+                            <li><strong>MongoDB Auto-Setup:</strong> Automatic MongoDB 8.2 installation and configuration</li>
                             <li><strong>Database Management:</strong> Automatic database and user creation for each product/instance</li>
                             <li><strong>Credential Storage:</strong> Secure credential management in <code>/etc/plex/setup</code></li>
                             <li><strong>Auto-Config Update:</strong> Automatic <code>config.yml</code> MongoURI field population</li>
@@ -1647,9 +1647,9 @@
             <div style="background: var(--code-bg); padding: 15px; border-radius: var(--border-radius-small); margin-bottom: 20px;">
                 <p style="color: var(--text-secondary); margin-bottom: 10px;">MongoDB Setup (Beta v2.3+ has automatic setup):</p>
                 <code style="color: var(--code-color); display: block; margin-bottom: 10px;">
-                    # Install MongoDB 7.0 (Ubuntu/Debian)<br>
-                    curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | sudo gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg<br>
-                    echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu $(lsb_release -cs)/mongodb-org/7.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list<br>
+                    # Install MongoDB 8.2 (Ubuntu/Debian)<br>
+                    curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc | sudo gpg --dearmor -o /usr/share/keyrings/mongodb-server-8.0.gpg<br>
+                    echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] https://repo.mongodb.org/apt/ubuntu $(lsb_release -cs)/mongodb-org/8.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-8.0.list<br>
                     sudo apt update && sudo apt install -y mongodb-org<br><br>
                     
                     # Start MongoDB service<br>

@@ -438,8 +438,8 @@ install_mongodb() {
             return 0
         else
             print_step "Starting MongoDB service..."
-            sudo systemctl start mongod
-            sudo systemctl enable mongod
+            sudo systemctl start mongod 2>/dev/null || sudo systemctl start mongodb 2>/dev/null
+            sudo systemctl enable mongod 2>/dev/null || sudo systemctl enable mongodb 2>/dev/null
             return 0
         fi
     fi
@@ -448,34 +448,63 @@ install_mongodb() {
     
     case $PKG_MANAGER in
         apt)
-            # Import MongoDB public GPG key
-            print_step "Adding MongoDB GPG key..."
-            curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | sudo gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg
+            # Detect OS for proper repository
+            local os_id=$(lsb_release -is | tr '[:upper:]' '[:lower:]')
+            local os_codename=$(lsb_release -cs)
             
-            # Add MongoDB repository
-            print_step "Adding MongoDB repository..."
-            echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu $(lsb_release -cs)/mongodb-org/7.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
+            # Import MongoDB 8.2 public GPG key
+            print_step "Adding MongoDB 8.2 GPG key..."
+            curl -fsSL https://www.mongodb.org/static/pgp/server-8.2.asc | sudo gpg --dearmor -o /usr/share/keyrings/mongodb-server-8.2.gpg
+            
+            # Add MongoDB repository based on OS
+            print_step "Adding MongoDB 8.2 repository..."
+            if [[ "$os_id" == "ubuntu" ]]; then
+                # For Ubuntu, use the codename directly
+                echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.2.gpg ] https://repo.mongodb.org/apt/ubuntu/dists/${os_codename}/mongodb-org/8.2/multiverse/binary-amd64/" | sudo tee /etc/apt/sources.list.d/mongodb-org-8.2.list
+            elif [[ "$os_id" == "debian" ]]; then
+                # For Debian, map to supported versions
+                case "$os_codename" in
+                    bookworm)
+                        echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.2.gpg ] https://repo.mongodb.org/apt/debian/dists/bookworm/mongodb-org/8.2/main/binary-amd64/" | sudo tee /etc/apt/sources.list.d/mongodb-org-8.2.list
+                        ;;
+                    bullseye)
+                        echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.2.gpg ] https://repo.mongodb.org/apt/debian/dists/bullseye/mongodb-org/8.2/main/binary-amd64/" | sudo tee /etc/apt/sources.list.d/mongodb-org-8.2.list
+                        ;;
+                    *)
+                        print_warning "Unsupported Debian version. Using bullseye repository as fallback."
+                        echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.2.gpg ] https://repo.mongodb.org/apt/debian/dists/bullseye/mongodb-org/8.2/main/binary-amd64/" | sudo tee /etc/apt/sources.list.d/mongodb-org-8.2.list
+                        ;;
+                esac
+            else
+                print_warning "Unknown OS, using Ubuntu repository as fallback."
+                echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.2.gpg ] https://repo.mongodb.org/apt/ubuntu/dists/jammy/mongodb-org/8.2/multiverse/binary-amd64/" | sudo tee /etc/apt/sources.list.d/mongodb-org-8.2.list
+            fi
             
             # Update and install
             sudo apt update -y
             sudo -E apt install -y mongodb-org
             ;;
         dnf|yum)
-            # Create MongoDB repository file
-            print_step "Creating MongoDB repository..."
-            cat <<EOF | sudo tee /etc/yum.repos.d/mongodb-org-7.0.repo
-[mongodb-org-7.0]
+            # Create MongoDB repository file for RHEL/Fedora
+            print_step "Creating MongoDB 8.2 repository..."
+            cat <<EOF | sudo tee /etc/yum.repos.d/mongodb-org-8.2.repo
+[mongodb-org-8.2]
 name=MongoDB Repository
-baseurl=https://repo.mongodb.org/yum/redhat/\$releasever/mongodb-org/7.0/x86_64/
+baseurl=https://repo.mongodb.org/yum/redhat/\$releasever/mongodb-org/8.2/x86_64/
 gpgcheck=1
 enabled=1
-gpgkey=https://www.mongodb.org/static/pgp/server-7.0.asc
+gpgkey=https://www.mongodb.org/static/pgp/server-8.2.asc
 EOF
             
             sudo $PKG_MANAGER install -y mongodb-org
             ;;
         pacman)
-            sudo pacman -S --noconfirm --needed mongodb-bin mongodb-tools
+            print_step "Installing MongoDB from AUR..."
+            sudo pacman -S --noconfirm --needed mongodb-bin mongodb-tools 2>/dev/null || {
+                print_warning "MongoDB not in official repos. Install from AUR manually."
+                print_step "yay -S mongodb-bin mongodb-tools"
+                read -p "Press Enter after installing MongoDB..." </dev/tty
+            }
             ;;
         zypper)
             print_warning "MongoDB installation on openSUSE requires manual setup or community repositories."
@@ -491,12 +520,12 @@ EOF
             ;;
     esac
     
-    # Start and enable MongoDB
+    # Start and enable MongoDB (try both service names)
     print_step "Starting MongoDB service..."
-    sudo systemctl start mongod
+    sudo systemctl start mongod 2>/dev/null || sudo systemctl start mongodb 2>/dev/null
     check_command "Starting MongoDB service"
     
-    sudo systemctl enable mongod
+    sudo systemctl enable mongod 2>/dev/null || sudo systemctl enable mongodb 2>/dev/null
     check_command "Enabling MongoDB service"
     
     print_success "MongoDB Server installed and started successfully."
