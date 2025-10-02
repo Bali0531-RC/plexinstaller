@@ -905,7 +905,99 @@ sudo nginx -s reload</code>
             </div>
         </div>
 
-        <h2>🔐 Security Considerations</h2>
+        <h2>�️ MongoDB Database Setup (Beta v2.3+)</h2>
+        <div class="card">
+            <p><strong>Automatic MongoDB Installation & Configuration:</strong></p>
+            <ul>
+                <li><strong>Auto-Detection:</strong> Installer checks if MongoDB is already installed</li>
+                <li><strong>Official Repository:</strong> Installs MongoDB 7.0 from official MongoDB repositories</li>
+                <li><strong>Service Management:</strong> Automatically starts and enables MongoDB systemd service</li>
+                <li><strong>User & Database Creation:</strong> Creates dedicated MongoDB user and database per instance</li>
+                <li><strong>Secure Credentials:</strong> Generates 16-character random passwords</li>
+                <li><strong>Credential Storage:</strong> Saves credentials to <code>/etc/plex/setup</code> for reuse</li>
+                <li><strong>Config Auto-Update:</strong> Automatically updates <code>config.yml</code> with connection string</li>
+            </ul>
+
+            <h4>MongoDB Installation Commands (Manual Setup)</h4>
+            <div class="code-block">
+                <code># Ubuntu/Debian - MongoDB 7.0<br/>
+curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | sudo gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg<br/>
+echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu $(lsb_release -cs)/mongodb-org/7.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list<br/>
+sudo apt update && sudo apt install -y mongodb-org<br/><br/>
+# Start and enable service<br/>
+sudo systemctl start mongod<br/>
+sudo systemctl enable mongod<br/><br/>
+# Create user and database<br/>
+mongosh --eval 'use myapp_db'<br/>
+mongosh myapp_db --eval 'db.createUser({user: "myapp_user", pwd: "secure_password", roles: [{role: "readWrite", db: "myapp_db"}]})'</code>
+            </div>
+
+            <h4>Connection String Format</h4>
+            <div class="code-block">
+                <code>mongodb://username:password@localhost:27017/database_name?authSource=database_name</code>
+            </div>
+
+            <h4>Troubleshooting MongoDB</h4>
+            <div class="code-block">
+                <code># Check MongoDB status<br/>
+sudo systemctl status mongod<br/><br/>
+# View MongoDB logs<br/>
+sudo tail -f /var/log/mongodb/mongod.log<br/>
+sudo journalctl -u mongod -f<br/><br/>
+# Test connection<br/>
+mongosh mongodb://username:password@localhost:27017/dbname?authSource=dbname<br/><br/>
+# View saved credentials<br/>
+sudo cat /etc/plex/setup</code>
+            </div>
+        </div>
+
+        <h2>🔁 Multi-Instance Support (Beta v2.3+)</h2>
+        <div class="card">
+            <p><strong>Run multiple instances of the same product with separate configurations:</strong></p>
+            <ul>
+                <li><strong>Instance Detection:</strong> Installer automatically detects existing installations</li>
+                <li><strong>Unique Naming:</strong> Each instance gets a unique name (e.g., plextickets, plextickets-bot2)</li>
+                <li><strong>Separate Directories:</strong> Each instance installed to <code>/var/www/plex/INSTANCE_NAME</code></li>
+                <li><strong>Individual Services:</strong> Separate systemd service per instance (<code>plex-INSTANCE_NAME</code>)</li>
+                <li><strong>Unique Databases:</strong> Each instance gets its own MongoDB database and credentials</li>
+                <li><strong>Independent Configs:</strong> Separate configuration files for each instance</li>
+            </ul>
+
+            <h4>Example Multi-Instance Setup</h4>
+            <p>Installing 2 PlexTickets bots with different configurations:</p>
+            <div class="code-block">
+                <code># First installation<br/>
+./install.sh → Select PlexTickets → Instance name: plextickets<br/><br/>
+# Second installation (installer detects existing)<br/>
+./install.sh → Select PlexTickets → Multi-instance? Yes → Instance name: plextickets-dev<br/><br/>
+# Result:<br/>
+/var/www/plex/plextickets/ (service: plex-plextickets, db: plextickets5a3b2)<br/>
+/var/www/plex/plextickets-dev/ (service: plex-plextickets-dev, db: plextickets-dev7x9k1)</code>
+            </div>
+
+            <h4>Managing Multiple Instances</h4>
+            <div class="code-block">
+                <code># Control services independently<br/>
+sudo systemctl start plex-plextickets<br/>
+sudo systemctl start plex-plextickets-dev<br/><br/>
+# View logs separately<br/>
+sudo journalctl -u plex-plextickets -f<br/>
+sudo journalctl -u plex-plextickets-dev -f<br/><br/>
+# Edit configurations<br/>
+nano /var/www/plex/plextickets/config.yml<br/>
+nano /var/www/plex/plextickets-dev/config.yml</code>
+            </div>
+
+            <h4>Use Cases</h4>
+            <ul>
+                <li><strong>Multiple Discord Bots:</strong> Run separate bots for different servers</li>
+                <li><strong>Test/Production:</strong> Separate development and production environments</li>
+                <li><strong>Multi-Tenant:</strong> Host multiple client instances on one server</li>
+                <li><strong>Feature Testing:</strong> Test new features without affecting production</li>
+            </ul>
+        </div>
+
+        <h2>�🔐 Security Considerations</h2>
         <div class="card">
             <ul>
                 <li><strong>Root Execution:</strong> Script requires root privileges for system modification</li>
@@ -914,6 +1006,7 @@ sudo nginx -s reload</code>
                 <li><strong>Certificate Management:</strong> Automatic renewal prevents expiration</li>
                 <li><strong>Service Isolation:</strong> Each product runs as separate systemd service</li>
                 <li><strong>File Permissions:</strong> Strict permission model (755/644)</li>
+                <li><strong>Database Security:</strong> Unique credentials per instance, stored in protected file</li>
             </ul>
         </div>
 

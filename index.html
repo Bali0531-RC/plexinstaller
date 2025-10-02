@@ -1486,76 +1486,88 @@
         <!-- Changelog Entries -->
         <div class="changelog-entries">
             
-            <!-- Beta v2.2 - September 2025 -->
+            <!-- Beta v2.3 - October 2025 -->
             <div class="changelog-entry beta-version" data-version="beta">
                 <div class="changelog-header">
-                    <span class="changelog-version beta-badge">🚧 Beta v2.2</span>
-                    <span class="changelog-date">September 16, 2025</span>
+                    <span class="changelog-version beta-badge">🚧 Beta v2.3</span>
+                    <span class="changelog-date">October 2, 2025</span>
                 </div>
                 <div class="changelog-content">
-                    <h4>🎯 NEW: Plex CLI Management Tool</h4>
+                    <h4>🚀 MongoDB Integration & Multi-Instance Support!</h4>
                     <p class="changelog-description">
-                        Revolutionary new CLI tool for managing your Plex applications! No more memorizing systemctl or journalctl commands.
-                        <strong>This beta introduces a user-friendly command-line interface for all Plex management tasks.</strong>
+                        Revolutionary update bringing automated MongoDB setup and support for running multiple instances of the same product.
+                        Perfect for users who want to run multiple bots or websites with different configurations!
                     </p>
                     
                     <div class="changelog-section">
-                        <h5>🆕 Plex CLI Commands</h5>
+                        <h5>🆕 New Features</h5>
                         <ul>
-                            <li><strong>plex list:</strong> Show all installed Plex apps and their status</li>
-                            <li><strong>plex start &lt;app&gt;:</strong> Start any Plex application (e.g., plex start plextickets)</li>
-                            <li><strong>plex stop &lt;app&gt;:</strong> Stop any Plex application</li>
-                            <li><strong>plex restart &lt;app&gt;:</strong> Restart any Plex application</li>
-                            <li><strong>plex config &lt;app&gt;:</strong> Edit config.yml with nano (no manual file hunting!)</li>
-                            <li><strong>plex logs &lt;app&gt;:</strong> View live logs with journalctl (auto-formatted)</li>
-                            <li><strong>plex status &lt;app&gt;:</strong> Detailed systemd status information</li>
+                            <li><strong>MongoDB Auto-Setup:</strong> Automatic MongoDB 7.0 installation and configuration</li>
+                            <li><strong>Database Management:</strong> Automatic database and user creation for each product/instance</li>
+                            <li><strong>Credential Storage:</strong> Secure credential management in <code>/etc/plex/setup</code></li>
+                            <li><strong>Auto-Config Update:</strong> Automatic <code>config.yml</code> MongoURI field population</li>
+                            <li><strong>Multi-Instance Support:</strong> Run multiple instances of the same product (e.g., 2x PlexTickets)</li>
+                            <li><strong>Unique Instance Names:</strong> Each instance gets unique name, service, and database</li>
                         </ul>
                     </div>
 
                     <div class="changelog-section">
-                        <h5>🔧 CLI Features</h5>
+                        <h5>🔧 MongoDB Features</h5>
                         <ul>
-                            <li><strong>Smart Auto-Detection:</strong> Automatically finds installed Plex applications</li>
-                            <li><strong>Status Overview:</strong> Shows running/stopped status, ports, and config file locations</li>
-                            <li><strong>Error Handling:</strong> Clear error messages and helpful suggestions</li>
-                            <li><strong>User-Friendly:</strong> Color-coded output and progress indicators</li>
-                            <li><strong>Live Logs:</strong> Real-time log viewing with Ctrl+C to exit</li>
+                            <li><strong>Official Repositories:</strong> Installs MongoDB from official repos (apt, dnf, yum, pacman)</li>
+                            <li><strong>User Creation:</strong> Dedicated MongoDB user per product (e.g., <code>plextickets_user</code>)</li>
+                            <li><strong>Random Database Names:</strong> Unique database names with random suffix (e.g., <code>plextickets5a3b2</code>)</li>
+                            <li><strong>Secure Passwords:</strong> 16-character random password generation</li>
+                            <li><strong>Connection Strings:</strong> Format: <code>mongodb://user:pass@localhost:27017/dbname?authSource=dbname</code></li>
+                            <li><strong>Credential Reuse:</strong> Saves credentials for easy multi-instance setup</li>
                         </ul>
                     </div>
 
                     <div class="changelog-section">
-                        <h5>📋 Usage Examples</h5>
+                        <h5>🎯 Multi-Instance Features</h5>
                         <ul>
-                            <li><code>plex list</code> - See all your installed apps and their status</li>
-                            <li><code>plex restart plextickets</code> - Restart PlexTickets service</li>
-                            <li><code>plex config plexstore</code> - Edit PlexStore configuration</li>
-                            <li><code>plex logs plexstatus</code> - Watch PlexStatus logs in real-time</li>
+                            <li><strong>Instance Detection:</strong> Automatically detects existing installations</li>
+                            <li><strong>Custom Naming:</strong> Choose unique names or use auto-generated ones</li>
+                            <li><strong>Separate Resources:</strong> Each instance gets its own directory, service, and database</li>
+                            <li><strong>Independent Management:</strong> Manage each instance separately with systemctl</li>
+                            <li><strong>Example Use Cases:</strong> Multiple Discord bots, separate test/production environments</li>
+                        </ul>
+                    </div>
+
+                    <div class="changelog-section">
+                        <h5>⚡ Technical Details</h5>
+                        <ul>
+                            <li><strong>Service Names:</strong> Format <code>plex-INSTANCE_NAME</code> for systemd</li>
+                            <li><strong>Directory Structure:</strong> <code>/var/www/plex/INSTANCE_NAME</code> for each instance</li>
+                            <li><strong>Config Files:</strong> Separate configuration for each instance</li>
+                            <li><strong>MongoDB Version:</strong> MongoDB 7.0 from official repositories</li>
+                            <li><strong>Name Validation:</strong> Alphanumeric, dash, and underscore allowed in instance names</li>
                         </ul>
                     </div>
                 </div>
             </div>
-            
-            <!-- Stable v2.1 - September 2025 (Previously Beta) -->
+
+            <!-- Stable v2.2 - October 2025 -->
             <div class="changelog-entry stable-version" data-version="stable">
                 <div class="changelog-header">
-                    <span class="changelog-version stable-badge">✅ Stable v2.1</span>
-                    <span class="changelog-date">September 16, 2025</span>
+                    <span class="changelog-version stable-badge">✅ Stable v2.2</span>
+                    <span class="changelog-date">October 2, 2025</span>
                 </div>
                 <div class="changelog-content">
-                    <h4>🔥 Stable Release: Enhanced SSL & Management</h4>
+                    <h4>🎉 New Stable Release!</h4>
                     <p class="changelog-description">
-                        Former beta version promoted to stable! Major update with SSL auto-renewal, enhanced error handling, and comprehensive management features.
-                        <strong>This version has been thoroughly tested and is now the recommended stable release.</strong>
+                        The previous Beta v2.2 has been promoted to Stable. This version includes all the SSL auto-renewal,
+                        enhanced error handling, and management features that have been thoroughly tested.
                     </p>
                     
                     <div class="changelog-section">
-                        <h5>🆕 Stable Features</h5>
+                        <h5>🆕 Features (from Beta v2.2)</h5>
                         <ul>
                             <li><strong>SSL Auto-Renewal:</strong> Automatic SSL certificate renewal with crontab setup</li>
                             <li><strong>SSL Management Menu:</strong> Complete SSL certificate management from main menu</li>
                             <li><strong>Enhanced Product Management:</strong> SSL status and renewal logs in product menus</li>
-                            <li><strong>New Products:</strong> PlexLinks and PlexPaste now available in stable</li>
                             <li><strong>502 Error Pages:</strong> Custom user-friendly error pages for all products</li>
+                            <li><strong>Improved Archive Detection:</strong> Better search algorithm (maxdepth 5, better Node.js detection)</li>
                         </ul>
                     </div>
 
@@ -1564,19 +1576,8 @@
                         <ul>
                             <li><strong>SSL Cleanup:</strong> Comprehensive rollback mechanism for failed SSL setups</li>
                             <li><strong>Debian Support:</strong> Added missing environment variables for Debian systems</li>
-                            <li><strong>Archive Detection:</strong> Improved archive search algorithm (maxdepth 5, better Node.js detection)</li>
                             <li><strong>Error Messages:</strong> Detailed troubleshooting information for SSL failures</li>
                             <li><strong>User Experience:</strong> Better feedback and progress indicators</li>
-                        </ul>
-                    </div>
-
-                    <div class="changelog-section">
-                        <h5>🐛 Bug Fixes</h5>
-                        <ul>
-                            <li>Fixed nginx configuration rollback on SSL setup failures</li>
-                            <li>Improved archive extraction for repackaged/nested archives</li>
-                            <li>Better handling of partial certificate cleanup</li>
-                            <li>Enhanced DNS verification error messages</li>
                         </ul>
                     </div>
 
@@ -1586,8 +1587,16 @@
                             <li><strong>SSL Cron Jobs:</strong> Twice daily certificate checks at random times</li>
                             <li><strong>Nginx Integration:</strong> Automatic reload on successful renewals</li>
                             <li><strong>Logging:</strong> Comprehensive logs at <code>/var/log/certbot-renewal.log</code></li>
-                            <li><strong>Menu Structure:</strong> Reorganized management options with SSL tools</li>
                             <li><strong>Backup System:</strong> Config backup/restore for failed SSL attempts</li>
+                        </ul>
+                    </div>
+
+                    <div class="changelog-section">
+                        <h5>📝 Note</h5>
+                        <ul>
+                            <li><strong>Production Ready:</strong> All features have been tested and are stable</li>
+                            <li><strong>Recommended:</strong> Use this version for production environments</li>
+                            <li><strong>No MongoDB:</strong> MongoDB features are only available in Beta v2.3+</li>
                         </ul>
                     </div>
                 </div>
@@ -1636,12 +1645,23 @@
             
             <h4 style="color: var(--accent); margin-bottom: 15px;">Database Configuration</h4>
             <div style="background: var(--code-bg); padding: 15px; border-radius: var(--border-radius-small); margin-bottom: 20px;">
-                <p style="color: var(--text-secondary); margin-bottom: 10px;">MySQL/MariaDB Setup:</p>
+                <p style="color: var(--text-secondary); margin-bottom: 10px;">MongoDB Setup (Beta v2.3+ has automatic setup):</p>
                 <code style="color: var(--code-color); display: block; margin-bottom: 10px;">
-                    # Create database and user<br>
-                    mysql -u root -p -e "CREATE DATABASE plexapp_db;"<br>
-                    mysql -u root -p -e "CREATE USER 'plexapp'@'localhost' IDENTIFIED BY 'secure_password';"<br>
-                    mysql -u root -p -e "GRANT ALL PRIVILEGES ON plexapp_db.* TO 'plexapp'@'localhost';"
+                    # Install MongoDB 7.0 (Ubuntu/Debian)<br>
+                    curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | sudo gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg<br>
+                    echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu $(lsb_release -cs)/mongodb-org/7.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list<br>
+                    sudo apt update && sudo apt install -y mongodb-org<br><br>
+                    
+                    # Start MongoDB service<br>
+                    sudo systemctl start mongod<br>
+                    sudo systemctl enable mongod<br><br>
+                    
+                    # Create database and user (using mongosh)<br>
+                    mongosh --eval 'use plexapp_db'<br>
+                    mongosh plexapp_db --eval 'db.createUser({user: "plexapp", pwd: "secure_password", roles: [{role: "readWrite", db: "plexapp_db"}]})'<br><br>
+                    
+                    # Connection String Format:<br>
+                    # mongodb://plexapp:secure_password@localhost:27017/plexapp_db?authSource=plexapp_db
                 </code>
             </div>
             
@@ -1727,18 +1747,24 @@
             </div>
             
             <h4 style="color: var(--warning); margin: 20px 0 15px;">Database Connection Errors</h4>
-            <p style="color: var(--text-secondary); margin-bottom: 10px;">For database connectivity issues:</p>
+            <p style="color: var(--text-secondary); margin-bottom: 10px;">For MongoDB connectivity issues:</p>
             <div style="background: var(--code-bg); padding: 15px; border-radius: var(--border-radius-small); margin-bottom: 20px;">
                 <code style="color: var(--code-color); display: block;">
-                    # Test database connection<br>
-                    mysql -u plexapp -p plexapp_db<br><br>
+                    # Test MongoDB connection<br>
+                    mongosh mongodb://plexapp:password@localhost:27017/plexapp_db?authSource=plexapp_db<br><br>
                     
-                    # Check MySQL service<br>
-                    systemctl status mysql<br>
-                    systemctl status mariadb<br><br>
+                    # Check MongoDB service<br>
+                    systemctl status mongod<br><br>
                     
-                    # View database logs<br>
-                    tail -f /var/log/mysql/error.log
+                    # View MongoDB logs<br>
+                    tail -f /var/log/mongodb/mongod.log<br>
+                    journalctl -u mongod -f<br><br>
+                    
+                    # Check MongoDB connection manually<br>
+                    mongosh --eval 'db.adminCommand({ping: 1})'<br><br>
+                    
+                    # View credentials saved by installer<br>
+                    sudo cat /etc/plex/setup
                 </code>
             </div>
             
