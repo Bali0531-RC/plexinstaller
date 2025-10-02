@@ -1,6 +1,6 @@
 #!/bin/bash
 # Unofficial PlexDevelopment Products Installer
-# Version: 2.1 (Root execution)
+# Version: 2.2 Beta (with Plex CLI Management Tool)
 # This script automatically detects your Linux distribution and installs selected Plex products
 
 #----- Color Definitions -----#
@@ -2425,6 +2425,7 @@ ssl_management_menu() {
         echo -e "${CYAN}9) Manage Backups${NC}"
         echo -e "${CYAN}10) SSL Certificate Management${NC}"
         echo -e "${CYAN}11) System Health Check${NC}"
+        echo -e "${GREEN}12) 🚧 Install Plex CLI Management Tool${NC}"
         echo -e "----------------------------------------"
         echo -e "${CYAN}0) Exit${NC}"
 
@@ -2469,6 +2470,19 @@ ssl_management_menu() {
             11) # System Health Check
                 system_health_check
                 ;;
+            12) # Install Plex CLI Management Tool
+                print_header "🚧 BETA FEATURE: Plex CLI Management Tool"
+                echo -e "${YELLOW}Installing the new 'plex' command-line management tool...${NC}"
+                echo -e "${CYAN}This allows you to manage your Plex applications easily:${NC}"
+                echo -e "  ${GREEN}plex list${NC}        - Show installed Plex apps and their status"
+                echo -e "  ${GREEN}plex start app${NC}    - Start a Plex application"
+                echo -e "  ${GREEN}plex stop app${NC}     - Stop a Plex application" 
+                echo -e "  ${GREEN}plex restart app${NC}  - Restart a Plex application"
+                echo -e "  ${GREEN}plex config app${NC}   - Edit application configuration"
+                echo -e "  ${GREEN}plex logs app${NC}     - View application logs"
+                echo ""
+                install_plex_cli_tool
+                ;;
             0) # Exit
                 print_success "Exiting PlexDevelopment Installer. Goodbye!"
                 exit 0
@@ -2484,6 +2498,36 @@ ssl_management_menu() {
         fi
 
     done # End of main menu loop
+    
+    # NEW BETA FEATURE: Ask user if they want to install Plex CLI Management Tool
+    echo ""
+    print_header "🚧 BETA FEATURE: Plex CLI Management Tool"
+    echo -e "${YELLOW}Would you like to install the new 'plex' command-line management tool?${NC}"
+    echo -e "${CYAN}This allows you to manage your Plex applications easily:${NC}"
+    echo -e "  ${GREEN}plex list${NC}        - Show installed Plex apps and their status"
+    echo -e "  ${GREEN}plex start app${NC}    - Start a Plex application"
+    echo -e "  ${GREEN}plex stop app${NC}     - Stop a Plex application" 
+    echo -e "  ${GREEN}plex restart app${NC}  - Restart a Plex application"
+    echo -e "  ${GREEN}plex config app${NC}   - Edit application configuration"
+    echo -e "  ${GREEN}plex logs app${NC}     - View application logs"
+    echo ""
+    
+    while true; do
+        read -p "Install Plex CLI tool? [y/N]: " install_cli </dev/tty
+        case $install_cli in
+            [Yy]|[Yy][Ee][Ss])
+                install_plex_cli_tool
+                break
+                ;;
+            [Nn]|[Nn][Oo]|"")
+                print_step "Skipping Plex CLI tool installation"
+                break
+                ;;
+            *)
+                print_error "Please enter 'y' for yes or 'n' for no"
+                ;;
+        esac
+    done
 }
 
 display_banner() {
@@ -2498,6 +2542,350 @@ display_banner() {
     echo "                                                  |_|                             "
     echo -e "${NC}"
     echo -e "${BOLD}${PURPLE} UNOFFICIAL Installation Script for PlexDevelopment Products${NC}\n"
+}
+
+#----- Plex CLI Management Tool Installation -----#
+install_plex_cli_tool() {
+    print_header "Installing Plex CLI Management Tool"
+    
+    # Create the plex command script
+    cat > /usr/local/bin/plex << 'EOF'
+#!/bin/bash
+# Plex CLI Management Tool
+# Version: 1.0 Beta
+
+PLEX_INSTALL_DIR="/var/www/plex"
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+print_error() {
+    echo -e "${RED}[✗] $1${NC}" >&2
+}
+
+print_success() {
+    echo -e "${GREEN}[✓] $1${NC}" >&2
+}
+
+print_info() {
+    echo -e "${BLUE}[i] $1${NC}" >&2
+}
+
+show_help() {
+    echo -e "${BOLD}${CYAN}Plex CLI Management Tool${NC}"
+    echo ""
+    echo -e "${YELLOW}Usage:${NC}"
+    echo -e "  ${GREEN}plex list${NC}              - Show installed Plex applications and their status"
+    echo -e "  ${GREEN}plex start <app>${NC}       - Start a Plex application"
+    echo -e "  ${GREEN}plex stop <app>${NC}        - Stop a Plex application"
+    echo -e "  ${GREEN}plex restart <app>${NC}     - Restart a Plex application"
+    echo -e "  ${GREEN}plex config <app>${NC}      - Edit application configuration file"
+    echo -e "  ${GREEN}plex logs <app>${NC}        - View application logs"
+    echo -e "  ${GREEN}plex status <app>${NC}      - Show detailed status of an application"
+    echo ""
+    echo -e "${YELLOW}Examples:${NC}"
+    echo -e "  plex list"
+    echo -e "  plex start plextickets"
+    echo -e "  plex restart plexstatus"
+    echo -e "  plex config plexstore"
+    echo -e "  plex logs plextickets"
+}
+
+get_installed_apps() {
+    local apps=()
+    if [ -d "$PLEX_INSTALL_DIR" ]; then
+        for dir in "$PLEX_INSTALL_DIR"/*; do
+            if [ -d "$dir" ] && [ -f "$dir/package.json" ]; then
+                apps+=($(basename "$dir"))
+            fi
+        done
+    fi
+    echo "${apps[@]}"
+}
+
+is_valid_app() {
+    local app="$1"
+    local installed_apps=($(get_installed_apps))
+    for installed_app in "${installed_apps[@]}"; do
+        if [ "$installed_app" = "$app" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+list_apps() {
+    print_info "Scanning for installed Plex applications..."
+    local apps=($(get_installed_apps))
+    
+    if [ ${#apps[@]} -eq 0 ]; then
+        print_error "No Plex applications found in $PLEX_INSTALL_DIR"
+        return 1
+    fi
+    
+    echo ""
+    echo -e "${BOLD}${CYAN}Installed Plex Applications:${NC}"
+    echo ""
+    
+    for app in "${apps[@]}"; do
+        local service_name="plex-$app"
+        local app_dir="$PLEX_INSTALL_DIR/$app"
+        local status=""
+        local color=""
+        
+        # Check systemd service status
+        if systemctl is-active --quiet "$service_name" 2>/dev/null; then
+            status="Running"
+            color="$GREEN"
+        elif systemctl is-enabled --quiet "$service_name" 2>/dev/null; then
+            status="Stopped"
+            color="$YELLOW"
+        else
+            status="Not configured"
+            color="$RED"
+        fi
+        
+        echo -e "${BOLD}$app${NC}"
+        echo -e "  Status: ${color}$status${NC}"
+        echo -e "  Path: $app_dir"
+        
+        # Show config file if exists
+        if [ -f "$app_dir/config.yml" ]; then
+            echo -e "  Config: $app_dir/config.yml"
+        elif [ -f "$app_dir/config.json" ]; then
+            echo -e "  Config: $app_dir/config.json"
+        fi
+        
+        # Show port if running
+        if [ "$status" = "Running" ]; then
+            local port=$(netstat -tlnp 2>/dev/null | grep ":.*LISTEN.*node" | head -1 | awk '{print $4}' | cut -d: -f2)
+            if [ ! -z "$port" ]; then
+                echo -e "  Port: $port"
+            fi
+        fi
+        echo ""
+    done
+}
+
+start_app() {
+    local app="$1"
+    if ! is_valid_app "$app"; then
+        print_error "Application '$app' not found. Use 'plex list' to see installed apps."
+        return 1
+    fi
+    
+    local service_name="plex-$app"
+    print_info "Starting $app..."
+    if systemctl start "$service_name"; then
+        print_success "$app started successfully"
+        sleep 2
+        if systemctl is-active --quiet "$service_name"; then
+            print_success "$app is now running"
+        else
+            print_error "$app failed to start properly"
+            echo "Check logs with: plex logs $app"
+        fi
+    else
+        print_error "Failed to start $app"
+        return 1
+    fi
+}
+
+stop_app() {
+    local app="$1"
+    if ! is_valid_app "$app"; then
+        print_error "Application '$app' not found. Use 'plex list' to see installed apps."
+        return 1
+    fi
+    
+    local service_name="plex-$app"
+    print_info "Stopping $app..."
+    if systemctl stop "$service_name"; then
+        print_success "$app stopped successfully"
+    else
+        print_error "Failed to stop $app"
+        return 1
+    fi
+}
+
+restart_app() {
+    local app="$1"
+    if ! is_valid_app "$app"; then
+        print_error "Application '$app' not found. Use 'plex list' to see installed apps."
+        return 1
+    fi
+    
+    local service_name="plex-$app"
+    print_info "Restarting $app..."
+    if systemctl restart "$service_name"; then
+        print_success "$app restarted successfully"
+        sleep 2
+        if systemctl is-active --quiet "$service_name"; then
+            print_success "$app is now running"
+        else
+            print_error "$app failed to start after restart"
+            echo "Check logs with: plex logs $app"
+        fi
+    else
+        print_error "Failed to restart $app"
+        return 1
+    fi
+}
+
+show_status() {
+    local app="$1"
+    if ! is_valid_app "$app"; then
+        print_error "Application '$app' not found. Use 'plex list' to see installed apps."
+        return 1
+    fi
+    
+    local service_name="plex-$app"
+    echo -e "${BOLD}${CYAN}Status for $app:${NC}"
+    echo ""
+    
+    systemctl status "$service_name" --no-pager -l
+}
+
+view_logs() {
+    local app="$1"
+    if ! is_valid_app "$app"; then
+        print_error "Application '$app' not found. Use 'plex list' to see installed apps."
+        return 1
+    fi
+    
+    local service_name="plex-$app"
+    print_info "Showing logs for $app (Press Ctrl+C to exit)..."
+    echo ""
+    journalctl -u "$service_name" -f --no-pager
+}
+
+edit_config() {
+    local app="$1"
+    if ! is_valid_app "$app"; then
+        print_error "Application '$app' not found. Use 'plex list' to see installed apps."
+        return 1
+    fi
+    
+    local app_dir="$PLEX_INSTALL_DIR/$app"
+    local config_file=""
+    
+    # Look for config files
+    if [ -f "$app_dir/config.yml" ]; then
+        config_file="$app_dir/config.yml"
+    elif [ -f "$app_dir/config.yaml" ]; then
+        config_file="$app_dir/config.yaml"
+    elif [ -f "$app_dir/config.json" ]; then
+        config_file="$app_dir/config.json"
+    else
+        print_error "No configuration file found for $app"
+        echo "Looked for: config.yml, config.yaml, config.json in $app_dir"
+        return 1
+    fi
+    
+    print_info "Opening configuration file: $config_file"
+    print_info "Remember to restart the application after making changes!"
+    echo ""
+    
+    # Use nano as default editor, fall back to vi if nano not available
+    if command -v nano >/dev/null 2>&1; then
+        nano "$config_file"
+    elif command -v vi >/dev/null 2>&1; then
+        vi "$config_file"
+    else
+        print_error "No text editor found (nano or vi required)"
+        return 1
+    fi
+    
+    echo ""
+    echo -e "${YELLOW}Configuration file updated. Restart the application to apply changes:${NC}"
+    echo -e "  ${GREEN}plex restart $app${NC}"
+}
+
+# Main script logic
+case "$1" in
+    "list"|"ls")
+        list_apps
+        ;;
+    "start")
+        if [ -z "$2" ]; then
+            print_error "Usage: plex start <app_name>"
+            echo "Use 'plex list' to see available applications"
+            exit 1
+        fi
+        start_app "$2"
+        ;;
+    "stop")
+        if [ -z "$2" ]; then
+            print_error "Usage: plex stop <app_name>"
+            echo "Use 'plex list' to see available applications"
+            exit 1
+        fi
+        stop_app "$2"
+        ;;
+    "restart")
+        if [ -z "$2" ]; then
+            print_error "Usage: plex restart <app_name>"
+            echo "Use 'plex list' to see available applications"
+            exit 1
+        fi
+        restart_app "$2"
+        ;;
+    "status")
+        if [ -z "$2" ]; then
+            print_error "Usage: plex status <app_name>"
+            echo "Use 'plex list' to see available applications"
+            exit 1
+        fi
+        show_status "$2"
+        ;;
+    "logs")
+        if [ -z "$2" ]; then
+            print_error "Usage: plex logs <app_name>"
+            echo "Use 'plex list' to see available applications"
+            exit 1
+        fi
+        view_logs "$2"
+        ;;
+    "config"|"configure")
+        if [ -z "$2" ]; then
+            print_error "Usage: plex config <app_name>"
+            echo "Use 'plex list' to see available applications"
+            exit 1
+        fi
+        edit_config "$2"
+        ;;
+    "help"|"-h"|"--help"|"")
+        show_help
+        ;;
+    *)
+        print_error "Unknown command: $1"
+        echo ""
+        show_help
+        exit 1
+        ;;
+esac
+EOF
+
+    # Make the script executable
+    chmod +x /usr/local/bin/plex
+    check_command "Making plex CLI tool executable"
+    
+    print_success "Plex CLI Management Tool installed successfully!"
+    echo ""
+    echo -e "${CYAN}You can now use the following commands:${NC}"
+    echo -e "  ${GREEN}plex list${NC}        - Show installed applications"
+    echo -e "  ${GREEN}plex start app${NC}    - Start an application"
+    echo -e "  ${GREEN}plex stop app${NC}     - Stop an application"
+    echo -e "  ${GREEN}plex restart app${NC}  - Restart an application"
+    echo -e "  ${GREEN}plex config app${NC}   - Edit application configuration"
+    echo -e "  ${GREEN}plex logs app${NC}     - View application logs"
+    echo -e "  ${GREEN}plex help${NC}         - Show detailed help"
+    echo ""
+    echo -e "${YELLOW}Example: ${GREEN}plex list${NC} to see your installed Plex applications"
 }
 
 #--- Script Entry Point ---#

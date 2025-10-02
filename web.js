@@ -174,6 +174,21 @@ app.get('/.well-known/discord', (req, res) => {
     res.status(404).send('Well... shit.....');
   }
 });
+
+// --- Security.txt Route ---
+app.get('/.well-known/security.txt', (req, res) => {
+  const filePath = path.join(__dirname, '.well-known/security.txt');
+  const data = readFileSafe(filePath);
+
+  if (data !== null) {
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=86400'); // 24 hour cache
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.send(data);
+  } else {
+    res.status(404).send('security.txt file not found.');
+  }
+});
 app.get('/beta.sh', (req, res) => {
   const filePath = path.join(__dirname, 'beta.sh');
   const data = readFileSafe(filePath); // Uses the safe reader
@@ -305,6 +320,138 @@ app.get('/ads.txt', (req, res) => {
   }
 });
 
+// --- Robots.txt Route ---
+app.get('/robots.txt', (req, res) => {
+  const filePath = path.join(__dirname, 'robots.txt');
+  const data = readFileSafe(filePath);
+
+  if (data !== null) {
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=86400'); // 24 hour cache for robots.txt
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.send(data);
+  } else {
+    res.status(404).send('robots.txt file not found.');
+  }
+});
+
+// --- Sitemap.xml Route ---
+app.get('/sitemap.xml', (req, res) => {
+  const filePath = path.join(__dirname, 'sitemap.xml');
+  const data = readFileSafe(filePath);
+
+  if (data !== null) {
+    res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=86400'); // 24 hour cache for sitemap
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.send(data);
+  } else {
+    res.status(404).send('sitemap.xml file not found.');
+  }
+});
+
+// --- Privacy Policy Route ---
+// --- Legacy AdSense privacy URL -> redirect to main Privacy Policy ---
+app.get('/privacy-policy.html', (req, res) => {
+  res.redirect(301, '/privacy.html');
+});
+
+// --- Security.txt Route ---
+app.get('/.well-known/security.txt', (req, res) => {
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=86400'); // 24 hours
+
+  const securityTxt = `Contact: mailto:support@plexdev.live
+Expires: 2025-12-31T23:59:59.000Z
+Preferred-Languages: en, hu
+Canonical: https://plexdev.live/.well-known/security.txt
+Policy: https://plexdev.live/privacy.html
+Acknowledgments: https://plexdev.live/
+
+# Security contact information for plexdev.live
+# Following RFC 9116 standard for security.txt`;
+
+  res.send(securityTxt);
+});
+
+// --- Favicon Route (simple fallback) ---
+app.get('/favicon.ico', (req, res) => {
+  // Return a 204 (No Content) to prevent 404 errors for favicon requests
+  res.status(204).end();
+});
+
+// --- 404 Handler (should be last route) ---
+app.use((req, res) => {
+  res.status(404);
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  
+  const notFoundHtml = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>404 - Page Not Found | PlexDev.live</title>
+        <style>
+            body { 
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+                background: #0a0a0a; 
+                color: #f0f0f0; 
+                text-align: center; 
+                padding: 50px 20px; 
+                margin: 0; 
+            }
+            .container { 
+                max-width: 600px; 
+                margin: 0 auto; 
+                background: #1a1a1a; 
+                padding: 40px; 
+                border-radius: 12px; 
+                border: 1px solid #333; 
+            }
+            h1 { 
+                color: #00d4ff; 
+                font-size: 4rem; 
+                margin-bottom: 20px; 
+            }
+            p { 
+                color: #b0b0b0; 
+                font-size: 1.1rem; 
+                line-height: 1.6; 
+                margin-bottom: 30px; 
+            }
+            a { 
+                color: #00d4ff; 
+                text-decoration: none; 
+                padding: 12px 24px; 
+                border: 1px solid #00d4ff; 
+                border-radius: 8px; 
+                display: inline-block; 
+                transition: all 0.3s ease; 
+            }
+            a:hover { 
+                background: #00d4ff; 
+                color: #0a0a0a; 
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>404</h1>
+            <p><strong>Page Not Found</strong></p>
+            <p>The requested URL "${req.originalUrl}" was not found on this server.</p>
+            <p>This is a technical documentation site for Linux system administrators.</p>
+            <a href="/">← Return to Homepage</a>
+        </div>
+    </body>
+    </html>
+  `;
+  
+  res.send(notFoundHtml);
+});
 
 // --- Server Start ---
 app.listen(port, () => {
@@ -316,4 +463,5 @@ app.listen(port, () => {
   } else {
     console.warn('Beta installer script (beta.sh) not found. Beta toggle will be disabled on the website.');
   }
+  console.log(`SEO files available: robots.txt, sitemap.xml, ads.txt`);
 });

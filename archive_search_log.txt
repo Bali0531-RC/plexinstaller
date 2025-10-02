@@ -1,0 +1,6 @@
+Archive search started: Tue Sep 16 11:22:59 PM CEST 2025
+Searching for product: plextickets
+Searching in: /home /root /tmp /var/tmp .
+Found unobfuscated match: /home/bali0531/Downloads/PlexTickets-Unobf.zip
+Found unobfuscated match: /home/bali0531/Downloads/PlexTickets-Unobf (2).zip
+Found unobfuscated match: /home/bali0531/Downloads/PlexTickets-Unobf (1).zip

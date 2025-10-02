@@ -33,3 +33,20 @@ yarn-error.log*
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Editor directories and files
+/.idea
+/.vscode
+
+# Temporary files
+*.swp
+
+# Build output
+/dist
+/build
+/outputs
+
+# Misc
+ads.txt
+archive_search_log.txt
+/.well-known/

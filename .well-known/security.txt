@@ -1,0 +1,10 @@
+Contact: mailto:contact@bali0531.hu
+Contact: https://plexdev.live
+Canonical: https://plexdev.live/.well-known/security.txt
+Expires: 2026-12-31T23:59:59.000Z
+Preferred-Languages: en, hu
+Policy: https://plexdev.live/privacy.html
+
+# This is a technical documentation website
+# No user data is collected or stored
+# Only installation scripts are served
