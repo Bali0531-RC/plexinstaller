@@ -1,6 +1,6 @@
 #!/bin/bash
 # Unofficial PlexDevelopment Products Installer
-# Version: 2.1 (Root execution)
+# Version: 2.3 (Root execution)
 # This script automatically detects your Linux distribution and installs selected Plex products
 
 #----- Color Definitions -----#
@@ -376,6 +376,239 @@ check_domain_dns() {
     # Should not be reached if logic is correct, but as a fallback
     print_error "DNS check failed after retries."
     return 1
+}
+
+#----- MongoDB Setup Functions -----#
+PLEX_SETUP_FILE="/etc/plex/setup"
+
+# Check if MongoDB credentials already exist for a specific product
+get_mongodb_credentials() {
+    local product=$1
+    local db_name=""
+    local username=""
+    local password=""
+    
+    if [ -f "$PLEX_SETUP_FILE" ]; then
+        # Try to find existing credentials for this product
+        local entry=$(grep "^MONGODB_${product}=" "$PLEX_SETUP_FILE" 2>/dev/null)
+        if [ -n "$entry" ]; then
+            # Parse: MONGODB_productname=username:password:dbname
+            username=$(echo "$entry" | cut -d'=' -f2 | cut -d':' -f1)
+            password=$(echo "$entry" | cut -d'=' -f2 | cut -d':' -f2)
+            db_name=$(echo "$entry" | cut -d'=' -f2 | cut -d':' -f3)
+            echo "$username:$password:$db_name"
+            return 0
+        fi
+    fi
+    return 1
+}
+
+# Save MongoDB credentials to setup file
+save_mongodb_credentials() {
+    local product=$1
+    local username=$2
+    local password=$3
+    local db_name=$4
+    
+    # Create directory if it doesn't exist
+    sudo mkdir -p "$(dirname "$PLEX_SETUP_FILE")"
+    
+    # Remove old entry if exists
+    if [ -f "$PLEX_SETUP_FILE" ]; then
+        sudo sed -i "/^MONGODB_${product}=/d" "$PLEX_SETUP_FILE"
+    fi
+    
+    # Add new entry
+    echo "MONGODB_${product}=${username}:${password}:${db_name}" | sudo tee -a "$PLEX_SETUP_FILE" > /dev/null
+    sudo chmod 600 "$PLEX_SETUP_FILE"
+    
+    print_success "MongoDB credentials saved to $PLEX_SETUP_FILE"
+}
+
+# Install MongoDB Server
+install_mongodb() {
+    print_header "MongoDB Server Installation"
+    
+    # Check if MongoDB is already installed
+    if command -v mongod &> /dev/null; then
+        print_success "MongoDB is already installed."
+        if systemctl is-active --quiet mongod; then
+            print_success "MongoDB service is running."
+            return 0
+        else
+            print_step "Starting MongoDB service..."
+            sudo systemctl start mongod
+            sudo systemctl enable mongod
+            return 0
+        fi
+    fi
+    
+    print_step "Installing MongoDB Server..."
+    
+    case $PKG_MANAGER in
+        apt)
+            # Import MongoDB public GPG key
+            print_step "Adding MongoDB GPG key..."
+            curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | sudo gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg
+            
+            # Add MongoDB repository
+            print_step "Adding MongoDB repository..."
+            echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu $(lsb_release -cs)/mongodb-org/7.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
+            
+            # Update and install
+            sudo apt update -y
+            sudo -E apt install -y mongodb-org
+            ;;
+        dnf|yum)
+            # Create MongoDB repository file
+            print_step "Creating MongoDB repository..."
+            cat <<EOF | sudo tee /etc/yum.repos.d/mongodb-org-7.0.repo
+[mongodb-org-7.0]
+name=MongoDB Repository
+baseurl=https://repo.mongodb.org/yum/redhat/\$releasever/mongodb-org/7.0/x86_64/
+gpgcheck=1
+enabled=1
+gpgkey=https://www.mongodb.org/static/pgp/server-7.0.asc
+EOF
+            
+            sudo $PKG_MANAGER install -y mongodb-org
+            ;;
+        pacman)
+            sudo pacman -S --noconfirm --needed mongodb-bin mongodb-tools
+            ;;
+        zypper)
+            print_warning "MongoDB installation on openSUSE requires manual setup or community repositories."
+            print_step "Please install MongoDB manually and then continue."
+            read -p "Press Enter after installing MongoDB manually..." </dev/tty
+            return 0
+            ;;
+        *)
+            print_error "Automatic MongoDB installation not supported for $PKG_MANAGER"
+            print_step "Please install MongoDB manually for your distribution."
+            read -p "Press Enter after installing MongoDB manually..." </dev/tty
+            return 0
+            ;;
+    esac
+    
+    # Start and enable MongoDB
+    print_step "Starting MongoDB service..."
+    sudo systemctl start mongod
+    check_command "Starting MongoDB service"
+    
+    sudo systemctl enable mongod
+    check_command "Enabling MongoDB service"
+    
+    print_success "MongoDB Server installed and started successfully."
+    
+    # Wait a moment for MongoDB to fully start
+    sleep 3
+    
+    return 0
+}
+
+# Setup MongoDB user and database for a product
+setup_mongodb_for_product() {
+    local product=$1
+    local force_new=${2:-false}
+    
+    # Check if we already have credentials
+    if [ "$force_new" = false ]; then
+        local existing_creds=$(get_mongodb_credentials "$product")
+        if [ $? -eq 0 ]; then
+            print_step "Found existing MongoDB credentials for $product"
+            echo "$existing_creds"
+            return 0
+        fi
+    fi
+    
+    # Generate random suffix for database name (5 random alphanumeric characters)
+    local random_suffix=$(cat /dev/urandom | tr -dc 'a-z0-9' | fold -w 5 | head -n 1)
+    local db_name="${product}${random_suffix}"
+    
+    # Generate secure random password (16 characters)
+    local password=$(cat /dev/urandom | tr -dc 'A-Za-z0-9' | fold -w 16 | head -n 1)
+    local username="${product}_user"
+    
+    print_step "Creating MongoDB database: $db_name"
+    print_step "Creating MongoDB user: $username"
+    
+    # Create user and database using mongosh or mongo
+    local mongo_cmd="mongosh"
+    if ! command -v mongosh &> /dev/null; then
+        mongo_cmd="mongo"
+    fi
+    
+    # Create the user with readWrite permissions on the specific database
+    $mongo_cmd --quiet <<EOF
+use $db_name
+db.createUser({
+  user: "$username",
+  pwd: "$password",
+  roles: [
+    { role: "readWrite", db: "$db_name" }
+  ]
+})
+EOF
+    
+    if [ $? -eq 0 ]; then
+        print_success "MongoDB user and database created successfully."
+        
+        # Save credentials
+        save_mongodb_credentials "$product" "$username" "$password" "$db_name"
+        
+        # Return credentials in format: username:password:dbname
+        echo "$username:$password:$db_name"
+        return 0
+    else
+        print_error "Failed to create MongoDB user and database."
+        return 1
+    fi
+}
+
+# Update config.yml with MongoDB connection string
+update_config_mongodb() {
+    local config_file=$1
+    local username=$2
+    local password=$3
+    local db_name=$4
+    local host=${5:-localhost}
+    local port=${6:-27017}
+    
+    # Build connection string
+    local connection_string="mongodb://${username}:${password}@${host}:${port}/${db_name}?authSource=${db_name}"
+    
+    print_step "Updating MongoDB configuration in $config_file"
+    
+    # Check if file exists
+    if [ ! -f "$config_file" ]; then
+        print_error "Config file not found: $config_file"
+        return 1
+    fi
+    
+    # Update MongoURI field (handle different possible formats)
+    if grep -q "MongoURI:" "$config_file"; then
+        # Replace existing MongoURI line
+        sudo sed -i "s|MongoURI:.*|MongoURI: \"${connection_string}\"|g" "$config_file"
+        print_success "Updated MongoURI in config file."
+    elif grep -q "mongoURI:" "$config_file"; then
+        # Alternative naming convention
+        sudo sed -i "s|mongoURI:.*|mongoURI: \"${connection_string}\"|g" "$config_file"
+        print_success "Updated mongoURI in config file."
+    elif grep -q "MONGO_URI:" "$config_file"; then
+        # Environment variable style
+        sudo sed -i "s|MONGO_URI:.*|MONGO_URI: \"${connection_string}\"|g" "$config_file"
+        print_success "Updated MONGO_URI in config file."
+    elif grep -q "CONNECTION_URL" "$config_file"; then
+        # Generic placeholder
+        sudo sed -i "s|CONNECTION_URL|${connection_string}|g" "$config_file"
+        print_success "Replaced CONNECTION_URL placeholder with MongoDB URI."
+    else
+        print_warning "Could not find MongoURI field in config file."
+        print_step "Please manually add the following connection string to your config:"
+        echo "  MongoURI: \"${connection_string}\""
+    fi
+    
+    return 0
 }
 
 
@@ -859,13 +1092,20 @@ EOF
 
 check_existing_installation() {
     local product="$1"
-    local install_path="$INSTALL_DIR/$product"
+    local instance_name="$2"  # Optional instance name for multi-instance support
+    
+    # If no instance name provided, use default (product name)
+    if [ -z "$instance_name" ]; then
+        instance_name="$product"
+    fi
+    
+    local install_path="$INSTALL_DIR/$instance_name"
     if [ -d "$install_path" ]; then
-        print_warning "An existing installation of $product was found at $install_path"
+        print_warning "An existing installation of $product (instance: $instance_name) was found at $install_path"
         read -p "Do you want to REMOVE the existing installation and proceed? (y/n): " purge_choice </dev/tty
         if [[ "$purge_choice" == "y" || "$purge_choice" == "Y" ]]; then
             print_step "Stopping service if running..."
-            sudo systemctl stop "plex-$product" &>/dev/null # Ignore errors if not running
+            sudo systemctl stop "plex-$instance_name" &>/dev/null # Ignore errors if not running
             print_step "Removing existing installation directory $install_path..."
             sudo rm -rf "$install_path"
             check_command "Removing existing installation directory"
@@ -1315,15 +1555,46 @@ install_product() {
     local has_dashboard=${3:-false} # Optional: true for PlexTickets dashboard
 
     print_header "Installing $product"
+    
+    # Multi-Instance Support: Ask if this is a new instance
+    local instance_name="$product"
+    local is_multi_instance=false
+    
+    # Check if there's already an installation of this product
+    if [ -d "$INSTALL_DIR/$product" ]; then
+        print_step "Found existing installation of $product"
+        read -p "Do you want to install another instance (multi-instance)? (y/n): " multi_choice </dev/tty
+        if [[ "$multi_choice" == "y" || "$multi_choice" == "Y" ]]; then
+            is_multi_instance=true
+            # Generate a default instance name with random suffix
+            local random_suffix=$(cat /dev/urandom | tr -dc 'a-z0-9' | fold -w 4 | head -n 1)
+            local suggested_name="${product}-${random_suffix}"
+            
+            read -p "Enter a unique name for this instance (default: $suggested_name): " custom_instance </dev/tty
+            if [ -n "$custom_instance" ]; then
+                instance_name="$custom_instance"
+            else
+                instance_name="$suggested_name"
+            fi
+            
+            # Validate instance name (alphanumeric, dash, underscore only)
+            if [[ ! "$instance_name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+                print_error "Invalid instance name. Use only letters, numbers, dash, and underscore."
+                exit 1
+            fi
+            
+            print_success "Installing $product as instance: $instance_name"
+        fi
+    fi
 
     # 1. Check if already installed (and offer removal)
-    check_existing_installation "$product"
+    check_existing_installation "$product" "$instance_name"
 
     # 2. Find the archive file
     find_archive_files "$product" # Sets global ARCHIVE_PATH
 
     # 3. Extract the product
-    local base_path="$INSTALL_DIR/$product"
+    local base_path="$INSTALL_DIR/$instance_name"  # Use instance_name instead of product
     local install_path # This will be set by the extract_product function
 
     # Call extract_product and capture its standard output (should ONLY be the path now)
@@ -1372,6 +1643,45 @@ install_product() {
     # 4.5. Create 502 error page for all products (useful for nginx)
     create_502_error_page "$install_path" "$product"
 
+    # 4.6. MongoDB Setup
+    print_header "Database Configuration"
+    read -p "Do you want to install and configure MongoDB locally for $instance_name? (y/n): " setup_mongo </dev/tty
+    
+    if [[ $setup_mongo == "y" || $setup_mongo == "Y" ]]; then
+        # Install MongoDB if not already installed
+        if ! install_mongodb; then
+            print_error "MongoDB installation failed. Continuing without database setup."
+        else
+            # Setup MongoDB user and database for this instance (use instance_name for unique DB)
+            local mongo_creds=$(setup_mongodb_for_product "$instance_name")
+            if [ $? -eq 0 ] && [ -n "$mongo_creds" ]; then
+                # Parse credentials
+                local mongo_user=$(echo "$mongo_creds" | cut -d':' -f1)
+                local mongo_pass=$(echo "$mongo_creds" | cut -d':' -f2)
+                local mongo_db=$(echo "$mongo_creds" | cut -d':' -f3)
+                
+                print_success "MongoDB configured for $instance_name"
+                print_step "Database: $mongo_db"
+                print_step "Username: $mongo_user"
+                
+                # Find and update config file
+                local config_file_path
+                config_file_path=$(find "$install_path" -maxdepth 1 \( -name 'config.yml' -o -name 'config.yaml' \) -print -quit)
+                
+                if [ -n "$config_file_path" ] && [ -f "$config_file_path" ]; then
+                    update_config_mongodb "$config_file_path" "$mongo_user" "$mongo_pass" "$mongo_db"
+                else
+                    print_warning "Config file not found. Please manually configure MongoDB connection:"
+                    echo "  mongodb://${mongo_user}:${mongo_pass}@localhost:27017/${mongo_db}?authSource=${mongo_db}"
+                fi
+            else
+                print_error "Failed to setup MongoDB for $instance_name. You'll need to configure it manually."
+            fi
+        fi
+    else
+        print_step "Skipping MongoDB installation. You can configure your own database later."
+    fi
+
     # --- Conditional Web Setup ---
     # Only run web setup if it's NOT plextickets OR if it IS plextickets WITH the dashboard
     local port domain email skip_dns_check=false
@@ -1399,7 +1709,7 @@ install_product() {
         fi
 
         # 6. Open Firewall Port
-        open_port "$port" "$product"
+        open_port "$port" "$instance_name"
 
         # 7. Check DNS
         if ! check_domain_dns "$domain"; then
@@ -1416,7 +1726,7 @@ install_product() {
 
         # 8. Setup Nginx Reverse Proxy
         # Pass install_path for PlexStore 502 page root
-        setup_nginx "$domain" "$port" "$product" "$install_path"
+        setup_nginx "$domain" "$port" "$instance_name" "$install_path"
 
         # 9. Setup SSL Certificate
         setup_ssl "$domain" "$email" # Certbot handles DNS check internally too
@@ -1462,16 +1772,16 @@ install_product() {
 
 
     # 12. Create Systemd Service (Always create the service)
-    read -p "Set up '$product' to auto-start on boot using systemd? (y/n): " setup_startup </dev/tty
+    read -p "Set up '$instance_name' to auto-start on boot using systemd? (y/n): " setup_startup </dev/tty
     if [[ $setup_startup == "y" || $setup_startup == "Y" ]]; then
-        create_systemd_service "$product" "$install_path"
+        create_systemd_service "$instance_name" "$install_path"
     else
         print_warning "Auto-start not configured. You will need to start it manually."
         print_step "To start manually (example): cd $install_path && sudo $NODE_EXECUTABLE ."
     fi
 
     # 13. Post-installation Steps
-    print_success "$product installed successfully!"
+    print_success "$instance_name installed successfully!"
     local config_file_path
     config_file_path=$(find "$install_path" -maxdepth 1 -name 'config.yml' -o -name 'config.yaml' -o -name 'config.json' | head -n 1)
 
@@ -1481,12 +1791,21 @@ install_product() {
         if [[ $edit_config == "y" || $edit_config == "Y" ]]; then
             check_command_exists "nano" # Or prompt for preferred editor? Nano is common.
             sudo nano "$config_file_path"
-            print_step "If you made changes, restart the service: sudo systemctl restart plex-$product"
+            print_step "If you made changes, restart the service: sudo systemctl restart plex-$instance_name"
         fi
     else
         print_warning "Could not find a standard configuration file (config.yml, .yaml, .json) in $install_path."
         print_warning "Please configure the product manually according to its documentation."
     fi
+
+    # Adjust final message based on whether web setup was done
+    if [ "$needs_web_setup" = true ]; then
+        echo -e "\n${GREEN}Access $instance_name at: https://$domain${NC}"
+    else
+        echo -e "\n${GREEN}$instance_name (bot only) installed. Configure it via its config file.${NC}"
+    fi
+    echo -e "${CYAN}Manage the service with: sudo systemctl [start|stop|restart|status] plex-$instance_name${NC}"
+    echo -e "${CYAN}View logs with: sudo journalctl -u plex-$instance_name -f${NC}"
 
     # Adjust final message based on whether web setup was done
     if [ "$needs_web_setup" = true ]; then

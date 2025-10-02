@@ -573,6 +573,17 @@
         <div class="warning">
             <strong>Note:</strong> If you're using the beta installer, you also get access to PlexLinks (link management) and PlexPaste (pastebin service) - these are the newest additions and follow the same setup process as other products!
         </div>
+        
+        <div class="info">
+            <strong>🆕 Beta Feature - Multi-Instance Support:</strong> The beta installer (v2.3+) allows you to install multiple instances of the same product! For example, you can run 2 separate PlexTickets bots with different configurations. Each instance gets its own:
+            <ul>
+                <li>Unique installation directory (/var/www/plex/INSTANCE_NAME)</li>
+                <li>Separate systemd service (plex-INSTANCE_NAME)</li>
+                <li>Individual MongoDB database and credentials</li>
+                <li>Independent configuration files</li>
+            </ul>
+            When you try to install a product that already exists, the installer will ask if you want to create a new instance and prompt you for a unique instance name.
+        </div>
     </div>
 
     <h2>Okay, It Finished. Now What?</h2>
@@ -731,6 +742,32 @@
             <div class="flow-step">
                 <div class="flow-step-header">
                     <div class="flow-step-number">6</div>
+                    <h4 class="flow-step-title">MongoDB Database Setup (Beta Only - Optional)</h4>
+                    <span class="flow-time">~30-120s</span>
+                </div>
+                <div class="flow-step-description">
+                    Optionally installs and configures MongoDB database for the product.
+                </div>
+                <div class="flow-step-details">
+                    <ul>
+                        <li><strong>Interactive Prompt:</strong> Asks if local MongoDB installation is desired</li>
+                        <li><strong>MongoDB Installation:</strong> Installs MongoDB 7.0 from official repositories</li>
+                        <li><strong>Service Configuration:</strong> Starts and enables MongoDB systemd service</li>
+                        <li><strong>User Creation:</strong> Creates dedicated MongoDB user with readWrite permissions</li>
+                        <li><strong>Database Generation:</strong> Creates product-specific database with random suffix</li>
+                        <li><strong>Credential Storage:</strong> Saves credentials to /etc/plex/setup for reuse</li>
+                        <li><strong>Config Auto-Update:</strong> Automatically updates config.yml with connection string</li>
+                        <li><strong>Connection String:</strong> Format: mongodb://user:pass@localhost:27017/dbname?authSource=dbname</li>
+                    </ul>
+                    <div class="warning">
+                        <strong>Note:</strong> This feature is only available in the Beta installer (v2.3+). The stable installer does not include MongoDB automation.
+                    </div>
+                </div>
+            </div>
+
+            <div class="flow-step">
+                <div class="flow-step-header">
+                    <div class="flow-step-number">7</div>
                     <h4 class="flow-step-title">Network Configuration</h4>
                     <span class="flow-time">~5-15s</span>
                 </div>
@@ -751,7 +788,7 @@
 
             <div class="flow-step">
                 <div class="flow-step-header">
-                    <div class="flow-step-number">7</div>
+                    <div class="flow-step-number">8</div>
                     <h4 class="flow-step-title">Nginx Reverse Proxy Setup</h4>
                     <span class="flow-time">~10-20s</span>
                 </div>
@@ -773,7 +810,7 @@
 
             <div class="flow-step">
                 <div class="flow-step-header">
-                    <div class="flow-step-number">8</div>
+                    <div class="flow-step-number">9</div>
                     <h4 class="flow-step-title">SSL Certificate & HTTPS Setup</h4>
                     <span class="flow-time">~30-90s</span>
                 </div>
@@ -796,7 +833,7 @@
 
             <div class="flow-step">
                 <div class="flow-step-header">
-                    <div class="flow-step-number">9</div>
+                    <div class="flow-step-number">10</div>
                     <h4 class="flow-step-title">SSL Auto-Renewal Configuration</h4>
                     <span class="flow-time">~10-25s</span>
                 </div>
@@ -817,7 +854,7 @@
 
             <div class="flow-step">
                 <div class="flow-step-header">
-                    <div class="flow-step-number">10</div>
+                    <div class="flow-step-number">11</div>
                     <h4 class="flow-step-title">Systemd Service Creation</h4>
                     <span class="flow-time">~5-15s</span>
                 </div>
@@ -839,7 +876,7 @@
 
             <div class="flow-step">
                 <div class="flow-step-header">
-                    <div class="flow-step-number">11</div>
+                    <div class="flow-step-number">12</div>
                     <h4 class="flow-step-title">Configuration & Post-Install</h4>
                     <span class="flow-time">~5-30s</span>
                 </div>

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Unofficial PlexDevelopment Products Installer
-# Version: 2.1 (Root execution)
+# Version: 2.2 (with Plex CLI Management Tool)
 # This script automatically detects your Linux distribution and installs selected Plex products
 
 #----- Color Definitions -----#
@@ -114,18 +114,28 @@ install_dependencies() {
     print_step "Updating package lists..."
     case $PKG_MANAGER in
         apt)
+            # Set environment variables for non-interactive apt operations
+            export DEBIAN_FRONTEND=noninteractive
+            export NEEDRESTART_MODE=a
+
             sudo apt update -y || print_warning "apt update failed, proceeding anyway..."
             print_step "Installing packages for Debian/Ubuntu..."
-            sudo apt install -y curl wget git unzip nginx certbot python3-certbot-nginx \
+            # Use env to pass variables to sudo or ensure they are exported
+            sudo -E apt install -y curl wget git unzip nginx certbot python3-certbot-nginx \
                 dnsutils net-tools nano bind9-utils whois iputils-ping zip tar \
                 software-properties-common apt-transport-https ca-certificates gnupg sudo coreutils
             check_command "apt install"
             # Install Node.js 20+
             print_step "Installing Node.js 20+..."
+            # Ensure sudo -E is used if the script relies on exported variables
             curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
             check_command "Nodesource setup script"
-            sudo apt install -y nodejs
+            sudo -E apt install -y nodejs
             check_command "Node.js installation"
+
+            # Unset or revert if needed, though usually fine for script scope
+            # unset DEBIAN_FRONTEND
+            # unset NEEDRESTART_MODE
             ;;
         dnf|yum)
             sudo $PKG_MANAGER update -y || print_warning "$PKG_MANAGER update failed, proceeding anyway..."
@@ -369,6 +379,129 @@ check_domain_dns() {
 }
 
 
+#----- 502 Error Page Creation -----#
+create_502_error_page() {
+    local install_path=$1
+    local product=$2
+    
+    print_step "Creating custom 502 error page for $product..."
+    
+    local error_page_content=$(cat <<'EOF'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Service Temporarily Unavailable</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            text-align: center;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 3rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            max-width: 500px;
+            margin: 2rem;
+        }
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            font-weight: 300;
+        }
+        h2 {
+            font-size: 1.5rem;
+            margin-bottom: 1.5rem;
+            opacity: 0.9;
+        }
+        p {
+            font-size: 1.1rem;
+            line-height: 1.6;
+            margin-bottom: 1.5rem;
+            opacity: 0.8;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            background: #ff6b6b;
+            border-radius: 50%;
+            margin-right: 8px;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        .retry-btn {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            margin-top: 1rem;
+        }
+        .retry-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+        .footer {
+            margin-top: 2rem;
+            font-size: 0.9rem;
+            opacity: 0.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>502</h1>
+        <h2><span class="status-indicator"></span>Service Temporarily Unavailable</h2>
+        <p>The PlexDevelopment service is currently starting up or experiencing temporary issues. Please wait a moment and try again.</p>
+        <p>If this problem persists, please contact the system administrator.</p>
+        <a href="javascript:window.location.reload()" class="retry-btn">🔄 Retry</a>
+        <div class="footer">
+            <p>PlexDevelopment Products</p>
+        </div>
+    </div>
+    
+    <script>
+        // Auto-refresh every 30 seconds
+        setTimeout(function() {
+            window.location.reload();
+        }, 30000);
+    </script>
+</body>
+</html>
+EOF
+)
+    
+    # Create the 502.html file
+    echo "$error_page_content" | sudo tee "$install_path/502.html" > /dev/null
+    sudo chown root:root "$install_path/502.html"
+    sudo chmod 644 "$install_path/502.html"
+    check_command "Creating 502 error page"
+    
+    print_success "Custom 502 error page created at $install_path/502.html"
+}
+
 #----- Nginx & SSL -----#
 setup_nginx() {
     local domain=$1
@@ -503,29 +636,141 @@ setup_ssl() {
         print_step "Attempting to renew/reinstall SSL certificate..."
     fi
     
+    # Backup current nginx config before SSL setup
+    local nginx_conf_file="$NGINX_AVAILABLE/$domain.conf"
+    local nginx_backup_file="${nginx_conf_file}.pre-ssl-backup"
+    if [ -f "$nginx_conf_file" ]; then
+        sudo cp "$nginx_conf_file" "$nginx_backup_file"
+        print_step "Nginx config backed up to $nginx_backup_file"
+    fi
+    
     # Now use --nginx flag to auto-configure Nginx for SSL
     # This will modify the Nginx config to add SSL and redirection
     sudo certbot --nginx -d "$domain" --non-interactive --agree-tos --email "$email" --redirect --keep-until-expiring
 
-    if [ $? -eq 0 ]; then
+    local certbot_exit_code=$?
+    if [ $certbot_exit_code -eq 0 ]; then
         print_success "SSL certificate obtained/updated and Nginx configured successfully for $domain."
         print_step "Verifying Nginx configuration after SSL setup..."
         if sudo nginx -t; then
             print_step "Reloading Nginx to apply SSL changes..."
             sudo systemctl reload nginx
             check_command "Nginx reload after SSL setup"
+            # Remove backup since SSL setup was successful
+            sudo rm -f "$nginx_backup_file"
         else
             print_error "Nginx configuration test failed after SSL setup!"
             print_warning "Certbot may have created an invalid Nginx configuration."
-            print_warning "You may need to manually fix the Nginx config at $NGINX_AVAILABLE/$domain.conf"
+            print_error "Rolling back to original Nginx configuration..."
+            # Restore backup
+            if [ -f "$nginx_backup_file" ]; then
+                sudo cp "$nginx_backup_file" "$nginx_conf_file"
+                sudo rm -f "$nginx_backup_file"
+                print_step "Original Nginx config restored."
+                sudo nginx -t && sudo systemctl reload nginx
+            fi
+            print_error "SSL setup failed and changes have been rolled back."
+            print_error "Installation cannot continue. Please check DNS configuration and try again."
+            exit 1
         fi
     else
-        print_error "Certbot failed to obtain/update SSL certificate for $domain."
-        print_warning "Check Certbot logs (/var/log/letsencrypt/letsencrypt.log) for details."
-        print_warning "The application will work over HTTP if Nginx is running, but HTTPS will fail."
-        print_warning "Try running: sudo certbot --nginx -d \"$domain\" manually to debug."
-        # Don't exit here, allow installation to finish but warn user
+        print_error "Certbot failed to obtain/update SSL certificate for $domain (Exit Code: $certbot_exit_code)."
+        
+        # Restore original nginx config if backup exists
+        if [ -f "$nginx_backup_file" ]; then
+            print_step "Restoring original Nginx configuration..."
+            sudo cp "$nginx_backup_file" "$nginx_conf_file"
+            sudo rm -f "$nginx_backup_file"
+            sudo nginx -t && sudo systemctl reload nginx
+            print_step "Original Nginx config restored."
+        fi
+        
+        # Clean up any partial certificates or configurations created by certbot
+        print_step "Cleaning up failed SSL certificate attempts..."
+        sudo certbot delete --cert-name "$domain" --non-interactive 2>/dev/null || true
+        
+        # Remove any SSL-related files that might have been created
+        sudo rm -f "/etc/letsencrypt/renewal/$domain.conf" 2>/dev/null || true
+        
+        print_error "SSL Certificate Setup Failed!"
+        print_error "=========================================="
+        print_error "Possible causes:"
+        print_error "1. Domain '$domain' does not point to this server's IP address"
+        print_error "2. Port 80/443 is not accessible from the internet"
+        print_error "3. Firewall blocking connections"
+        print_error "4. DNS propagation not complete"
+        print_error ""
+        print_error "Please verify:"
+        print_error "- Domain DNS A record points to this server"
+        print_error "- Ports 80 and 443 are open in firewall"
+        print_error "- Domain is accessible via HTTP first"
+        print_error ""
+        print_error "Check Certbot logs: /var/log/letsencrypt/letsencrypt.log"
+        print_error "=========================================="
+        print_error "Installation aborted due to SSL setup failure."
+        exit 1
     fi
+}
+
+#----- SSL Certificate Auto-Renewal Setup -----#
+setup_ssl_autorenewal() {
+    print_header "Setting up SSL Certificate Auto-Renewal"
+    
+    print_step "Configuring automatic SSL certificate renewal with crontab..."
+    
+    # Check if certbot renewal cron job already exists
+    if sudo crontab -l 2>/dev/null | grep -q "certbot renew"; then
+        print_warning "Certbot renewal cron job already exists."
+        read -p "Do you want to update/recreate the cron job? (y/n): " update_cron </dev/tty
+        if [[ $update_cron != "y" && $update_cron != "Y" ]]; then
+            print_step "Skipping cron job setup."
+            return 0
+        fi
+    fi
+    
+    # Create a backup of current crontab
+    sudo crontab -l > /tmp/crontab.backup 2>/dev/null || echo "# New crontab" > /tmp/crontab.backup
+    
+    # Remove any existing certbot entries
+    grep -v "certbot renew" /tmp/crontab.backup > /tmp/crontab.new || echo "# New crontab" > /tmp/crontab.new
+    
+    # Add new certbot renewal entry - run twice daily at random minutes to avoid load spikes
+    local minute1=$((RANDOM % 60))
+    local minute2=$((RANDOM % 60))
+    
+    cat >> /tmp/crontab.new << EOF
+
+# SSL Certificate Auto-Renewal (PlexDevelopment Installer)
+# Check for renewal twice daily and reload nginx if certificates are renewed
+$minute1 2 * * * /usr/bin/certbot renew --quiet --deploy-hook "systemctl reload nginx" >> /var/log/certbot-renewal.log 2>&1
+$minute2 14 * * * /usr/bin/certbot renew --quiet --deploy-hook "systemctl reload nginx" >> /var/log/certbot-renewal.log 2>&1
+EOF
+    
+    # Install the new crontab
+    if sudo crontab /tmp/crontab.new; then
+        print_success "SSL certificate auto-renewal configured successfully!"
+        print_step "Certificates will be checked for renewal twice daily (at 02:${minute1} and 14:${minute2})"
+        print_step "Renewal logs will be saved to: /var/log/certbot-renewal.log"
+        
+        # Create the log file with proper permissions
+        sudo touch /var/log/certbot-renewal.log
+        sudo chmod 644 /var/log/certbot-renewal.log
+        
+        # Test the renewal process (dry run)
+        print_step "Testing certificate renewal process (dry run)..."
+        if sudo certbot renew --dry-run --quiet; then
+            print_success "Certificate renewal test successful!"
+        else
+            print_warning "Certificate renewal test failed. Check logs: sudo certbot renew --dry-run"
+        fi
+    else
+        print_error "Failed to install crontab for SSL auto-renewal."
+        print_step "Restoring original crontab..."
+        sudo crontab /tmp/crontab.backup 2>/dev/null || true
+    fi
+    
+    # Cleanup temporary files
+    rm -f /tmp/crontab.backup /tmp/crontab.new
 }
 
 #----- Service Management (Systemd) -----#
@@ -932,12 +1177,29 @@ extract_product() {
     if [ "$found_product_dir" = false ]; then
          print_step "No single/matching subdir found, or files exist in base. Searching for package.json..." >&2
          local pkg_json_path
-         # Search deeper (maxdepth 3) in case it's nested one level more
-         pkg_json_path=$(sudo find "$temp_extract_dir" -maxdepth 3 -name 'package.json' -print -quit 2>/dev/null)
+         # Search deeper (maxdepth 5) in case it's nested or repackaged
+         pkg_json_path=$(sudo find "$temp_extract_dir" -maxdepth 5 -name 'package.json' -print -quit 2>/dev/null)
          if [ -n "$pkg_json_path" ]; then
              source_path=$(dirname "$pkg_json_path")
              print_step "Found package.json in '$source_path'. Using this directory's contents." >&2
              found_product_dir=true # Consider it found
+         else
+             # Final attempt: look for common Node.js patterns deeper in the structure
+             print_step "No package.json found. Searching for common Node.js file patterns..." >&2
+             local node_indicator_path
+             # Look for index.js, app.js, server.js, main.js, or node_modules folder
+             node_indicator_path=$(sudo find "$temp_extract_dir" -maxdepth 5 \( -name 'index.js' -o -name 'utils.js' -o -name 'config.yml' -o -name 'main.js' \) -print -quit 2>/dev/null)
+             if [ -n "$node_indicator_path" ]; then
+                 if [ -d "$node_indicator_path" ]; then
+                     # Found node_modules directory, use its parent
+                     source_path=$(dirname "$node_indicator_path")
+                 else
+                     # Found a JS file, use its directory
+                     source_path=$(dirname "$node_indicator_path")
+                 fi
+                 print_step "Found Node.js indicator in '$source_path'. Using this directory's contents." >&2
+                 found_product_dir=true
+             fi
          fi
     fi
 
@@ -1107,6 +1369,9 @@ install_product() {
         exit 1
     fi
 
+    # 4.5. Create 502 error page for all products (useful for nginx)
+    create_502_error_page "$install_path" "$product"
+
     # --- Conditional Web Setup ---
     # Only run web setup if it's NOT plextickets OR if it IS plextickets WITH the dashboard
     local port domain email skip_dns_check=false
@@ -1155,9 +1420,18 @@ install_product() {
 
         # 9. Setup SSL Certificate
         setup_ssl "$domain" "$email" # Certbot handles DNS check internally too
+        
+        # 10. Setup SSL Auto-Renewal (only after successful SSL setup)
+        read -p "Do you want to set up automatic SSL certificate renewal with crontab? (recommended: y/n): " setup_auto_renewal </dev/tty
+        if [[ $setup_auto_renewal == "y" || $setup_auto_renewal == "Y" ]]; then
+            setup_ssl_autorenewal
+        else
+            print_warning "SSL auto-renewal not configured. You'll need to renew certificates manually."
+            print_step "To renew manually: sudo certbot renew"
+        fi
     fi # End of conditional web setup
 
-    # 10. Handle PlexTickets Dashboard Addon (Only if dashboard was requested initially)
+    # 11. Handle PlexTickets Dashboard Addon (Only if dashboard was requested initially)
     # This logic remains the same, as it's already conditional on $has_dashboard
     if [ "$product" == "plextickets" ] && [ "$has_dashboard" = true ]; then
         print_header "Installing PlexTickets Dashboard Addon"
@@ -1167,7 +1441,7 @@ install_product() {
         find_archive_files "$dashboard_product" # Sets global ARCHIVE_PATH again
         dashboard_archive_path="$ARCHIVE_PATH"
 
-        local dashboard_base_path="$install_path/addons/dashboard" # Install into addons/dashboard subdir
+        local dashboard_base_path="$install_path/addons/Dashboard" # Install into addons/dashboard subdir
 
         # Extract dashboard addon
         local dashboard_install_path
@@ -1187,7 +1461,7 @@ install_product() {
     fi
 
 
-    # 11. Create Systemd Service (Always create the service)
+    # 12. Create Systemd Service (Always create the service)
     read -p "Set up '$product' to auto-start on boot using systemd? (y/n): " setup_startup </dev/tty
     if [[ $setup_startup == "y" || $setup_startup == "Y" ]]; then
         create_systemd_service "$product" "$install_path"
@@ -1196,7 +1470,7 @@ install_product() {
         print_step "To start manually (example): cd $install_path && sudo $NODE_EXECUTABLE ."
     fi
 
-    # 12. Post-installation Steps
+    # 13. Post-installation Steps
     print_success "$product installed successfully!"
     local config_file_path
     config_file_path=$(find "$install_path" -maxdepth 1 -name 'config.yml' -o -name 'config.yaml' -o -name 'config.json' | head -n 1)
@@ -1534,7 +1808,9 @@ manage_installations() {
     echo -e "${CYAN}5) Disable auto-start on boot${NC}"
     echo -e "${CYAN}6) View Logs (follow)${NC}"
     echo -e "${CYAN}7) Edit Configuration${NC}"
-    echo -e "${RED}${BOLD}8) Uninstall $product_name${NC}"
+    echo -e "${CYAN}8) View SSL Certificate Status${NC}"
+    echo -e "${CYAN}9) View SSL Renewal Logs${NC}"
+    echo -e "${RED}${BOLD}10) Uninstall $product_name${NC}"
     echo -e "${CYAN}0) Back to previous menu${NC}"
 
     read -p "Enter your choice for $product_name: " manage_choice </dev/tty
@@ -1547,16 +1823,85 @@ manage_installations() {
         5) print_step "Disabling $service_name..."; sudo systemctl disable "$service_name" ;;
         6) view_logs "$product_name" ;;
         7) edit_configuration "$product_name" ;;
-        8) uninstall_product "$product_name" ;;
+        8) show_ssl_status ;;
+        9) view_ssl_renewal_logs ;;
+        10) uninstall_product "$product_name" ;;
         0) return ;;
         *) print_error "Invalid choice" ;;
     esac
 
-    # Show status again after action (except for logs/edit/uninstall/back)
+    # Show status again after action (except for logs/edit/uninstall/back/ssl functions)
     if [[ "$manage_choice" -ge 1 && "$manage_choice" -le 5 ]]; then
         print_step "Current status:"
         sudo systemctl status "$service_name" --no-pager
     fi
+}
+
+#----- SSL Management Functions -----#
+show_ssl_status() {
+    print_header "SSL Certificate Status"
+    
+    print_step "Checking all SSL certificates managed by Certbot..."
+    if command -v certbot &> /dev/null; then
+        sudo certbot certificates
+        
+        print_step "Checking certificate expiration status..."
+        if sudo certbot renew --dry-run; then
+            print_success "All certificates are valid and can be renewed successfully."
+        else
+            print_warning "Some certificates may have renewal issues. Check logs above."
+        fi
+    else
+        print_error "Certbot is not installed or not found in PATH."
+    fi
+    
+    print_step "Checking SSL auto-renewal cron job..."
+    if sudo crontab -l 2>/dev/null | grep -q "certbot renew"; then
+        print_success "SSL auto-renewal is configured:"
+        sudo crontab -l | grep "certbot renew"
+    else
+        print_warning "SSL auto-renewal is not configured."
+        read -p "Would you like to set up SSL auto-renewal now? (y/n): " setup_renewal </dev/tty
+        if [[ $setup_renewal == "y" || $setup_renewal == "Y" ]]; then
+            setup_ssl_autorenewal
+        fi
+    fi
+    
+    echo ""
+    read -p "Press Enter to continue..." </dev/tty
+}
+
+view_ssl_renewal_logs() {
+    print_header "SSL Certificate Renewal Logs"
+    
+    local log_file="/var/log/certbot-renewal.log"
+    
+    if [ -f "$log_file" ]; then
+        print_step "Showing last 50 lines of SSL renewal logs:"
+        echo "=========================================="
+        tail -n 50 "$log_file"
+        echo "=========================================="
+        
+        print_step "You can also check detailed Certbot logs at: /var/log/letsencrypt/"
+    else
+        print_warning "SSL renewal log file not found at $log_file"
+        print_step "Checking standard Certbot log directory..."
+        
+        if [ -d "/var/log/letsencrypt" ]; then
+            print_step "Available Certbot log files:"
+            ls -la /var/log/letsencrypt/
+            echo ""
+            read -p "Would you like to view the main letsencrypt.log? (y/n): " view_main_log </dev/tty
+            if [[ $view_main_log == "y" || $view_main_log == "Y" ]]; then
+                tail -n 50 /var/log/letsencrypt/letsencrypt.log
+            fi
+        else
+            print_error "No Certbot logs found. SSL may not be configured."
+        fi
+    fi
+    
+    echo ""
+    read -p "Press Enter to continue..." </dev/tty
 }
 
 
@@ -2001,6 +2346,62 @@ main() {
     sudo chmod 755 "$INSTALL_DIR"
     check_command "Base install directory permissions"
 
+#----- SSL Certificate Management Menu -----#
+ssl_management_menu() {
+    while true; do
+        clear
+        print_header "SSL Certificate Management"
+        
+        echo -e "${YELLOW}SSL Management Options:${NC}"
+        echo -e "${CYAN}1) View SSL Certificate Status${NC}"
+        echo -e "${CYAN}2) View SSL Renewal Logs${NC}"
+        echo -e "${CYAN}3) Setup/Update SSL Auto-Renewal${NC}"
+        echo -e "${CYAN}4) Force SSL Certificate Renewal${NC}"
+        echo -e "${CYAN}5) Test SSL Certificate Renewal (Dry Run)${NC}"
+        echo -e "${CYAN}0) Back to Main Menu${NC}"
+        
+        read -p "Enter your choice: " ssl_choice </dev/tty
+        
+        case $ssl_choice in
+            1) show_ssl_status ;;
+            2) view_ssl_renewal_logs ;;
+            3) setup_ssl_autorenewal ;;
+            4) 
+                print_header "Force SSL Certificate Renewal"
+                print_warning "This will attempt to renew ALL SSL certificates immediately."
+                read -p "Are you sure you want to continue? (y/n): " confirm_renewal </dev/tty
+                if [[ $confirm_renewal == "y" || $confirm_renewal == "Y" ]]; then
+                    print_step "Forcing SSL certificate renewal..."
+                    if sudo certbot renew --force-renewal; then
+                        print_success "SSL certificates renewed successfully!"
+                        print_step "Reloading Nginx to apply changes..."
+                        sudo systemctl reload nginx
+                    else
+                        print_error "SSL certificate renewal failed. Check logs above."
+                    fi
+                else
+                    print_step "SSL renewal cancelled."
+                fi
+                echo ""
+                read -p "Press Enter to continue..." </dev/tty
+                ;;
+            5)
+                print_header "Test SSL Certificate Renewal"
+                print_step "Running SSL renewal test (dry run)..."
+                if sudo certbot renew --dry-run; then
+                    print_success "SSL renewal test successful! All certificates can be renewed."
+                else
+                    print_error "SSL renewal test failed. Check logs above for details."
+                fi
+                echo ""
+                read -p "Press Enter to continue..." </dev/tty
+                ;;
+            0) break ;;
+            *) print_error "Invalid choice. Please try again." ;;
+        esac
+    done
+}
+
     # Main menu loop
     while true; do
         clear
@@ -2017,10 +2418,14 @@ main() {
         echo -e "${CYAN}3) Install PlexStatus${NC}"
         echo -e "${CYAN}4) Install PlexStore${NC}"
         echo -e "${CYAN}5) Install PlexForms${NC}"
+        echo -e "${CYAN}6) Install PlexLinks${NC}"
+        echo -e "${CYAN}7) Install PlexPaste${NC}"
         echo -e "----------------------------------------"
-        echo -e "${CYAN}6) Manage Existing Installations${NC}"
-        echo -e "${CYAN}7) Manage Backups${NC}"
-        echo -e "${CYAN}8) System Health Check${NC}"
+        echo -e "${CYAN}8) Manage Existing Installations${NC}"
+        echo -e "${CYAN}9) Manage Backups${NC}"
+        echo -e "${CYAN}10) SSL Certificate Management${NC}"
+        echo -e "${CYAN}11) System Health Check${NC}"
+        echo -e "${GREEN}12) 🚧 Install Plex CLI Management Tool${NC}"
         echo -e "----------------------------------------"
         echo -e "${CYAN}0) Exit${NC}"
 
@@ -2047,14 +2452,36 @@ main() {
             5) # Install PlexForms
                 install_product "plexforms" "3004"
                 ;;
-            6) # Manage Installations
+            6) # Install PlexLinks
+                install_product "plexlinks" "3005"
+                ;;
+            7) # Install PlexPaste
+                install_product "plexpaste" "3006"
+                ;;
+            8) # Manage Installations
                 manage_installations # This function now handles its own sub-menu loop
                 ;;
-            7) # Manage Backups
+            9) # Manage Backups
                 manage_backups_menu # Use the dedicated backup menu function
                 ;;
-            8) # System Health Check
+            10) # SSL Certificate Management
+                ssl_management_menu
+                ;;
+            11) # System Health Check
                 system_health_check
+                ;;
+            12) # Install Plex CLI Management Tool
+                print_header "🚧 BETA FEATURE: Plex CLI Management Tool"
+                echo -e "${YELLOW}Installing the new 'plex' command-line management tool...${NC}"
+                echo -e "${CYAN}This allows you to manage your Plex applications easily:${NC}"
+                echo -e "  ${GREEN}plex list${NC}        - Show installed Plex apps and their status"
+                echo -e "  ${GREEN}plex start app${NC}    - Start a Plex application"
+                echo -e "  ${GREEN}plex stop app${NC}     - Stop a Plex application" 
+                echo -e "  ${GREEN}plex restart app${NC}  - Restart a Plex application"
+                echo -e "  ${GREEN}plex config app${NC}   - Edit application configuration"
+                echo -e "  ${GREEN}plex logs app${NC}     - View application logs"
+                echo ""
+                install_plex_cli_tool
                 ;;
             0) # Exit
                 print_success "Exiting PlexDevelopment Installer. Goodbye!"
@@ -2071,6 +2498,36 @@ main() {
         fi
 
     done # End of main menu loop
+    
+    # NEW BETA FEATURE: Ask user if they want to install Plex CLI Management Tool
+    echo ""
+    print_header "🚧 BETA FEATURE: Plex CLI Management Tool"
+    echo -e "${YELLOW}Would you like to install the new 'plex' command-line management tool?${NC}"
+    echo -e "${CYAN}This allows you to manage your Plex applications easily:${NC}"
+    echo -e "  ${GREEN}plex list${NC}        - Show installed Plex apps and their status"
+    echo -e "  ${GREEN}plex start app${NC}    - Start a Plex application"
+    echo -e "  ${GREEN}plex stop app${NC}     - Stop a Plex application" 
+    echo -e "  ${GREEN}plex restart app${NC}  - Restart a Plex application"
+    echo -e "  ${GREEN}plex config app${NC}   - Edit application configuration"
+    echo -e "  ${GREEN}plex logs app${NC}     - View application logs"
+    echo ""
+    
+    while true; do
+        read -p "Install Plex CLI tool? [y/N]: " install_cli </dev/tty
+        case $install_cli in
+            [Yy]|[Yy][Ee][Ss])
+                install_plex_cli_tool
+                break
+                ;;
+            [Nn]|[Nn][Oo]|"")
+                print_step "Skipping Plex CLI tool installation"
+                break
+                ;;
+            *)
+                print_error "Please enter 'y' for yes or 'n' for no"
+                ;;
+        esac
+    done
 }
 
 display_banner() {
@@ -2084,7 +2541,351 @@ display_banner() {
     echo "                                                  | |                             "
     echo "                                                  |_|                             "
     echo -e "${NC}"
-    echo -e "${BOLD}${PURPLE}Installation Script for PlexDevelopment Products${NC}\n"
+    echo -e "${BOLD}${PURPLE} UNOFFICIAL Installation Script for PlexDevelopment Products${NC}\n"
+}
+
+#----- Plex CLI Management Tool Installation -----#
+install_plex_cli_tool() {
+    print_header "Installing Plex CLI Management Tool"
+    
+    # Create the plex command script
+    cat > /usr/local/bin/plex << 'EOF'
+#!/bin/bash
+# Plex CLI Management Tool
+# Version: 1.0 Beta
+
+PLEX_INSTALL_DIR="/var/www/plex"
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+print_error() {
+    echo -e "${RED}[✗] $1${NC}" >&2
+}
+
+print_success() {
+    echo -e "${GREEN}[✓] $1${NC}" >&2
+}
+
+print_info() {
+    echo -e "${BLUE}[i] $1${NC}" >&2
+}
+
+show_help() {
+    echo -e "${BOLD}${CYAN}Plex CLI Management Tool${NC}"
+    echo ""
+    echo -e "${YELLOW}Usage:${NC}"
+    echo -e "  ${GREEN}plex list${NC}              - Show installed Plex applications and their status"
+    echo -e "  ${GREEN}plex start <app>${NC}       - Start a Plex application"
+    echo -e "  ${GREEN}plex stop <app>${NC}        - Stop a Plex application"
+    echo -e "  ${GREEN}plex restart <app>${NC}     - Restart a Plex application"
+    echo -e "  ${GREEN}plex config <app>${NC}      - Edit application configuration file"
+    echo -e "  ${GREEN}plex logs <app>${NC}        - View application logs"
+    echo -e "  ${GREEN}plex status <app>${NC}      - Show detailed status of an application"
+    echo ""
+    echo -e "${YELLOW}Examples:${NC}"
+    echo -e "  plex list"
+    echo -e "  plex start plextickets"
+    echo -e "  plex restart plexstatus"
+    echo -e "  plex config plexstore"
+    echo -e "  plex logs plextickets"
+}
+
+get_installed_apps() {
+    local apps=()
+    if [ -d "$PLEX_INSTALL_DIR" ]; then
+        for dir in "$PLEX_INSTALL_DIR"/*; do
+            if [ -d "$dir" ] && [ -f "$dir/package.json" ]; then
+                apps+=($(basename "$dir"))
+            fi
+        done
+    fi
+    echo "${apps[@]}"
+}
+
+is_valid_app() {
+    local app="$1"
+    local installed_apps=($(get_installed_apps))
+    for installed_app in "${installed_apps[@]}"; do
+        if [ "$installed_app" = "$app" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+list_apps() {
+    print_info "Scanning for installed Plex applications..."
+    local apps=($(get_installed_apps))
+    
+    if [ ${#apps[@]} -eq 0 ]; then
+        print_error "No Plex applications found in $PLEX_INSTALL_DIR"
+        return 1
+    fi
+    
+    echo ""
+    echo -e "${BOLD}${CYAN}Installed Plex Applications:${NC}"
+    echo ""
+    
+    for app in "${apps[@]}"; do
+        local service_name="plex-$app"
+        local app_dir="$PLEX_INSTALL_DIR/$app"
+        local status=""
+        local color=""
+        
+        # Check systemd service status
+        if systemctl is-active --quiet "$service_name" 2>/dev/null; then
+            status="Running"
+            color="$GREEN"
+        elif systemctl is-enabled --quiet "$service_name" 2>/dev/null; then
+            status="Stopped"
+            color="$YELLOW"
+        else
+            status="Not configured"
+            color="$RED"
+        fi
+        
+        echo -e "${BOLD}$app${NC}"
+        echo -e "  Status: ${color}$status${NC}"
+        echo -e "  Path: $app_dir"
+        
+        # Show config file if exists
+        if [ -f "$app_dir/config.yml" ]; then
+            echo -e "  Config: $app_dir/config.yml"
+        elif [ -f "$app_dir/config.json" ]; then
+            echo -e "  Config: $app_dir/config.json"
+        fi
+        
+        # Show port if running
+        if [ "$status" = "Running" ]; then
+            local port=$(netstat -tlnp 2>/dev/null | grep ":.*LISTEN.*node" | head -1 | awk '{print $4}' | cut -d: -f2)
+            if [ ! -z "$port" ]; then
+                echo -e "  Port: $port"
+            fi
+        fi
+        echo ""
+    done
+}
+
+start_app() {
+    local app="$1"
+    if ! is_valid_app "$app"; then
+        print_error "Application '$app' not found. Use 'plex list' to see installed apps."
+        return 1
+    fi
+    
+    local service_name="plex-$app"
+    print_info "Starting $app..."
+    if systemctl start "$service_name"; then
+        print_success "$app started successfully"
+        sleep 2
+        if systemctl is-active --quiet "$service_name"; then
+            print_success "$app is now running"
+        else
+            print_error "$app failed to start properly"
+            echo "Check logs with: plex logs $app"
+        fi
+    else
+        print_error "Failed to start $app"
+        return 1
+    fi
+}
+
+stop_app() {
+    local app="$1"
+    if ! is_valid_app "$app"; then
+        print_error "Application '$app' not found. Use 'plex list' to see installed apps."
+        return 1
+    fi
+    
+    local service_name="plex-$app"
+    print_info "Stopping $app..."
+    if systemctl stop "$service_name"; then
+        print_success "$app stopped successfully"
+    else
+        print_error "Failed to stop $app"
+        return 1
+    fi
+}
+
+restart_app() {
+    local app="$1"
+    if ! is_valid_app "$app"; then
+        print_error "Application '$app' not found. Use 'plex list' to see installed apps."
+        return 1
+    fi
+    
+    local service_name="plex-$app"
+    print_info "Restarting $app..."
+    if systemctl restart "$service_name"; then
+        print_success "$app restarted successfully"
+        sleep 2
+        if systemctl is-active --quiet "$service_name"; then
+            print_success "$app is now running"
+        else
+            print_error "$app failed to start after restart"
+            echo "Check logs with: plex logs $app"
+        fi
+    else
+        print_error "Failed to restart $app"
+        return 1
+    fi
+}
+
+show_status() {
+    local app="$1"
+    if ! is_valid_app "$app"; then
+        print_error "Application '$app' not found. Use 'plex list' to see installed apps."
+        return 1
+    fi
+    
+    local service_name="plex-$app"
+    echo -e "${BOLD}${CYAN}Status for $app:${NC}"
+    echo ""
+    
+    systemctl status "$service_name" --no-pager -l
+}
+
+view_logs() {
+    local app="$1"
+    if ! is_valid_app "$app"; then
+        print_error "Application '$app' not found. Use 'plex list' to see installed apps."
+        return 1
+    fi
+    
+    local service_name="plex-$app"
+    print_info "Showing logs for $app (Press Ctrl+C to exit)..."
+    echo ""
+    journalctl -u "$service_name" -f --no-pager
+}
+
+edit_config() {
+    local app="$1"
+    if ! is_valid_app "$app"; then
+        print_error "Application '$app' not found. Use 'plex list' to see installed apps."
+        return 1
+    fi
+    
+    local app_dir="$PLEX_INSTALL_DIR/$app"
+    local config_file=""
+    
+    # Look for config files
+    if [ -f "$app_dir/config.yml" ]; then
+        config_file="$app_dir/config.yml"
+    elif [ -f "$app_dir/config.yaml" ]; then
+        config_file="$app_dir/config.yaml"
+    elif [ -f "$app_dir/config.json" ]; then
+        config_file="$app_dir/config.json"
+    else
+        print_error "No configuration file found for $app"
+        echo "Looked for: config.yml, config.yaml, config.json in $app_dir"
+        return 1
+    fi
+    
+    print_info "Opening configuration file: $config_file"
+    print_info "Remember to restart the application after making changes!"
+    echo ""
+    
+    # Use nano as default editor, fall back to vi if nano not available
+    if command -v nano >/dev/null 2>&1; then
+        nano "$config_file"
+    elif command -v vi >/dev/null 2>&1; then
+        vi "$config_file"
+    else
+        print_error "No text editor found (nano or vi required)"
+        return 1
+    fi
+    
+    echo ""
+    echo -e "${YELLOW}Configuration file updated. Restart the application to apply changes:${NC}"
+    echo -e "  ${GREEN}plex restart $app${NC}"
+}
+
+# Main script logic
+case "$1" in
+    "list"|"ls")
+        list_apps
+        ;;
+    "start")
+        if [ -z "$2" ]; then
+            print_error "Usage: plex start <app_name>"
+            echo "Use 'plex list' to see available applications"
+            exit 1
+        fi
+        start_app "$2"
+        ;;
+    "stop")
+        if [ -z "$2" ]; then
+            print_error "Usage: plex stop <app_name>"
+            echo "Use 'plex list' to see available applications"
+            exit 1
+        fi
+        stop_app "$2"
+        ;;
+    "restart")
+        if [ -z "$2" ]; then
+            print_error "Usage: plex restart <app_name>"
+            echo "Use 'plex list' to see available applications"
+            exit 1
+        fi
+        restart_app "$2"
+        ;;
+    "status")
+        if [ -z "$2" ]; then
+            print_error "Usage: plex status <app_name>"
+            echo "Use 'plex list' to see available applications"
+            exit 1
+        fi
+        show_status "$2"
+        ;;
+    "logs")
+        if [ -z "$2" ]; then
+            print_error "Usage: plex logs <app_name>"
+            echo "Use 'plex list' to see available applications"
+            exit 1
+        fi
+        view_logs "$2"
+        ;;
+    "config"|"configure")
+        if [ -z "$2" ]; then
+            print_error "Usage: plex config <app_name>"
+            echo "Use 'plex list' to see available applications"
+            exit 1
+        fi
+        edit_config "$2"
+        ;;
+    "help"|"-h"|"--help"|"")
+        show_help
+        ;;
+    *)
+        print_error "Unknown command: $1"
+        echo ""
+        show_help
+        exit 1
+        ;;
+esac
+EOF
+
+    # Make the script executable
+    chmod +x /usr/local/bin/plex
+    check_command "Making plex CLI tool executable"
+    
+    print_success "Plex CLI Management Tool installed successfully!"
+    echo ""
+    echo -e "${CYAN}You can now use the following commands:${NC}"
+    echo -e "  ${GREEN}plex list${NC}        - Show installed applications"
+    echo -e "  ${GREEN}plex start app${NC}    - Start an application"
+    echo -e "  ${GREEN}plex stop app${NC}     - Stop an application"
+    echo -e "  ${GREEN}plex restart app${NC}  - Restart an application"
+    echo -e "  ${GREEN}plex config app${NC}   - Edit application configuration"
+    echo -e "  ${GREEN}plex logs app${NC}     - View application logs"
+    echo -e "  ${GREEN}plex help${NC}         - Show detailed help"
+    echo ""
+    echo -e "${YELLOW}Example: ${GREEN}plex list${NC} to see your installed Plex applications"
 }
 
 #--- Script Entry Point ---#

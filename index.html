@@ -301,6 +301,8 @@
             background: var(--bg-secondary);
             border-radius: var(--border-radius) var(--border-radius) 0 0;
             overflow: hidden;
+            position: relative; /* Establish stacking context */
+            z-index: 100; /* Above beta theme backgrounds */
         }
         
         .tab { 
@@ -314,6 +316,9 @@
             position: relative;
             flex: 1;
             text-align: center;
+            user-select: none; /* Prevent text selection on double-click */
+            -webkit-tap-highlight-color: transparent; /* Remove mobile tap highlight */
+            z-index: 10; /* Ensure tabs are above other elements */
         }
         
         .tab:hover {
@@ -364,11 +369,14 @@
         body.beta-theme .tabs {
             background: var(--bg-secondary);
             border-color: var(--warning);
+            z-index: 100; /* Ensure above backgrounds */
         }
         
         body.beta-theme .tab {
             background: var(--bg-secondary);
             border-color: var(--warning);
+            pointer-events: auto; /* Explicitly enable clicks */
+            cursor: pointer; /* Ensure cursor shows */
         }
         
         body.beta-theme .tab:hover {
@@ -652,6 +660,8 @@
                 border: 3px solid var(--warning);
                 background: var(--card-bg);
                 box-shadow: 0 0 15px rgba(255, 152, 0, 0.3);
+                z-index: 1; /* Keep cards below tabs */
+                position: relative;
             }
             
             body.beta-theme .tab {
@@ -659,6 +669,8 @@
                 border: 2px solid var(--warning);
                 position: relative;
                 overflow: hidden;
+                pointer-events: auto; /* Ensure clickable */
+                z-index: 1;
             }
             
             body.beta-theme .tab::before {
@@ -669,6 +681,8 @@
                 transform: translateY(-50%);
                 font-size: 0.8em;
                 opacity: 0.7;
+                pointer-events: none; /* Don't block clicks */
+                z-index: -1; /* Behind the text */
             }
             
             .card {
@@ -1442,17 +1456,133 @@
         <!-- Changelog Entries -->
         <div class="changelog-entries">
             
-            <!-- Beta v2.2 - August 2025 -->
+            <!-- Beta v2.3 - October 2025 -->
             <div class="changelog-entry beta-version" data-version="beta">
                 <div class="changelog-header">
-                    <span class="changelog-version beta-badge">🚧 Beta v2.2</span>
+                    <span class="changelog-version beta-badge">🚧 Beta v2.3</span>
+                    <span class="changelog-date">October 2, 2025</span>
+                </div>
+                <div class="changelog-content">
+                    <h4>🚀 MongoDB Integration & Multi-Instance Support!</h4>
+                    <p class="changelog-description">
+                        Revolutionary update bringing automated MongoDB setup and support for running multiple instances of the same product.
+                        Perfect for users who want to run multiple bots or websites with different configurations!
+                    </p>
+                    
+                    <div class="changelog-section">
+                        <h5>🆕 New Features</h5>
+                        <ul>
+                            <li><strong>MongoDB Auto-Setup:</strong> Automatic MongoDB 7.0 installation and configuration</li>
+                            <li><strong>Database Management:</strong> Automatic database and user creation for each product/instance</li>
+                            <li><strong>Credential Storage:</strong> Secure credential management in <code>/etc/plex/setup</code></li>
+                            <li><strong>Auto-Config Update:</strong> Automatic <code>config.yml</code> MongoURI field population</li>
+                            <li><strong>Multi-Instance Support:</strong> Run multiple instances of the same product (e.g., 2x PlexTickets)</li>
+                            <li><strong>Unique Instance Names:</strong> Each instance gets unique name, service, and database</li>
+                        </ul>
+                    </div>
+
+                    <div class="changelog-section">
+                        <h5>🔧 MongoDB Features</h5>
+                        <ul>
+                            <li><strong>Official Repositories:</strong> Installs MongoDB from official repos (apt, dnf, yum, pacman)</li>
+                            <li><strong>User Creation:</strong> Dedicated MongoDB user per product (e.g., <code>plextickets_user</code>)</li>
+                            <li><strong>Random Database Names:</strong> Unique database names with random suffix (e.g., <code>plextickets5a3b2</code>)</li>
+                            <li><strong>Secure Passwords:</strong> 16-character random password generation</li>
+                            <li><strong>Connection Strings:</strong> Format: <code>mongodb://user:pass@localhost:27017/dbname?authSource=dbname</code></li>
+                            <li><strong>Credential Reuse:</strong> Saves credentials for easy multi-instance setup</li>
+                        </ul>
+                    </div>
+
+                    <div class="changelog-section">
+                        <h5>🎯 Multi-Instance Features</h5>
+                        <ul>
+                            <li><strong>Instance Detection:</strong> Automatically detects existing installations</li>
+                            <li><strong>Custom Naming:</strong> Choose unique names or use auto-generated ones</li>
+                            <li><strong>Separate Resources:</strong> Each instance gets its own directory, service, and database</li>
+                            <li><strong>Independent Management:</strong> Manage each instance separately with systemctl</li>
+                            <li><strong>Example Use Cases:</strong> Multiple Discord bots, separate test/production environments</li>
+                        </ul>
+                    </div>
+
+                    <div class="changelog-section">
+                        <h5>⚡ Technical Details</h5>
+                        <ul>
+                            <li><strong>Service Names:</strong> Format <code>plex-INSTANCE_NAME</code> for systemd</li>
+                            <li><strong>Directory Structure:</strong> <code>/var/www/plex/INSTANCE_NAME</code> for each instance</li>
+                            <li><strong>Config Files:</strong> Separate configuration for each instance</li>
+                            <li><strong>MongoDB Version:</strong> MongoDB 7.0 from official repositories</li>
+                            <li><strong>Name Validation:</strong> Alphanumeric, dash, and underscore allowed in instance names</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stable v2.2 - October 2025 -->
+            <div class="changelog-entry stable-version" data-version="stable">
+                <div class="changelog-header">
+                    <span class="changelog-version stable-badge">✅ Stable v2.2</span>
+                    <span class="changelog-date">October 2, 2025</span>
+                </div>
+                <div class="changelog-content">
+                    <h4>🎉 New Stable Release!</h4>
+                    <p class="changelog-description">
+                        The previous Beta v2.2 has been promoted to Stable. This version includes all the SSL auto-renewal,
+                        enhanced error handling, and management features that have been thoroughly tested.
+                    </p>
+                    
+                    <div class="changelog-section">
+                        <h5>🆕 Features (from Beta v2.2)</h5>
+                        <ul>
+                            <li><strong>SSL Auto-Renewal:</strong> Automatic SSL certificate renewal with crontab setup</li>
+                            <li><strong>SSL Management Menu:</strong> Complete SSL certificate management from main menu</li>
+                            <li><strong>Enhanced Product Management:</strong> SSL status and renewal logs in product menus</li>
+                            <li><strong>502 Error Pages:</strong> Custom user-friendly error pages for all products</li>
+                            <li><strong>Improved Archive Detection:</strong> Better search algorithm (maxdepth 5, better Node.js detection)</li>
+                        </ul>
+                    </div>
+
+                    <div class="changelog-section">
+                        <h5>🔧 Improvements</h5>
+                        <ul>
+                            <li><strong>SSL Cleanup:</strong> Comprehensive rollback mechanism for failed SSL setups</li>
+                            <li><strong>Debian Support:</strong> Added missing environment variables for Debian systems</li>
+                            <li><strong>Error Messages:</strong> Detailed troubleshooting information for SSL failures</li>
+                            <li><strong>User Experience:</strong> Better feedback and progress indicators</li>
+                        </ul>
+                    </div>
+
+                    <div class="changelog-section">
+                        <h5>⚡ Technical Details</h5>
+                        <ul>
+                            <li><strong>SSL Cron Jobs:</strong> Twice daily certificate checks at random times</li>
+                            <li><strong>Nginx Integration:</strong> Automatic reload on successful renewals</li>
+                            <li><strong>Logging:</strong> Comprehensive logs at <code>/var/log/certbot-renewal.log</code></li>
+                            <li><strong>Backup System:</strong> Config backup/restore for failed SSL attempts</li>
+                        </ul>
+                    </div>
+
+                    <div class="changelog-section">
+                        <h5>📝 Note</h5>
+                        <ul>
+                            <li><strong>Production Ready:</strong> All features have been tested and are stable</li>
+                            <li><strong>Recommended:</strong> Use this version for production environments</li>
+                            <li><strong>No MongoDB:</strong> MongoDB features are only available in Beta v2.3+</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Beta v2.2 - August 2025 (Now Stable) -->
+            <div class="changelog-entry beta-version" data-version="beta">
+                <div class="changelog-header">
+                    <span class="changelog-version beta-badge">🚧 Beta v2.2 → ✅ Now Stable</span>
                     <span class="changelog-date">August 1, 2025</span>
                 </div>
                 <div class="changelog-content">
-                    <h4>🔥 New Beta Version Available!</h4>
+                    <h4>🔥 Beta Version (Promoted to Stable v2.2)</h4>
                     <p class="changelog-description">
                         Major update with SSL auto-renewal, enhanced error handling, and comprehensive management features.
-                        <strong>Note:</strong> This beta version contains all latest improvements but stable version remains unchanged for now.
+                        <strong>This version has been promoted to Stable v2.2 (October 2025).</strong>
                     </p>
                     
                     <div class="changelog-section">
@@ -1939,6 +2069,22 @@
             showAffiliateBanner();
             // Setup partner indicator click handlers
             setupPartnerIndicators();
+            
+            // Add explicit event listeners to tabs as backup (in case onclick fails)
+            document.querySelectorAll('.tab').forEach(tab => {
+                const onclick = tab.getAttribute('onclick');
+                if (onclick && onclick.includes('switchTab')) {
+                    const match = onclick.match(/switchTab\('([^']+)'\)/);
+                    if (match) {
+                        const tabId = match[1];
+                        tab.addEventListener('click', (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            switchTab(tabId);
+                        });
+                    }
+                }
+            });
         });
     </script>
 </body>
