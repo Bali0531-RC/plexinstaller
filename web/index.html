@@ -1,0 +1,2181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>PlexDev.live - Unofficial Installer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Technical documentation and installation scripts for Linux system administrators. Server deployment tools for PlexDevelopment software packages. No content streaming or hosting - administrative tools only.">
+    <meta name="keywords" content="Linux server administration, installation scripts, system administrator tools, web server configuration, SSL setup, server deployment, technical documentation">
+    <meta name="author" content="Plex Installer Documentation">
+    <meta name="google-adsense-account" content="ca-pub-7983111910687324">
+    <style>
+        :root {
+            --bg-primary: #0a0a0a;
+            --bg-secondary: #1a1a1a;
+            --bg-tertiary: #2a2a2a;
+            --text-primary: #f0f0f0;
+            --text-secondary: #b0b0b0;
+            --text-muted: #808080;
+            --accent: #00d4ff;
+            --accent-dark: #0099cc;
+            --accent-light: #66e6ff;
+            --success: #00ff88;
+            --warning: #ffaa00;
+            --danger: #ff4444;
+            --card-bg: #1e1e1e;
+            --card-bg-hover: #252525;
+            --border-color: #333;
+            --border-color-light: #444;
+            --shadow: rgba(0, 0, 0, 0.5);
+            --shadow-light: rgba(0, 0, 0, 0.3);
+            --code-bg: #0d1117;
+            --code-color: #58a6ff;
+            --gradient-primary: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
+            --gradient-card: linear-gradient(145deg, var(--card-bg) 0%, var(--bg-secondary) 100%);
+            --border-radius: 12px;
+            --border-radius-small: 8px;
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            --header-animation: pulse;
+            --header-animation-color: var(--accent);
+            --body-transition: background-color 0.4s ease, color 0.4s ease;
+        }
+
+        body.beta-theme {
+            --bg-primary: #1a1a1a;
+            --bg-secondary: #2a2a2a;
+            --bg-tertiary: #333;
+            --text-primary: #ffeb3b;
+            --text-secondary: #ffc107;
+            --text-muted: #ff9800;
+            --accent: #ff9800;
+            --accent-dark: #f57500;
+            --accent-light: #ffb74d;
+            --success: #4caf50;
+            --warning: #ff5722;
+            --danger: #f44336;
+            --card-bg: #2a2a2a;
+            --card-bg-hover: #413f3f;
+            --border-color: #ff9800;
+            --border-color-light: #ffb74d;
+            --shadow: rgba(255, 152, 0, 0.3);
+            --shadow-light: rgba(255, 152, 0, 0.1);
+            --code-bg: #1e1e1e;
+            --code-color: #ffeb3b;
+            --gradient-primary: linear-gradient(135deg, var(--accent) 0%, var(--warning) 100%);
+            --gradient-card: linear-gradient(145deg, var(--card-bg) 0%, var(--bg-secondary) 100%);
+            --header-animation: sway;
+            --header-animation-color: var(--accent);
+            --shake-intensity: 0.5deg;
+            --shake-intensity-alt: -0.4deg;
+        }
+
+        * { 
+            box-sizing: border-box; 
+            margin: 0; 
+            padding: 0; 
+        }
+        
+        body {
+            font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: var(--text-primary);
+            background: var(--bg-primary);
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            transition: var(--transition);
+            position: relative;
+            overflow-x: hidden;
+            min-height: 100vh;
+        }
+        
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: radial-gradient(circle at 20% 80%, rgba(0, 212, 255, 0.1) 0%, transparent 50%),
+                        radial-gradient(circle at 80% 20%, rgba(0, 255, 136, 0.1) 0%, transparent 50%);
+            z-index: -1;
+            pointer-events: none;
+        }
+        
+        h1, h2, h3 { 
+            color: var(--text-primary); 
+            margin: 2rem 0 1.5rem 0; 
+            font-weight: 600;
+        }
+        
+        h1 {
+            font-size: clamp(2rem, 5vw, 3rem);
+            background: var(--gradient-primary);
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            border-bottom: 2px solid var(--accent);
+            padding-bottom: 15px;
+            margin-bottom: 2rem;
+            position: relative;
+            text-align: center;
+            text-shadow: 0 0 5px var(--accent);
+            transition: transform 0.5s ease, border-color 0.4s ease, text-shadow 0.4s ease;
+        }
+        h1::after {
+            content: "";
+            position: absolute;
+            bottom: -2px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 120px;
+            height: 2px;
+            background-color: var(--header-animation-color);
+        }
+
+        body:not(.beta-theme) h1::after {
+             animation: pulse 2s infinite;
+        }
+        body.beta-theme h1::after {
+             animation: var(--header-animation) 4s ease-in-out infinite alternate;
+        }
+
+        h2 { font-size: 1.8rem; margin-top: 2rem; }
+        p { margin: 1rem 0; color: var(--text-secondary); }
+        a { 
+            color: var(--accent); 
+            text-decoration: underline; 
+            text-decoration-color: var(--accent);
+            text-underline-offset: 2px;
+            transition: all 0.3s ease; 
+        }
+        a:hover { 
+            color: var(--accent-light); 
+            text-decoration-color: var(--accent-light);
+            text-shadow: 0 0 5px var(--accent);
+        }
+        a:focus {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+            border-radius: 2px;
+        }
+        .code-block {
+            background: var(--code-bg);
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            padding: 24px;
+            margin: 24px 0;
+            font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Consolas', 'Courier New', monospace;
+            overflow-x: auto;
+            position: relative;
+            box-shadow: 0 8px 32px var(--shadow-light);
+            backdrop-filter: blur(10px);
+            transition: var(--transition);
+            border-left: 4px solid var(--accent);
+        }
+        
+        .code-block:hover {
+            box-shadow: 0 12px 48px var(--shadow);
+            transform: translateY(-4px);
+            border-color: var(--accent-light);
+            background: var(--bg-secondary);
+        }
+        
+        .code-block code { 
+            color: var(--code-color); 
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+        
+        .code-block::before { 
+            content: "$ "; 
+            opacity: 0.6; 
+            color: var(--accent);
+            font-weight: bold;
+        }
+        
+        .code-block .copy-btn { 
+            position: absolute; 
+            top: 12px; 
+            right: 12px; 
+            background: var(--gradient-primary); 
+            color: white; 
+            border: none; 
+            border-radius: var(--border-radius-small); 
+            padding: 8px 16px; 
+            cursor: pointer; 
+            font-size: 0.8rem; 
+            opacity: 0; 
+            transition: var(--transition); 
+            font-weight: 600;
+            box-shadow: 0 4px 16px rgba(0, 212, 255, 0.3);
+        }
+        
+        .code-block:hover .copy-btn { 
+            opacity: 1; 
+        }
+        
+        .code-block .copy-btn:hover { 
+            transform: scale(1.05);
+            box-shadow: 0 6px 24px rgba(0, 212, 255, 0.5);
+        }
+        
+        .card {
+            background: var(--gradient-card);
+            border-radius: var(--border-radius);
+            padding: 32px;
+            margin: 32px 0;
+            box-shadow: 0 8px 32px var(--shadow-light);
+            backdrop-filter: blur(10px);
+            transition: var(--transition);
+            border: 1px solid var(--border-color);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--gradient-primary);
+            opacity: 0.8;
+        }
+        
+        .card:hover {
+            box-shadow: 0 16px 64px var(--shadow);
+            transform: translateY(-8px);
+            border-color: var(--border-color-light);
+            background: var(--card-bg-hover);
+        }
+        .warning {
+            background: rgba(255, 170, 0, 0.1);
+            border: 1px solid var(--warning);
+            border-left: 4px solid var(--warning);
+            padding: 20px; 
+            margin: 24px 0;
+            border-radius: var(--border-radius);
+            color: var(--warning);
+            position: relative;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 16px rgba(255, 170, 0, 0.2);
+            overflow: hidden;
+            transition: var(--transition);
+        }
+        
+        .warning strong { 
+            color: var(--warning); 
+            font-weight: 600;
+        }
+        
+        .official-note { 
+            background: rgba(0, 212, 255, 0.1); 
+            border: 1px solid var(--accent);
+            border-left: 4px solid var(--accent); 
+            padding: 20px; 
+            margin: 24px 0; 
+            border-radius: var(--border-radius); 
+            color: var(--accent);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 16px rgba(0, 212, 255, 0.2);
+        }
+        
+        .official-note strong { 
+            color: var(--accent); 
+            font-weight: 600;
+        }
+        footer { 
+            margin-top: 60px; 
+            color: var(--text-muted); 
+            text-align: center; 
+            border-top: 1px solid var(--border-color); 
+            padding-top: 30px; 
+            font-size: 0.9rem; 
+        }
+        
+        .tabs { 
+            display: flex; 
+            margin: 32px 0; 
+            border-bottom: 1px solid var(--border-color);
+            background: var(--bg-secondary);
+            border-radius: var(--border-radius) var(--border-radius) 0 0;
+            overflow: hidden;
+        }
+        
+        .tab { 
+            padding: 16px 24px; 
+            cursor: pointer; 
+            color: var(--text-secondary); 
+            transition: var(--transition); 
+            border-bottom: 3px solid transparent; 
+            background: var(--bg-primary);
+            font-weight: 600;
+            position: relative;
+            flex: 1;
+            text-align: center;
+        }
+        
+        .tab:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+        
+        .tab.active { 
+            color: var(--accent); 
+            border-bottom: 3px solid var(--accent);
+            background: var(--gradient-card);
+        }
+        
+        .tab-content { 
+            display: none; 
+            background: var(--gradient-card);
+            border-radius: 0 0 var(--border-radius) var(--border-radius);
+            padding: 32px;
+            border: 1px solid var(--border-color);
+            border-top: none;
+        }
+        
+        .tab-content.active { 
+            display: block; 
+            background: var(--gradient-card);
+            animation: fadeIn 0.5s ease-out; 
+        }
+
+        body:not(.beta-theme) .tab-content {
+            background: var(--gradient-card) !important;
+        }
+        
+        body:not(.beta-theme) #quick.tab-content {
+            background: var(--gradient-card) !important;
+        }
+        
+        body:not(.beta-theme) #quick.tab-content,
+        body:not(.beta-theme) #manual.tab-content,
+        body:not(.beta-theme) #about.tab-content {
+            background: var(--gradient-card) !important;
+        }
+
+        body.beta-theme .tab-content {
+            background: var(--card-bg);
+            border-color: var(--warning);
+        }
+        
+        body.beta-theme .tabs {
+            background: var(--bg-secondary);
+            border-color: var(--warning);
+        }
+        
+        body.beta-theme .tab {
+            background: var(--bg-secondary);
+            border-color: var(--warning);
+        }
+        
+        body.beta-theme .tab:hover {
+            background: var(--bg-tertiary);
+        }
+        
+        body.beta-theme .tab.active {
+            background: var(--card-bg);
+            border-bottom-color: var(--warning);
+            color: var(--warning);
+        }
+
+        @keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        /* Sway animation for Beta */
+        @keyframes sway {
+          0% { transform: rotate(-1.5deg); } /* Increased sway */
+          50% { transform: rotate(1.5deg); }
+          100% { transform: rotate(-1.5deg); }
+        }
+        /* Shake animation */
+        @keyframes shake {
+          0%, 100% { transform: rotate(0); } /* Relative rotation for animation */
+          25% { transform: rotate(var(--shake-intensity)); }
+          50% { transform: rotate(0); }
+          75% { transform: rotate(var(--shake-intensity-alt)); }
+        }
+        /* Flicker animation */
+        @keyframes flicker {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.6; }
+        }
+        /* Falling debris animation - multiple layers */
+        @keyframes falling-1 {
+          0% { background-position: 0 0; }
+          100% { background-position: -20px 100vh; } /* Add horizontal movement */
+        }
+        @keyframes falling-2 {
+          0% { background-position: 0 0; }
+          100% { background-position: 30px 100vh; }
+        }
+        @keyframes falling-3 {
+          0% { background-position: 0 0; }
+          100% { background-position: 0 100vh; }
+        }
+
+        /* --- Beta Theme Specific Overrides & Additions --- */
+        /* Construction site background patterns */
+        body.beta-theme::before {
+            content: "";
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            /* Warning tape diagonal stripes */
+            background-image: 
+                repeating-linear-gradient(
+                    45deg,
+                    rgba(255, 152, 0, 0.1) 0px,
+                    rgba(255, 152, 0, 0.1) 20px,
+                    transparent 20px,
+                    transparent 40px
+                ),
+                repeating-linear-gradient(
+                    -45deg,
+                    rgba(255, 235, 59, 0.05) 0px,
+                    rgba(255, 235, 59, 0.05) 30px,
+                    transparent 30px,
+                    transparent 60px
+                );
+            animation: constructionMove 20s linear infinite;
+            opacity: 0.3;
+            z-index: -2;
+            pointer-events: none;
+        }
+        
+        body.beta-theme::after {
+            content: "";
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            /* Caution dots pattern */
+            background-image: 
+                radial-gradient(circle, rgba(255, 152, 0, 0.2) 2px, transparent 2px),
+                radial-gradient(circle, rgba(255, 235, 59, 0.1) 1px, transparent 1px);
+            background-size: 80px 80px, 40px 40px;
+            background-position: 0 0, 20px 20px;
+            animation: constructionDrift 30s ease-in-out infinite;
+            opacity: 0.15;
+            z-index: -1;
+            pointer-events: none;
+        }
+        
+        @keyframes constructionMove {
+            0% { transform: translateX(-40px) translateY(-40px); }
+            100% { transform: translateX(40px) translateY(40px); }
+        }
+        
+        @keyframes constructionDrift {
+            0%, 100% { transform: translate(0, 0) rotate(0deg); }
+            33% { transform: translate(10px, -5px) rotate(1deg); }
+            66% { transform: translate(-5px, 10px) rotate(-1deg); }
+        }
+
+        body.beta-theme h1 {
+            transform: rotate(-1.5deg);
+            transform-origin: bottom left;
+            animation: shake 8s ease-in-out infinite alternate;
+            text-shadow: 0 0 20px rgba(255, 152, 0, 0.5);
+            position: relative;
+        }
+        
+        body.beta-theme h1::before {
+            content: "🚧";
+            position: absolute;
+            left: -60px;
+            top: 50%;
+            transform: translateY(-50%) rotate(-15deg);
+            font-size: 2rem;
+            animation: bounce 2s ease-in-out infinite;
+        }
+        
+        body.beta-theme h1::after {
+            content: "⚠️";
+            position: absolute;
+            right: -60px;
+            top: 50%;
+            transform: translateY(-50%) rotate(15deg);
+            font-size: 2rem;
+            animation: bounce 2s ease-in-out infinite 0.5s;
+        }
+        
+        @keyframes bounce {
+            0%, 100% { transform: translateY(-50%) scale(1); }
+            50% { transform: translateY(-60%) scale(1.1); }
+        }
+        
+        body.beta-theme .card {
+            border: 2px solid var(--warning);
+            border-left: 6px solid var(--warning);
+            transform: rotate(0.5deg);
+            animation: shake 10s ease-in-out infinite alternate;
+            position: relative;
+            background: var(--card-bg);
+            box-shadow: 
+                0 8px 32px rgba(255, 152, 0, 0.3),
+                inset 0 1px 0 rgba(255, 235, 59, 0.1);
+        }
+        
+        body.beta-theme .card:hover {
+            background: var(--card-bg-hover);
+            border-color: var(--warning);
+        }
+        
+        body.beta-theme .card:nth-child(odd) {
+            transform: rotate(-0.3deg);
+            animation-duration: 12s;
+            animation-direction: alternate-reverse;
+        }
+        
+        body.beta-theme .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: repeating-linear-gradient(
+                90deg,
+                var(--warning) 0px,
+                var(--warning) 10px,
+                var(--danger) 10px,
+                var(--danger) 20px
+            );
+            opacity: 0.8;
+        }
+        
+        body.beta-theme .card::after {
+            content: '🚧 BETA 🚧';
+            position: absolute;
+            bottom: 10px;
+            right: 15px;
+            background: var(--warning);
+            color: var(--bg-primary);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: bold;
+            transform: rotate(15deg);
+            opacity: 0.8;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+        
+        body.beta-theme .code-block {
+            border: 2px dashed var(--warning);
+            transform: rotate(0.2deg);
+            animation: shake 15s ease-in-out infinite alternate;
+            background: var(--code-bg);
+            border-left: 4px solid var(--warning);
+        }
+        
+        body.beta-theme .code-block:hover {
+            background: var(--bg-secondary);
+            border-color: var(--warning);
+        }
+        
+        body.beta-theme .official-note,
+        body.beta-theme .warning {
+            border-style: dashed;
+            animation: cautionBlink 3s ease-in-out infinite;
+            background: var(--card-bg);
+        }
+        
+        @keyframes cautionBlink {
+            0%, 100% { border-color: var(--warning); }
+            50% { border-color: var(--danger); }
+        }
+        
+        body.beta-theme #beta-warning::before {
+            content: "⚠️ CONSTRUCTION ZONE ⚠️";
+            display: block;
+            text-align: center;
+            font-weight: bold;
+            color: var(--warning);
+            margin-bottom: 10px;
+            animation: flicker 2s linear infinite;
+        }
+        
+        body.beta-theme #beta-warning > * {
+            position: relative;
+            z-index: 1;
+            animation: shake 4s ease-in-out infinite;
+        }
+        
+        body.beta-theme #beta-warning strong {
+            animation: flicker 1.5s linear infinite;
+        }
+        
+        /* Beta theme overrides for product cards in About section */
+        body.beta-theme #about .card > div > div {
+            background: var(--gradient-card) !important;
+            border: 1px solid var(--warning);
+        }
+        /* End Beta Theme Specifics */
+
+        @media (max-width: 768px) { 
+            body { 
+                padding: 20px 15px; 
+                max-width: 100%;
+            } 
+            
+            h1 { 
+                font-size: clamp(1.5rem, 6vw, 2.5rem); 
+                text-align: center;
+            } 
+            
+            .tabs { 
+                flex-direction: column; 
+                border-radius: var(--border-radius);
+            }
+            
+            .tab {
+                text-align: center;
+                border-bottom: 1px solid var(--border-color);
+                border-radius: 0;
+            }
+            
+            .tab:last-child {
+                border-bottom: none;
+            }
+            
+            .tab-content {
+                border-radius: var(--border-radius);
+                border: 1px solid var(--border-color);
+                margin-top: 1px;
+            }
+            
+            /* Construction theme mobile styles */
+            body.beta-theme h1 {
+                animation: shake 3s ease-in-out infinite;
+            }
+            
+            body.beta-theme .card {
+                border: 3px solid var(--warning);
+                background: var(--card-bg);
+                box-shadow: 0 0 15px rgba(255, 152, 0, 0.3);
+            }
+            
+            body.beta-theme .tab {
+                background: var(--card-bg);
+                border: 2px solid var(--warning);
+                position: relative;
+                overflow: hidden;
+            }
+            
+            body.beta-theme .tab::before {
+                content: "🚧";
+                position: absolute;
+                left: 5px;
+                top: 50%;
+                transform: translateY(-50%);
+                font-size: 0.8em;
+                opacity: 0.7;
+            }
+            
+            .card {
+                padding: 20px;
+                background: var(--gradient-card);
+                margin: 20px 0;
+            }
+            
+            .code-block {
+                padding: 16px;
+                font-size: 0.85rem;
+            }
+            
+            .switch-container {
+                margin-left: 10px;
+                padding: 6px 12px;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            body {
+                padding: 15px 10px;
+            }
+            
+            .official-note,
+            .warning,
+            .card {
+                padding: 16px;
+                background: var(--gradient-card);
+                margin: 16px 0;
+            }
+            
+            .switch-container {
+                margin-left: 0;
+                margin-top: 10px;
+                display: flex;
+                justify-content: center;
+            }
+            
+            /* Construction theme extra mobile styles */
+            body.beta-theme {
+                background-size: 20px 20px; /* Smaller construction tape pattern for mobile */
+            }
+            
+            body.beta-theme .card {
+                animation: shake 4s ease-in-out infinite, cautionBlink 1.5s linear infinite;
+                border-width: 2px; /* Thinner borders for mobile */
+            }
+            
+            body.beta-theme .switch-container {
+                background: var(--card-bg);
+                border: 2px solid var(--warning);
+                box-shadow: 0 0 10px rgba(255, 152, 0, 0.4);
+            }
+            
+            body.beta-theme h1::after {
+                content: " 🚧⚠️";
+                font-size: 0.7em;
+                margin-left: 5px;
+            }
+        }
+
+        /* --- Changelog Styles --- */
+        .changelog-filter {
+            display: flex;
+            margin: 20px 0;
+            border-bottom: 1px solid var(--border-color);
+            background: var(--bg-secondary);
+            border-radius: var(--border-radius) var(--border-radius) 0 0;
+            overflow: hidden;
+        }
+
+        .changelog-tab {
+            padding: 12px 20px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            transition: var(--transition);
+            border-bottom: 3px solid transparent;
+            background: var(--bg-primary);
+            font-weight: 600;
+            font-size: 0.9rem;
+            flex: 1;
+            text-align: center;
+        }
+
+        .changelog-tab:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .changelog-tab.active {
+            color: var(--accent);
+            border-bottom: 3px solid var(--accent);
+            background: var(--gradient-card);
+        }
+
+        .changelog-entries {
+            background: var(--gradient-card);
+            border-radius: 0 0 var(--border-radius) var(--border-radius);
+            border: 1px solid var(--border-color);
+            border-top: none;
+            max-height: 600px;
+            overflow-y: auto;
+            padding: 0;
+        }
+
+        .changelog-entry {
+            border-bottom: 1px solid var(--border-color);
+            padding: 24px;
+            transition: var(--transition);
+        }
+
+        .changelog-entry:last-child {
+            border-bottom: none;
+        }
+
+        .changelog-entry:hover {
+            background: var(--card-bg-hover);
+        }
+
+        .changelog-entry.hidden {
+            display: none;
+        }
+
+        .changelog-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .changelog-version {
+            font-weight: 700;
+            font-size: 1.1rem;
+            padding: 6px 12px;
+            border-radius: var(--border-radius-small);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .beta-badge {
+            background: linear-gradient(135deg, var(--warning), var(--danger));
+            color: white;
+            box-shadow: 0 2px 8px rgba(255, 152, 0, 0.3);
+        }
+
+        .stable-badge {
+            background: linear-gradient(135deg, var(--success), var(--accent));
+            color: white;
+            box-shadow: 0 2px 8px rgba(0, 255, 136, 0.3);
+        }
+
+        .changelog-date {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        .changelog-content h4 {
+            color: var(--text-primary);
+            margin: 0 0 12px 0;
+            font-size: 1.2rem;
+        }
+
+        .changelog-description {
+            color: var(--text-secondary);
+            margin-bottom: 20px;
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+
+        .changelog-section {
+            margin: 20px 0;
+        }
+
+        .changelog-section h5 {
+            color: var(--accent);
+            margin: 0 0 12px 0;
+            font-size: 1rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .changelog-section ul {
+            margin: 0;
+            padding-left: 20px;
+            color: var(--text-secondary);
+        }
+
+        .changelog-section li {
+            margin-bottom: 8px;
+            line-height: 1.5;
+        }
+
+        .changelog-section li strong {
+            color: var(--text-primary);
+        }
+
+        .changelog-section li code {
+            background: var(--code-bg);
+            color: var(--code-color);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+        }
+
+        .changelog-note {
+            background: rgba(0, 212, 255, 0.1);
+            border: 1px solid var(--accent);
+            border-left: 4px solid var(--accent);
+            padding: 16px;
+            border-radius: var(--border-radius-small);
+            margin-top: 20px;
+            font-size: 0.9rem;
+        }
+
+        .changelog-note strong {
+            color: var(--accent);
+        }
+
+        .changelog-footer {
+            text-align: center;
+            padding: 24px;
+            border-top: 1px solid var(--border-color);
+            background: var(--bg-secondary);
+            border-radius: 0 0 var(--border-radius) var(--border-radius);
+            margin-top: 0;
+        }
+
+        .changelog-footer p {
+            margin: 8px 0;
+        }
+
+        .changelog-footer small {
+            color: var(--text-muted);
+        }
+
+        /* Beta theme overrides for changelog */
+        body.beta-theme .changelog-filter {
+            background: var(--bg-secondary);
+            border-color: var(--warning);
+        }
+
+        body.beta-theme .changelog-tab {
+            background: var(--bg-secondary);
+            border-color: var(--warning);
+        }
+
+        body.beta-theme .changelog-tab:hover {
+            background: var(--bg-tertiary);
+        }
+
+        body.beta-theme .changelog-tab.active {
+            background: var(--card-bg);
+            border-bottom-color: var(--warning);
+            color: var(--warning);
+        }
+
+        body.beta-theme .changelog-entries {
+            background: var(--card-bg);
+            border-color: var(--warning);
+        }
+
+        body.beta-theme .changelog-entry {
+            border-color: rgba(255, 152, 0, 0.2);
+        }
+
+        body.beta-theme .changelog-entry:hover {
+            background: var(--card-bg-hover);
+        }
+
+        body.beta-theme .changelog-section h5 {
+            color: var(--warning);
+        }
+
+        body.beta-theme .changelog-note {
+            background: rgba(255, 152, 0, 0.1);
+            border-color: var(--warning);
+        }
+
+        body.beta-theme .changelog-note strong {
+            color: var(--warning);
+        }
+
+        body.beta-theme .changelog-footer {
+            background: var(--bg-secondary);
+            border-color: var(--warning);
+        }
+
+        /* Mobile responsive for changelog */
+        @media (max-width: 768px) {
+            .changelog-filter {
+                flex-direction: column;
+            }
+
+            .changelog-tab {
+                text-align: center;
+                border-bottom: 1px solid var(--border-color);
+                border-radius: 0;
+            }
+
+            .changelog-tab:last-child {
+                border-bottom: none;
+            }
+
+            .changelog-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+            }
+
+            .changelog-entries {
+                max-height: 500px;
+                border-radius: var(--border-radius);
+                border: 1px solid var(--border-color);
+                margin-top: 1px;
+            }
+
+            .changelog-entry {
+                padding: 16px;
+            }
+
+            .changelog-section ul {
+                padding-left: 16px;
+            }
+        }
+
+        /* --- Toggle Switch Styles (Modern) --- */
+        .switch-container {
+            display: inline-flex;
+            align-items: center;
+            margin-left: 20px;
+            vertical-align: middle;
+            background: var(--gradient-card);
+            padding: 8px 16px;
+            border-radius: 25px;
+            border: 1px solid var(--border-color);
+            transition: var(--transition);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 16px var(--shadow-light);
+        }
+        
+        .switch-container:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 24px var(--shadow);
+        }
+        
+        .switch-text {
+            font-size: 0.85em;
+            font-weight: 600;
+            cursor: pointer;
+            padding: 0 8px;
+            transition: var(--transition);
+        }
+        
+        .stable-text { 
+            color: var(--success); 
+        }
+        
+        .beta-text { 
+            color: var(--warning); 
+        }
+        
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 26px;
+            margin: 0 8px;
+        }
+        
+        .switch input { 
+            opacity: 0; 
+            width: 0; 
+            height: 0; 
+        }
+        
+        .slider { 
+            position: absolute; 
+            cursor: pointer; 
+            top: 0; 
+            left: 0; 
+            right: 0; 
+            bottom: 0; 
+            background: var(--success); 
+            transition: var(--transition); 
+            border-radius: 26px;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+        
+        .slider:before { 
+            position: absolute; 
+            content: ""; 
+            height: 20px; 
+            width: 20px; 
+            left: 3px; 
+            bottom: 3px; 
+            background: white; 
+            transition: var(--transition); 
+            border-radius: 50%;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+        
+        input:checked + .slider { 
+            background: var(--warning); 
+        }
+        
+        input:focus + .slider { 
+            box-shadow: 0 0 8px var(--accent), inset 0 2px 4px rgba(0, 0, 0, 0.2); 
+        }
+        
+        input:checked + .slider:before { 
+            transform: translateX(24px); 
+        }
+        
+        /* Beta theme styling for switch container */
+        body.beta-theme .switch-container {
+            background: var(--card-bg);
+            border-color: var(--warning);
+            box-shadow: 0 4px 16px rgba(255, 152, 0, 0.2);
+        }
+        
+        body.beta-theme .switch-container:hover {
+            box-shadow: 0 6px 24px rgba(255, 152, 0, 0.4);
+        }
+        
+        #beta-warning { 
+            display: none; 
+            margin-top: 16px; 
+        }
+        
+        #beta-warning-text { 
+            display: inline; 
+        }
+        
+        #beta-unavailable-text { 
+            margin-left: 16px; 
+            color: var(--danger); 
+            font-size: 0.8em; 
+            display: none; 
+        }
+
+        /* --- Affiliate Banner Styles --- */
+        .affiliate-banner {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            max-width: 380px;
+            background: var(--gradient-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            padding: 16px;
+            box-shadow: 0 8px 32px var(--shadow);
+            backdrop-filter: blur(10px);
+            transition: var(--transition);
+            z-index: 1000;
+            opacity: 0;
+            transform: translateY(100px);
+            animation: slideInUp 0.5s ease-out forwards;
+        }
+
+        .affiliate-banner.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .affiliate-banner.hide {
+            animation: slideOutDown 0.3s ease-in forwards;
+        }
+
+        .affiliate-banner-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .affiliate-banner-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin: 0;
+        }
+
+        .affiliate-banner-close {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 1.2rem;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: var(--transition);
+            line-height: 1;
+        }
+
+        .affiliate-banner-close:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .affiliate-banner-content {
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .affiliate-partner {
+            opacity: 0;
+            transform: translateX(100%);
+            transition: all 0.5s ease-in-out;
+            position: absolute;
+            width: 100%;
+            top: 0;
+            left: 0;
+        }
+
+        .affiliate-partner.active {
+            opacity: 1;
+            transform: translateX(0);
+            position: relative;
+        }
+
+        .affiliate-partner.exit {
+            opacity: 0;
+            transform: translateX(-100%);
+        }
+
+        .affiliate-banner-text {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+            line-height: 1.4;
+        }
+
+        .affiliate-banner img {
+            max-width: 100%;
+            height: auto;
+            border-radius: var(--border-radius-small);
+            transition: var(--transition);
+        }
+
+        .affiliate-banner a {
+            display: block;
+            text-decoration: none;
+        }
+
+        .affiliate-banner a:hover img {
+            transform: scale(1.02);
+            box-shadow: 0 4px 16px var(--shadow-light);
+        }
+
+        .affiliate-banner a:hover .affiliate-banner-text {
+            color: var(--accent);
+        }
+
+        /* SparkedHost logo styling */
+        .sparkedhost-logo {
+            max-height: 40px;
+            width: auto;
+            filter: brightness(0.9);
+        }
+
+        body.beta-theme .sparkedhost-logo {
+            filter: brightness(1.1) sepia(0.3) hue-rotate(15deg);
+        }
+
+        /* Rotation indicator dots */
+        .affiliate-indicators {
+            display: flex;
+            justify-content: center;
+            gap: 6px;
+            margin-top: 8px;
+        }
+
+        .affiliate-indicator {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--text-muted);
+            transition: var(--transition);
+            opacity: 0.5;
+        }
+
+        .affiliate-indicator.active {
+            background: var(--accent);
+            opacity: 1;
+        }
+
+        /* Beta theme styling for affiliate banner */
+        body.beta-theme .affiliate-banner {
+            border: 2px solid var(--warning);
+            background: var(--card-bg);
+            box-shadow: 0 8px 32px rgba(255, 152, 0, 0.3);
+            animation: slideInUp 0.5s ease-out forwards, shake 8s ease-in-out infinite 2s;
+        }
+
+        body.beta-theme .affiliate-banner::before {
+            content: '🚧';
+            position: absolute;
+            top: -8px;
+            left: -8px;
+            font-size: 1.2rem;
+            animation: bounce 2s ease-in-out infinite;
+        }
+
+        /* Animations */
+        @keyframes slideInUp {
+            from {
+                opacity: 0;
+                transform: translateY(100px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes slideOutDown {
+            from {
+                opacity: 1;
+                transform: translateY(0);
+            }
+            to {
+                opacity: 0;
+                transform: translateY(100px);
+            }
+        }
+
+        /* Mobile responsive */
+        @media (max-width: 768px) {
+            .affiliate-banner {
+                bottom: 10px;
+                right: 10px;
+                left: 10px;
+                max-width: none;
+                margin: 0 auto;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .affiliate-banner {
+                padding: 12px;
+                bottom: 10px;
+            }
+
+            .affiliate-banner-text {
+                font-size: 0.75rem;
+            }
+        }
+
+        /* Accessibility improvements */
+        .affiliate-banner a:focus {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+
+        .affiliate-banner-close:focus {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+    </style>
+    <!-- Google Consent Mode v2 (default deny in EEA/UK) -->
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}    
+      gtag('consent', 'default', {
+        'ad_storage': 'granted',
+        'ad_user_data': 'granted',
+        'ad_personalization': 'granted',
+        'analytics_storage': 'granted',
+        'wait_for_update': 500
+      });
+      // Override to denied in EEA/UK regions until user consents via CMP
+      gtag('consent', 'default', {
+        'ad_storage': 'denied',
+        'ad_user_data': 'denied',
+        'ad_personalization': 'denied',
+        'analytics_storage': 'denied'
+      }, { region: ['AT','BE','BG','HR','CY','CZ','DK','EE','FI','FR','DE','GR','HU','IE','IT','LV','LT','LU','MT','NL','PL','PT','RO','SK','SI','ES','SE','IS','LI','NO','GB'] });
+    </script>
+    <!-- AdSense (Auto ads) -->
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7983111910687324" crossorigin="anonymous"></script>
+</head>
+<body> <!-- Class will be added/removed here -->
+    <h1>PlexDev.live Unofficial Installer</h1>
+    <div class="official-note">
+        <strong>⚠️ Important:</strong> This is an unofficial installer tool for system administrators. The official PlexDevelopment website is
+        <a href="https://plexdevelopment.net" target="_blank">plexdevelopment.net</a>.
+        <br><strong>Technical Tool Notice:</strong> This installer is designed for Linux server administrators and requires technical knowledge. No content is hosted or streamed from this site - it only provides installation scripts for server software.
+    </div>
+
+    <p>Welcome! This is a comprehensive technical documentation site for Linux system administrators. This resource provides installation scripts and guides to help you deploy PlexDevelopment software packages on your own Linux servers. <strong>No content is streamed or hosted from this website</strong> - it only provides server installation utilities and documentation.</p>
+
+    <!-- Quick Requirements Overview -->
+    <div style="margin: 30px 0; padding: 20px; background: var(--card-bg); border-radius: var(--border-radius); border-left: 4px solid var(--accent);">
+        <h3 style="color: var(--accent); margin-bottom: 15px;">� Simple Requirements</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px;">
+            <div>
+                <strong style="color: var(--text-primary);">� Linux VPS</strong><br>
+                <span style="color: var(--text-secondary); font-size: 0.9rem;">Any modern Linux distribution</span>
+            </div>
+            <div>
+                <strong style="color: var(--text-primary);">� Root Access</strong><br>
+                <span style="color: var(--text-secondary); font-size: 0.9rem;">Sudo or root privileges required</span>
+            </div>
+            <div>
+                <strong style="color: var(--text-primary);">🌐 Open Ports</strong><br>
+                <span style="color: var(--text-secondary); font-size: 0.9rem;">80 and 443 accessible</span>
+            </div>
+            <div>
+                <strong style="color: var(--text-primary);">📚 Plex Docs</strong><br>
+                <span style="color: var(--text-secondary); font-size: 0.9rem;">Additional details in official documentation</span>
+            </div>
+        </div>
+        <p style="margin-top: 15px; color: var(--text-muted); font-size: 0.9rem;">
+            <strong>Note:</strong> The script handles all technical configuration automatically. 
+            Additional requirements and detailed specifications are available in the 
+            <a href="https://plexdevelopment.net" target="_blank" style="color: var(--accent);">official PlexDevelopment documentation</a>.
+        </p>
+    </div>
+    
+    <div class="warning">
+        <strong>🔧 Technical Requirements:</strong> This tool is intended for experienced Linux server administrators. You need root access to a Linux server and technical knowledge of command-line operations, web servers, and SSL certificates.
+    </div>
+
+    <!-- Site Navigation Tabs -->
+    <div class="tabs" role="tablist" aria-label="Installation Guide Sections">
+        <div class="tab active" role="tab" aria-selected="true" onclick="switchTab('quick')">Quick Install</div>
+        <div class="tab" role="tab" aria-selected="false" onclick="switchTab('manual')">Manual Install</div>
+        <div class="tab" role="tab" aria-selected="false" onclick="switchTab('changelog')">Changelog</div>
+        <div class="tab" role="tab" aria-selected="false" onclick="switchTab('about')">About</div>
+        <div class="tab" role="tab" aria-selected="false" onclick="window.location.href='/guide'">Installation Guide</div>
+    </div>
+
+    <!-- Quick Install Tab -->
+    <div id="quick" class="tab-content active">
+        <h2>
+            Quick Installation
+            <!-- Version Toggle (Refined Layout) -->
+            <div class="switch-container">
+                <span class="switch-text stable-text" id="stable-label">Stable</span>
+                <label class="switch">
+                    <input type="checkbox" id="version-toggle" onchange="toggleVersion()" aria-label="Toggle between stable and beta installer versions">
+                    <span class="slider"></span>
+                </label>
+                <span class="switch-text beta-text" id="beta-label">Beta</span>
+                <span id="beta-unavailable-text">(Beta script not available)</span>
+            </div>
+        </h2>
+        <!-- Beta Warning Message -->
+        <div class="warning" id="beta-warning">
+            <strong>🚧 Heads Up! 🚧</strong> <span id="beta-warning-text">You've selected the Beta version. This version might have bugs or unfinished features. Use it at your own risk!</span>
+        </div>
+        <p>This command downloads and executes an installation script for server administrators. <strong>Only run this on your own Linux server with proper backups.</strong> The script installs server software components and configures web services.</p>
+        <div class="code-block" id="quick-install-block">
+            <code id="quick-install-code">curl -sSL https://plexdev.live/setup.sh | sudo bash</code>
+            <button class="copy-btn" onclick="copyToClipboard(document.getElementById('quick-install-code').textContent)">Copy</button>
+        </div>
+    </div>
+
+    <!-- Manual Install Tab -->
+    <div id="manual" class="tab-content">
+        <h2>Manual Installation</h2>
+        <p>If you prefer, download the script first, make it runnable, and then execute it.</p>
+        <p><i>(Note: Use the toggle above to switch between Stable/Beta commands)</i></p>
+
+        <div id="manual-steps">
+             <!-- Card container for steps -->
+            <div class="card">
+                <p><strong>Step 1: Download</strong></p>
+                <div class="code-block">
+                    <code id="manual-download-code">curl -sSL -o setup.sh https://plexdev.live/setup.sh</code>
+                    <button class="copy-btn" onclick="copyToClipboard(document.getElementById('manual-download-code').textContent)">Copy</button>
+                </div>
+            </div>
+             <div class="card">
+                <p><strong>Step 2: Make it Executable</strong></p>
+                <div class="code-block">
+                    <code id="manual-chmod-code">chmod +x setup.sh</code>
+                    <button class="copy-btn" onclick="copyToClipboard(document.getElementById('manual-chmod-code').textContent)">Copy</button>
+                </div>
+            </div>
+             <div class="card">
+                <p><strong>Step 3: Run It</strong></p>
+                <div class="code-block">
+                    <code id="manual-run-code">sudo bash setup.sh</code>
+                    <button class="copy-btn" onclick="copyToClipboard(document.getElementById('manual-run-code').textContent)">Copy</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Changelog Tab -->
+    <div id="changelog" class="tab-content">
+        <h2>📋 Installer Changelog</h2>
+        <p>Track all changes and improvements to both Beta and Stable installer versions.</p>
+        
+        <!-- Version Filter Tabs -->
+        <div class="changelog-filter">
+            <div class="changelog-tab active" onclick="showChangelogVersion('all')">All Versions</div>
+            <div class="changelog-tab" onclick="showChangelogVersion('beta')">🚧 Beta Only</div>
+            <div class="changelog-tab" onclick="showChangelogVersion('stable')">✅ Stable Only</div>
+        </div>
+
+        <!-- Changelog Entries -->
+        <div class="changelog-entries">
+            
+            <!-- Beta v2.3 - October 2025 -->
+            <div class="changelog-entry beta-version" data-version="beta">
+                <div class="changelog-header">
+                    <span class="changelog-version beta-badge">🚧 Beta v2.3</span>
+                    <span class="changelog-date">October 2, 2025</span>
+                </div>
+                <div class="changelog-content">
+                    <h4>🚀 MongoDB Integration & Multi-Instance Support!</h4>
+                    <p class="changelog-description">
+                        Revolutionary update bringing automated MongoDB setup and support for running multiple instances of the same product.
+                        Perfect for users who want to run multiple bots or websites with different configurations!
+                    </p>
+                    
+                    <div class="changelog-section">
+                        <h5>🆕 New Features</h5>
+                        <ul>
+                            <li><strong>MongoDB Auto-Setup:</strong> Automatic MongoDB 8.2 installation and configuration</li>
+                            <li><strong>Database Management:</strong> Automatic database and user creation for each product/instance</li>
+                            <li><strong>Credential Storage:</strong> Secure credential management in <code>/etc/plex/setup</code></li>
+                            <li><strong>Auto-Config Update:</strong> Automatic <code>config.yml</code> MongoURI field population</li>
+                            <li><strong>Multi-Instance Support:</strong> Run multiple instances of the same product (e.g., 2x PlexTickets)</li>
+                            <li><strong>Unique Instance Names:</strong> Each instance gets unique name, service, and database</li>
+                        </ul>
+                    </div>
+
+                    <div class="changelog-section">
+                        <h5>🔧 MongoDB Features</h5>
+                        <ul>
+                            <li><strong>Official Repositories:</strong> Installs MongoDB from official repos (apt, dnf, yum, pacman)</li>
+                            <li><strong>User Creation:</strong> Dedicated MongoDB user per product (e.g., <code>plextickets_user</code>)</li>
+                            <li><strong>Random Database Names:</strong> Unique database names with random suffix (e.g., <code>plextickets5a3b2</code>)</li>
+                            <li><strong>Secure Passwords:</strong> 16-character random password generation</li>
+                            <li><strong>Connection Strings:</strong> Format: <code>mongodb://user:pass@localhost:27017/dbname?authSource=dbname</code></li>
+                            <li><strong>Credential Reuse:</strong> Saves credentials for easy multi-instance setup</li>
+                        </ul>
+                    </div>
+
+                    <div class="changelog-section">
+                        <h5>🎯 Multi-Instance Features</h5>
+                        <ul>
+                            <li><strong>Instance Detection:</strong> Automatically detects existing installations</li>
+                            <li><strong>Custom Naming:</strong> Choose unique names or use auto-generated ones</li>
+                            <li><strong>Separate Resources:</strong> Each instance gets its own directory, service, and database</li>
+                            <li><strong>Independent Management:</strong> Manage each instance separately with systemctl</li>
+                            <li><strong>Example Use Cases:</strong> Multiple Discord bots, separate test/production environments</li>
+                        </ul>
+                    </div>
+
+                    <div class="changelog-section">
+                        <h5>⚡ Technical Details</h5>
+                        <ul>
+                            <li><strong>Service Names:</strong> Format <code>plex-INSTANCE_NAME</code> for systemd</li>
+                            <li><strong>Directory Structure:</strong> <code>/var/www/plex/INSTANCE_NAME</code> for each instance</li>
+                            <li><strong>Config Files:</strong> Separate configuration for each instance</li>
+                            <li><strong>MongoDB Version:</strong> MongoDB 7.0 from official repositories</li>
+                            <li><strong>Name Validation:</strong> Alphanumeric, dash, and underscore allowed in instance names</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stable v2.2 - October 2025 -->
+            <div class="changelog-entry stable-version" data-version="stable">
+                <div class="changelog-header">
+                    <span class="changelog-version stable-badge">✅ Stable v2.2</span>
+                    <span class="changelog-date">October 2, 2025</span>
+                </div>
+                <div class="changelog-content">
+                    <h4>🎉 New Stable Release!</h4>
+                    <p class="changelog-description">
+                        The previous Beta v2.2 has been promoted to Stable. This version includes all the SSL auto-renewal,
+                        enhanced error handling, and management features that have been thoroughly tested.
+                    </p>
+                    
+                    <div class="changelog-section">
+                        <h5>🆕 Features (from Beta v2.2)</h5>
+                        <ul>
+                            <li><strong>SSL Auto-Renewal:</strong> Automatic SSL certificate renewal with crontab setup</li>
+                            <li><strong>SSL Management Menu:</strong> Complete SSL certificate management from main menu</li>
+                            <li><strong>Enhanced Product Management:</strong> SSL status and renewal logs in product menus</li>
+                            <li><strong>502 Error Pages:</strong> Custom user-friendly error pages for all products</li>
+                            <li><strong>Improved Archive Detection:</strong> Better search algorithm (maxdepth 5, better Node.js detection)</li>
+                        </ul>
+                    </div>
+
+                    <div class="changelog-section">
+                        <h5>🔧 Improvements</h5>
+                        <ul>
+                            <li><strong>SSL Cleanup:</strong> Comprehensive rollback mechanism for failed SSL setups</li>
+                            <li><strong>Debian Support:</strong> Added missing environment variables for Debian systems</li>
+                            <li><strong>Error Messages:</strong> Detailed troubleshooting information for SSL failures</li>
+                            <li><strong>User Experience:</strong> Better feedback and progress indicators</li>
+                        </ul>
+                    </div>
+
+                    <div class="changelog-section">
+                        <h5>⚡ Technical Details</h5>
+                        <ul>
+                            <li><strong>SSL Cron Jobs:</strong> Twice daily certificate checks at random times</li>
+                            <li><strong>Nginx Integration:</strong> Automatic reload on successful renewals</li>
+                            <li><strong>Logging:</strong> Comprehensive logs at <code>/var/log/certbot-renewal.log</code></li>
+                            <li><strong>Backup System:</strong> Config backup/restore for failed SSL attempts</li>
+                        </ul>
+                    </div>
+
+                    <div class="changelog-section">
+                        <h5>📝 Note</h5>
+                        <ul>
+                            <li><strong>Production Ready:</strong> All features have been tested and are stable</li>
+                            <li><strong>Recommended:</strong> Use this version for production environments</li>
+                            <li><strong>No MongoDB:</strong> MongoDB features are only available in Beta v2.3+</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="changelog-footer">
+            <p><strong>Want to help test new features?</strong> Switch to Beta version using the toggle in Quick Install tab!</p>
+            <p><small><em>Beta versions may contain bugs and are for testing purposes only.</em></small></p>
+        </div>
+    </div>
+
+    <!-- About Tab -->
+    <div id="about" class="tab-content">
+        <h2>About This Technical Documentation</h2>
+        <div class="card">
+            <h3>🔧 Site Purpose</h3>
+            <p><strong>This website provides comprehensive technical documentation and installation scripts for Linux system administrators.</strong></p>
+            <ul style="margin-left: 40px; padding-left: 5px; color: var(--text-secondary);">
+                <li style="margin-bottom: 0.5rem;"><strong>No Content Hosting:</strong> This site does not host, stream, or provide downloadable content files</li>
+                <li style="margin-bottom: 0.5rem;"><strong>Server Administration:</strong> Scripts are for deploying server software on your own infrastructure</li>
+                <li style="margin-bottom: 0.5rem;"><strong>Technical Documentation:</strong> Installation guides for experienced system administrators</li>
+                <li style="margin-bottom: 0.5rem;"><strong>Open Source Tools:</strong> Scripts configure legitimate software packages and web servers</li>
+            </ul>
+        </div>
+        
+        <div class="card">
+            <h3>🛠️ What This Installer Does</h3>
+            <p>This project was created by <strong>bali0531</strong> to simplify the server setup process for PlexDevelopment software packages.</p>
+            <p>The installation scripts automatically configure:</p>
+            <ul style="margin-left: 40px; padding-left: 5px; color: var(--text-secondary);">
+                <li style="margin-bottom: 0.5rem;">Linux distribution detection and package management</li>
+                <li style="margin-bottom: 0.5rem;">Dependency installation (Node.js, Nginx web server, etc.)</li>
+                <li style="margin-bottom: 0.5rem;">Nginx reverse proxy configuration for web applications</li>
+                <li style="margin-bottom: 0.5rem;">SSL certificate setup using Let's Encrypt (free, legitimate certificates)</li>
+                <li style="margin-bottom: 0.5rem;">Systemd service configuration for application management</li>
+                <li style="margin-bottom: 0.5rem;">Firewall and security configuration</li>
+            </ul>
+        </div>
+        
+        <!-- Advanced Technical Documentation -->
+        <div class="card">
+            <h3>📖 Advanced Server Configuration Guide</h3>
+            <p style="margin-bottom: 20px;">For experienced system administrators who need detailed control over the installation process:</p>
+            
+            <h4 style="color: var(--accent); margin-bottom: 15px;">Database Configuration</h4>
+            <div style="background: var(--code-bg); padding: 15px; border-radius: var(--border-radius-small); margin-bottom: 20px;">
+                <p style="color: var(--text-secondary); margin-bottom: 10px;">MongoDB Setup (Beta v2.3+ has automatic setup):</p>
+                <code style="color: var(--code-color); display: block; margin-bottom: 10px;">
+                    # Install MongoDB 8.2 (Ubuntu/Debian)<br>
+                    curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc | sudo gpg --dearmor -o /usr/share/keyrings/mongodb-server-8.0.gpg<br>
+                    echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] https://repo.mongodb.org/apt/ubuntu $(lsb_release -cs)/mongodb-org/8.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-8.0.list<br>
+                    sudo apt update && sudo apt install -y mongodb-org<br><br>
+                    
+                    # Start MongoDB service<br>
+                    sudo systemctl start mongod<br>
+                    sudo systemctl enable mongod<br><br>
+                    
+                    # Create database and user (using mongosh)<br>
+                    mongosh --eval 'use plexapp_db'<br>
+                    mongosh plexapp_db --eval 'db.createUser({user: "plexapp", pwd: "secure_password", roles: [{role: "readWrite", db: "plexapp_db"}]})'<br><br>
+                    
+                    # Connection String Format:<br>
+                    # mongodb://plexapp:secure_password@localhost:27017/plexapp_db?authSource=plexapp_db
+                </code>
+            </div>
+            
+            <h4 style="color: var(--accent); margin-bottom: 15px;">Nginx Configuration Examples</h4>
+            <div style="background: var(--code-bg); padding: 15px; border-radius: var(--border-radius-small); margin-bottom: 20px;">
+                <p style="color: var(--text-secondary); margin-bottom: 10px;">Reverse Proxy Configuration:</p>
+                <code style="color: var(--code-color); display: block; font-size: 0.85em; line-height: 1.4;">
+                    server {<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;listen 80;<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;server_name your-domain.com;<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;return 301 https://$server_name$request_uri;<br>
+                    }<br><br>
+                    
+                    server {<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;listen 443 ssl http2;<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;server_name your-domain.com;<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;ssl_certificate /etc/letsencrypt/live/your-domain.com/fullchain.pem;<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;location / {<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;proxy_pass http://localhost:3000;<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;proxy_set_header Host $host;<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;proxy_set_header X-Real-IP $remote_addr;<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;}<br>
+                    }
+                </code>
+            </div>
+            
+            <h4 style="color: var(--accent); margin-bottom: 15px;">Systemd Service Management</h4>
+            <div style="background: var(--code-bg); padding: 15px; border-radius: var(--border-radius-small); margin-bottom: 20px;">
+                <p style="color: var(--text-secondary); margin-bottom: 10px;">Service Control Commands:</p>
+                <code style="color: var(--code-color); display: block;">
+                    # Start/stop services<br>
+                    systemctl start plexapp<br>
+                    systemctl stop plexapp<br>
+                    systemctl restart plexapp<br>
+                    systemctl status plexapp<br><br>
+                    
+                    # Enable/disable auto-start<br>
+                    systemctl enable plexapp<br>
+                    systemctl disable plexapp<br><br>
+                    
+                    # View logs<br>
+                    journalctl -u plexapp -f
+                </code>
+            </div>
+        </div>
+        
+        <!-- Troubleshooting Section -->
+        <div class="card">
+            <h3>🔍 Troubleshooting Common Issues</h3>
+            
+            <h4 style="color: var(--warning); margin: 20px 0 15px;">Port Already in Use</h4>
+            <p style="color: var(--text-secondary); margin-bottom: 10px;">If you encounter "port already in use" errors:</p>
+            <div style="background: var(--code-bg); padding: 15px; border-radius: var(--border-radius-small); margin-bottom: 20px;">
+                <code style="color: var(--code-color); display: block;">
+                    # Find process using port 80/443<br>
+                    sudo netstat -tulpn | grep :80<br>
+                    sudo netstat -tulpn | grep :443<br><br>
+                    
+                    # Kill process if necessary<br>
+                    sudo kill -9 &lt;PID&gt;<br><br>
+                    
+                    # Check for Apache/other web servers<br>
+                    sudo systemctl stop apache2<br>
+                    sudo systemctl disable apache2
+                </code>
+            </div>
+            
+            <h4 style="color: var(--warning); margin: 20px 0 15px;">SSL Certificate Issues</h4>
+            <p style="color: var(--text-secondary); margin-bottom: 10px;">For Let's Encrypt certificate problems:</p>
+            <div style="background: var(--code-bg); padding: 15px; border-radius: var(--border-radius-small); margin-bottom: 20px;">
+                <code style="color: var(--code-color); display: block;">
+                    # Check certificate status<br>
+                    certbot certificates<br><br>
+                    
+                    # Renew certificates<br>
+                    certbot renew --dry-run<br>
+                    certbot renew<br><br>
+                    
+                    # Force certificate renewal<br>
+                    certbot certonly --force-renewal -d your-domain.com
+                </code>
+            </div>
+            
+            <h4 style="color: var(--warning); margin: 20px 0 15px;">Database Connection Errors</h4>
+            <p style="color: var(--text-secondary); margin-bottom: 10px;">For MongoDB connectivity issues:</p>
+            <div style="background: var(--code-bg); padding: 15px; border-radius: var(--border-radius-small); margin-bottom: 20px;">
+                <code style="color: var(--code-color); display: block;">
+                    # Test MongoDB connection<br>
+                    mongosh mongodb://plexapp:password@localhost:27017/plexapp_db?authSource=plexapp_db<br><br>
+                    
+                    # Check MongoDB service<br>
+                    systemctl status mongod<br><br>
+                    
+                    # View MongoDB logs<br>
+                    tail -f /var/log/mongodb/mongod.log<br>
+                    journalctl -u mongod -f<br><br>
+                    
+                    # Check MongoDB connection manually<br>
+                    mongosh --eval 'db.adminCommand({ping: 1})'<br><br>
+                    
+                    # View credentials saved by installer<br>
+                    sudo cat /etc/plex/setup
+                </code>
+            </div>
+            
+            <h4 style="color: var(--warning); margin: 20px 0 15px;">Permission Issues</h4>
+            <p style="color: var(--text-secondary); margin-bottom: 10px;">Fix common file permission problems:</p>
+            <div style="background: var(--code-bg); padding: 15px; border-radius: var(--border-radius-small); margin-bottom: 20px;">
+                <code style="color: var(--code-color); display: block;">
+                    # Set correct ownership<br>
+                    sudo chown -R www-data:www-data /var/www/html<br>
+                    sudo chown -R plexapp:plexapp /opt/plexapp<br><br>
+                    
+                    # Set correct permissions<br>
+                    sudo chmod -R 755 /var/www/html<br>
+                    sudo chmod -R 644 /var/www/html/*.html<br>
+                    sudo chmod +x /opt/plexapp/start.sh
+                </code>
+            </div>
+        </div>
+        
+        <h3>Supported Products</h3>
+        <div class="card">
+            <p>This installer supports the following PlexDevelopment products:</p>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; margin-top: 16px;">
+                <div style="padding: 12px; background: var(--gradient-card); border-radius: var(--border-radius-small); border-left: 3px solid var(--accent);">
+                    <strong style="color: var(--accent);">PlexTickets</strong><br>
+                    <small style="color: var(--text-muted);">Support ticket system</small>
+                </div>
+                <div style="padding: 12px; background: var(--gradient-card); border-radius: var(--border-radius-small); border-left: 3px solid var(--success);">
+                    <strong style="color: var(--success);">PlexStaff</strong><br>
+                    <small style="color: var(--text-muted);">Staff management</small>
+                </div>
+                <div style="padding: 12px; background: var(--gradient-card); border-radius: var(--border-radius-small); border-left: 3px solid var(--warning);">
+                    <strong style="color: var(--warning);">PlexStatus</strong><br>
+                    <small style="color: var(--text-muted);">Service status page</small>
+                </div>
+                <div style="padding: 12px; background: var(--gradient-card); border-radius: var(--border-radius-small); border-left: 3px solid var(--danger);">
+                    <strong style="color: var(--danger);">PlexStore</strong><br>
+                    <small style="color: var(--text-muted);">Digital store</small>
+                </div>
+                <div style="padding: 12px; background: var(--gradient-card); border-radius: var(--border-radius-small); border-left: 3px solid #9b59b6;">
+                    <strong style="color: #9b59b6;">PlexForms</strong><br>
+                    <small style="color: var(--text-muted);">Form builder</small>
+                </div>
+                <div style="padding: 12px; background: var(--gradient-card); border-radius: var(--border-radius-small); border-left: 3px solid #e67e22;">
+                    <strong style="color: #e67e22;">PlexLinks</strong><br>
+                    <small style="color: var(--text-muted);">Link management</small>
+                </div>
+                <div style="padding: 12px; background: var(--gradient-card); border-radius: var(--border-radius-small); border-left: 3px solid #2ecc71;">
+                    <strong style="color: #2ecc71;">PlexPaste</strong><br>
+                    <small style="color: var(--text-muted);">Pastebin service</small>
+                </div>
+            </div>
+            <p style="margin-top: 16px; font-size: 0.9em; color: var(--text-muted);">
+                <strong>All products are now available in both stable and beta versions.</strong> Beta includes the new Plex CLI management tool for easier administration.
+            </p>
+        </div>
+        
+        <div class="warning">
+            <strong>Disclaimer:</strong> This is an unofficial tool and is not officially supported by PlexDevelopment. Use at your own discretion.
+        </div>
+    </div>
+
+    <!-- Small affiliate notice - moved to bottom and less prominent -->
+    <div style="margin: 30px 0; padding: 15px; background: var(--bg-secondary); border-radius: var(--border-radius-small); text-align: center; font-size: 0.85rem; color: var(--text-muted); border: 1px solid var(--border-color);">
+        <p style="margin-bottom: 10px;"><strong>💼 Hosting Partners</strong></p>
+        <p style="margin-bottom: 15px; font-size: 0.75rem;">This technical documentation is supported by hosting affiliate partnerships</p>
+        <div style="display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; align-items: center;">
+            <a href="https://zap-hosting.com/plexdevlive?voucher=bali0531-a-6918" target="_blank" rel="noopener noreferrer" style="opacity: 0.7; transition: opacity 0.3s; text-decoration: none;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+                <img src="images-optimized.jpeg" alt="ZAP-Hosting VPS" style="max-width: 200px; height: auto;" loading="lazy">
+            </a>
+            <a href="https://billing.sparkedhost.com/aff.php?aff=2901" target="_blank" rel="noopener noreferrer" style="opacity: 0.7; transition: opacity 0.3s; text-decoration: none;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+                <img src="https://sparkedhost.com/_astro/logo-text.DvJcWMew_1pr0t.webp" alt="SparkedHost VPS" style="max-width: 150px; height: auto;" loading="lazy">
+            </a>
+        </div>
+        <p style="margin-top: 10px; font-size: 0.7rem; color: var(--text-muted);"><em>Affiliate links help maintain this free technical documentation</em></p>
+    </div>
+
+    <footer>
+        PlexDev.live made by: bali0531 | <a href="https://plexdevelopment.net" target="_blank">Official Site</a> | <a href="/guide">Simple Guide</a><br>
+        <a href="/privacy.html">Privacy Policy</a> | <a href="/privacy-policy.html">AdSense Privacy Policy</a> | <a href="/terms.html">Terms of Service</a> | <a href="/faq.html">FAQ</a> | <a href="/.well-known/security.txt">Security</a>
+    </footer>
+
+    <script>
+        // Set beta availability (change this to false if beta.sh is not available)
+        const betaAvailable = true; // Changed from __BETA_AVAILABLE__ placeholder
+
+        const versionToggle = document.getElementById('version-toggle');
+        const betaUnavailableText = document.getElementById('beta-unavailable-text');
+        const bodyElement = document.body; // Get body element
+        const betaWarning = document.getElementById('beta-warning');
+        const betaWarningTextElement = document.getElementById('beta-warning-text'); // Get the span for text
+
+        // Array of random endings for the beta warning
+        const betaWarningEndings = [
+            "Things might be wobbly!",
+            "Expect some turbulence!",
+            "Handle with care!",
+            "May contain nuts... and bolts.",
+            "Proceed with caution!",
+            "It's alive... maybe?",
+            "Don't feed after midnight.",
+            "Under construction (literally)."
+        ];
+        const baseBetaWarningText = "You've selected the Beta version. This version might have bugs or unfinished features. Use it at your own risk! ";
+
+
+        if (!betaAvailable) {
+            versionToggle.disabled = true;
+            betaUnavailableText.style.display = 'inline';
+            // Ensure labels reflect disabled state visually
+             document.getElementById('beta-label').style.opacity = '0.5';
+             document.getElementById('beta-label').style.cursor = 'default';
+             // Prevent clicking disabled label from doing anything
+             document.getElementById('beta-label').onclick = null;
+             document.getElementById('stable-label').onclick = null; // Also disable stable label click if beta unavailable? Maybe not.
+        } else {
+             // Make labels clickable to toggle the switch
+             document.getElementById('stable-label').onclick = () => { if (versionToggle.checked) versionToggle.click(); };
+             document.getElementById('beta-label').onclick = () => { if (!versionToggle.checked) versionToggle.click(); };
+        }
+
+
+        function switchTab(tabId) {
+            // Check if the target tab content exists
+            const targetTabContent = document.getElementById(tabId);
+
+            if (!targetTabContent) {
+                console.error(`Tab content not found for ID: ${tabId}`);
+                return; // Exit if content doesn't exist
+            }
+
+            // Remove active class from all tab contents and tabs
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(tab => { 
+                tab.classList.remove('active'); 
+                tab.setAttribute('aria-selected','false'); 
+            });
+
+            // Add active class to target content
+            targetTabContent.classList.add('active');
+
+            // Find and activate the corresponding tab button by checking onclick attribute
+            const targetTab = Array.from(document.querySelectorAll('.tab')).find(tab => {
+                const onclickAttr = tab.getAttribute('onclick');
+                return onclickAttr && onclickAttr.includes(`switchTab('${tabId}')`);
+            });
+
+            if (targetTab) {
+                targetTab.classList.add('active');
+                targetTab.setAttribute('aria-selected','true');
+            }
+
+            // Initialize changelog filter if switching to changelog tab
+            if (tabId === 'changelog') {
+                // Reset to show all versions by default
+                showChangelogVersion('all');
+            }
+        }
+
+
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                // Use currentTarget if event is passed, otherwise fallback might be needed
+                const btn = event ? event.currentTarget : document.querySelector(`button[onclick*="${text}"]`); // Basic fallback
+                if (!btn) return; // Exit if button not found
+
+                const originalText = btn.textContent;
+                btn.textContent = "Copied!";
+                // Change color briefly on success
+                btn.style.backgroundColor = 'var(--success)';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.style.backgroundColor = ''; // Revert color
+                 }, 1500);
+            }).catch(err => {
+                console.error('Failed to copy text: ', err);
+                alert('Failed to copy text.'); // Simpler fallback
+            });
+        }
+
+        function toggleVersion() {
+            const isBeta = versionToggle.checked;
+            console.log('Toggling Beta Theme:', isBeta); // Debugging line
+            const quickCode = document.getElementById('quick-install-code');
+            const manualDownloadCode = document.getElementById('manual-download-code');
+            const manualChmodCode = document.getElementById('manual-chmod-code');
+            const manualRunCode = document.getElementById('manual-run-code');
+            const stableLabel = document.getElementById('stable-label');
+            const betaLabel = document.getElementById('beta-label');
+
+            if (isBeta && betaAvailable) {
+                bodyElement.classList.add('beta-theme');
+
+                const randomIndex = Math.floor(Math.random() * betaWarningEndings.length);
+                betaWarningTextElement.textContent = baseBetaWarningText + betaWarningEndings[randomIndex];
+                betaWarning.style.display = 'block';
+
+                quickCode.textContent = 'curl -sSL https://plexdev.live/setup.sh | sudo bash -s -- -b';
+                manualDownloadCode.textContent = 'curl -sSL -o setup.sh https://plexdev.live/setup.sh';
+                manualChmodCode.textContent = 'chmod +x setup.sh';
+                manualRunCode.textContent = 'sudo bash setup.sh -b';
+                stableLabel.style.opacity = '0.5';
+                betaLabel.style.opacity = '1';
+            } else {
+                bodyElement.classList.remove('beta-theme');
+                if (!betaAvailable) versionToggle.checked = false;
+                betaWarning.style.display = 'none';
+
+                quickCode.textContent = 'curl -sSL https://plexdev.live/setup.sh | sudo bash';
+                manualDownloadCode.textContent = 'curl -sSL -o setup.sh https://plexdev.live/setup.sh';
+                manualChmodCode.textContent = 'chmod +x setup.sh';
+                manualRunCode.textContent = 'sudo bash setup.sh';
+                stableLabel.style.opacity = '1';
+                betaLabel.style.opacity = betaAvailable ? '0.5' : '0.5';
+            }
+        }
+
+        // Affiliate Banner Management
+        let currentPartnerIndex = 0;
+        let partnerRotationInterval = null;
+        const partners = ['partner-zap', 'partner-sparked'];
+        const rotationDelay = 5000; // 5 seconds
+
+        function rotatePartners() {
+            const currentPartner = document.getElementById(partners[currentPartnerIndex]);
+            const indicators = document.querySelectorAll('.affiliate-indicator');
+            
+            // Remove active class from current partner and indicator
+            if (currentPartner) {
+                currentPartner.classList.add('exit');
+                setTimeout(() => {
+                    currentPartner.classList.remove('active', 'exit');
+                }, 250);
+            }
+            indicators[currentPartnerIndex]?.classList.remove('active');
+            
+            // Move to next partner
+            currentPartnerIndex = (currentPartnerIndex + 1) % partners.length;
+            
+            // Activate next partner and indicator
+            setTimeout(() => {
+                const nextPartner = document.getElementById(partners[currentPartnerIndex]);
+                if (nextPartner) {
+                    nextPartner.classList.add('active');
+                }
+                indicators[currentPartnerIndex]?.classList.add('active');
+            }, 250);
+        }
+
+        function startPartnerRotation() {
+            // Start rotation after initial display
+            setTimeout(() => {
+                partnerRotationInterval = setInterval(rotatePartners, rotationDelay);
+            }, rotationDelay);
+        }
+
+        function stopPartnerRotation() {
+            if (partnerRotationInterval) {
+                clearInterval(partnerRotationInterval);
+                partnerRotationInterval = null;
+            }
+        }
+
+        function showAffiliateBanner() {
+            // Check if user has previously closed the banner
+            if (localStorage.getItem('affiliate-banner-closed') === 'true') {
+                return; // Don't show if previously closed
+            }
+
+            const banner = document.getElementById('affiliate-banner');
+            if (banner) {
+                // Show banner after a short delay for better UX
+                setTimeout(() => {
+                    banner.classList.add('show');
+                    startPartnerRotation(); // Start rotation when banner is shown
+                }, 2000); // 2 second delay
+            }
+        }
+
+        function closeAffiliateBanner() {
+            const banner = document.getElementById('affiliate-banner');
+            if (banner) {
+                stopPartnerRotation(); // Stop rotation
+                banner.classList.add('hide');
+                // Store in localStorage that user closed the banner
+                localStorage.setItem('affiliate-banner-closed', 'true');
+                
+                // Remove from DOM after animation completes
+                setTimeout(() => {
+                    banner.remove();
+                }, 300);
+            }
+        }
+
+        // Add click handlers for manual partner switching
+        function setupPartnerIndicators() {
+            const indicators = document.querySelectorAll('.affiliate-indicator');
+            indicators.forEach((indicator, index) => {
+                indicator.addEventListener('click', () => {
+                    if (index === currentPartnerIndex) return; // Already active
+                    
+                    // Stop automatic rotation temporarily
+                    stopPartnerRotation();
+                    
+                    const currentPartner = document.getElementById(partners[currentPartnerIndex]);
+                    const targetPartner = document.getElementById(partners[index]);
+                    
+                    // Switch partners
+                    if (currentPartner) {
+                        currentPartner.classList.add('exit');
+                        setTimeout(() => {
+                            currentPartner.classList.remove('active', 'exit');
+                        }, 250);
+                    }
+                    indicators[currentPartnerIndex]?.classList.remove('active');
+                    
+                    setTimeout(() => {
+                        if (targetPartner) {
+                            targetPartner.classList.add('active');
+                        }
+                        indicators[index]?.classList.add('active');
+                        currentPartnerIndex = index;
+                    }, 250);
+                    
+                    // Restart automatic rotation after 10 seconds
+                    setTimeout(() => {
+                        startPartnerRotation();
+                    }, 10000);
+                });
+            });
+        }
+
+        // ZAP-Hosting coupon notification
+        function showZapCoupon(event) {
+            // Show coupon code before opening the link
+            const couponCode = 'bali0531-a-6918';
+            const message = `🎉 ZAP-Hosting 20% Discount!\n\nCoupon Code: ${couponCode}\n\n✅ This code should auto-apply, but if not, use it manually at checkout!\n\nClick OK to continue to ZAP-Hosting...`;
+            
+            if (confirm(message)) {
+                // User clicked OK, copy coupon to clipboard and let the link open normally
+                navigator.clipboard.writeText(couponCode).then(() => {
+                    // Show a brief notification that coupon was copied
+                    const notification = document.createElement('div');
+                    notification.innerHTML = '📋 Coupon code copied to clipboard!';
+                    notification.style.cssText = `
+                        position: fixed;
+                        top: 20px;
+                        right: 20px;
+                        background: var(--success);
+                        color: white;
+                        padding: 12px 20px;
+                        border-radius: 8px;
+                        z-index: 10000;
+                        font-weight: 600;
+                        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+                    `;
+                    document.body.appendChild(notification);
+                    
+                    // Remove notification after 3 seconds
+                    setTimeout(() => {
+                        notification.remove();
+                    }, 3000);
+                }).catch(err => {
+                    console.error('Failed to copy coupon code:', err);
+                });
+                return true;
+            } else {
+                // User clicked Cancel, prevent the link from opening
+                event.preventDefault();
+                return false;
+            }
+        }
+
+        // Changelog version filtering
+        function showChangelogVersion(version) {
+            console.log('Filtering changelog by version:', version);
+            
+            // Update active tab
+            document.querySelectorAll('.changelog-tab').forEach(tab => tab.classList.remove('active'));
+            
+            // Find the correct tab by checking onclick content
+            document.querySelectorAll('.changelog-tab').forEach(tab => {
+                const onclick = tab.getAttribute('onclick');
+                if (onclick && onclick.includes(`'${version}'`)) {
+                    tab.classList.add('active');
+                }
+            });
+            
+            // Show/hide entries based on version
+            const entries = document.querySelectorAll('.changelog-entry');
+            console.log(`Found ${entries.length} changelog entries`);
+            
+            entries.forEach(entry => {
+                const entryVersion = entry.getAttribute('data-version');
+                console.log(`Entry version: ${entryVersion}, Filter: ${version}`);
+                
+                if (version === 'all' || entryVersion === version) {
+                    entry.classList.remove('hidden');
+                } else {
+                    entry.classList.add('hidden');
+                }
+            });
+        }
+
+        // Initial setup on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            // Activate the first tab ('quick')
+            switchTab('quick');
+            // Set initial state based on toggle (default is stable)
+            toggleVersion();
+        });
+    </script>
+</body>
+</html>
