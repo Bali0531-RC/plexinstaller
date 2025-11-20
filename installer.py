@@ -24,7 +24,7 @@ from utils import (
 )
 
 # Current installer version
-INSTALLER_VERSION = "3.0.0"
+INSTALLER_VERSION = "3.1.0"
 VERSION_CHECK_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/v3-rewrite/version.json"
 
 @dataclass
@@ -568,10 +568,296 @@ class PlexInstaller:
         if choice != 'y':
             return None
         
-        # MongoDB installation and setup would go here
-        # This is a placeholder - implement based on your needs
-        self.printer.warning("MongoDB setup not yet implemented in Python version")
-        return None
+        try:
+            # Check if MongoDB is already installed
+            if not self._check_mongodb_installed():
+                self.printer.step("MongoDB not found. Installing...")
+                if not self._install_mongodb():
+                    self.printer.error("MongoDB installation failed")
+                    return None
+            else:
+                self.printer.success("MongoDB already installed")
+            
+            # Ensure MongoDB service is running
+            self._ensure_mongodb_running()
+            
+            # Create database and user for this instance
+            mongo_creds = self._create_mongodb_user(instance_name)
+            
+            if mongo_creds:
+                # Save credentials for reuse
+                self._save_mongodb_credentials(instance_name, mongo_creds)
+                
+                # Update config file with MongoDB connection string
+                self._update_config_mongodb(install_path, mongo_creds)
+                
+                return mongo_creds
+            
+        except Exception as e:
+            self.printer.error(f"MongoDB setup failed: {e}")
+            return None
+    
+    def _check_mongodb_installed(self) -> bool:
+        """Check if MongoDB is installed"""
+        try:
+            result = subprocess.run(['mongosh', '--version'], 
+                                  capture_output=True, text=True)
+            if result.returncode == 0:
+                return True
+            
+            # Try old mongo shell
+            result = subprocess.run(['mongo', '--version'], 
+                                  capture_output=True, text=True)
+            return result.returncode == 0
+        except FileNotFoundError:
+            return False
+    
+    def _install_mongodb(self) -> bool:
+        """Install MongoDB"""
+        self.printer.step("Installing MongoDB...")
+        
+        distro = self.system.distro.lower()
+        
+        try:
+            if 'ubuntu' in distro or 'debian' in distro:
+                return self._install_mongodb_debian()
+            elif 'centos' in distro or 'rhel' in distro or 'fedora' in distro:
+                return self._install_mongodb_rhel()
+            elif 'arch' in distro:
+                return self._install_mongodb_arch()
+            else:
+                self.printer.error(f"Unsupported distribution for automatic MongoDB install: {distro}")
+                self.printer.info("Please install MongoDB manually: https://docs.mongodb.com/manual/installation/")
+                return False
+        except Exception as e:
+            self.printer.error(f"MongoDB installation failed: {e}")
+            return False
+    
+    def _install_mongodb_debian(self) -> bool:
+        """Install MongoDB on Debian/Ubuntu"""
+        try:
+            # Import MongoDB GPG key
+            self.printer.step("Adding MongoDB repository...")
+            subprocess.run([
+                'curl', '-fsSL',
+                'https://www.mongodb.org/static/pgp/server-7.0.asc'
+            ], stdout=subprocess.PIPE, check=True)
+            
+            result = subprocess.run([
+                'curl', '-fsSL',
+                'https://www.mongodb.org/static/pgp/server-7.0.asc'
+            ], stdout=subprocess.PIPE, check=True)
+            
+            subprocess.run([
+                'gpg', '--dearmor', '-o',
+                '/usr/share/keyrings/mongodb-server-7.0.gpg'
+            ], input=result.stdout, check=True)
+            
+            # Add repository
+            distro_codename = subprocess.run(
+                ['lsb_release', '-cs'],
+                capture_output=True, text=True, check=True
+            ).stdout.strip()
+            
+            repo_line = f"deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu {distro_codename}/mongodb-org/7.0 multiverse\n"
+            
+            with open('/etc/apt/sources.list.d/mongodb-org-7.0.list', 'w') as f:
+                f.write(repo_line)
+            
+            # Update and install
+            self.printer.step("Installing MongoDB packages...")
+            subprocess.run(['apt-get', 'update'], check=True)
+            subprocess.run(['apt-get', 'install', '-y', 'mongodb-org'], check=True)
+            
+            # Start and enable service
+            subprocess.run(['systemctl', 'start', 'mongod'], check=True)
+            subprocess.run(['systemctl', 'enable', 'mongod'], check=True)
+            
+            self.printer.success("MongoDB installed successfully")
+            return True
+            
+        except Exception as e:
+            self.printer.error(f"Failed to install MongoDB: {e}")
+            return False
+    
+    def _install_mongodb_rhel(self) -> bool:
+        """Install MongoDB on RHEL/CentOS/Fedora"""
+        try:
+            # Create repo file
+            repo_content = """[mongodb-org-7.0]
+name=MongoDB Repository
+baseurl=https://repo.mongodb.org/yum/redhat/$releasever/mongodb-org/7.0/x86_64/
+gpgcheck=1
+enabled=1
+gpgkey=https://www.mongodb.org/static/pgp/server-7.0.asc
+"""
+            with open('/etc/yum.repos.d/mongodb-org-7.0.repo', 'w') as f:
+                f.write(repo_content)
+            
+            # Install
+            if 'fedora' in self.system.distro.lower():
+                subprocess.run(['dnf', 'install', '-y', 'mongodb-org'], check=True)
+            else:
+                subprocess.run(['yum', 'install', '-y', 'mongodb-org'], check=True)
+            
+            # Start and enable
+            subprocess.run(['systemctl', 'start', 'mongod'], check=True)
+            subprocess.run(['systemctl', 'enable', 'mongod'], check=True)
+            
+            self.printer.success("MongoDB installed successfully")
+            return True
+            
+        except Exception as e:
+            self.printer.error(f"Failed to install MongoDB: {e}")
+            return False
+    
+    def _install_mongodb_arch(self) -> bool:
+        """Install MongoDB on Arch Linux"""
+        try:
+            subprocess.run(['pacman', '-S', '--noconfirm', 'mongodb-bin'], check=True)
+            subprocess.run(['systemctl', 'start', 'mongodb'], check=True)
+            subprocess.run(['systemctl', 'enable', 'mongodb'], check=True)
+            
+            self.printer.success("MongoDB installed successfully")
+            return True
+            
+        except Exception as e:
+            self.printer.error(f"Failed to install MongoDB: {e}")
+            return False
+    
+    def _ensure_mongodb_running(self):
+        """Ensure MongoDB service is running"""
+        try:
+            # Try mongod service name
+            result = subprocess.run(['systemctl', 'is-active', 'mongod'],
+                                  capture_output=True, text=True)
+            if result.stdout.strip() != 'active':
+                subprocess.run(['systemctl', 'start', 'mongod'], check=True)
+            
+        except:
+            # Try mongodb service name (Arch)
+            try:
+                result = subprocess.run(['systemctl', 'is-active', 'mongodb'],
+                                      capture_output=True, text=True)
+                if result.stdout.strip() != 'active':
+                    subprocess.run(['systemctl', 'start', 'mongodb'], check=True)
+            except:
+                pass
+    
+    def _create_mongodb_user(self, instance_name: str) -> Optional[Dict]:
+        """Create MongoDB database and user for instance"""
+        import random
+        import string
+        
+        # Generate random database name and password
+        random_suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=5))
+        db_name = f"{instance_name}_{random_suffix}"
+        username = f"{instance_name}_user"
+        password = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
+        
+        self.printer.step(f"Creating MongoDB database: {db_name}")
+        
+        try:
+            # Create user using mongosh (MongoDB Shell)
+            create_user_script = f"""
+use {db_name}
+db.createUser({{
+  user: "{username}",
+  pwd: "{password}",
+  roles: [{{ role: "readWrite", db: "{db_name}" }}]
+}})
+"""
+            
+            # Try mongosh first
+            result = subprocess.run(
+                ['mongosh', '--eval', create_user_script],
+                capture_output=True, text=True
+            )
+            
+            if result.returncode != 0:
+                # Try old mongo shell
+                result = subprocess.run(
+                    ['mongo', '--eval', create_user_script],
+                    capture_output=True, text=True, check=True
+                )
+            
+            self.printer.success(f"Database '{db_name}' created with user '{username}'")
+            
+            return {
+                'database': db_name,
+                'username': username,
+                'password': password,
+                'host': 'localhost',
+                'port': 27017,
+                'uri': f"mongodb://{username}:{password}@localhost:27017/{db_name}?authSource={db_name}"
+            }
+            
+        except Exception as e:
+            self.printer.error(f"Failed to create MongoDB user: {e}")
+            return None
+    
+    def _save_mongodb_credentials(self, instance_name: str, creds: Dict):
+        """Save MongoDB credentials to file for reuse"""
+        creds_dir = Path("/etc/plex")
+        creds_dir.mkdir(parents=True, exist_ok=True)
+        
+        creds_file = creds_dir / "mongodb_credentials"
+        
+        # Append credentials
+        with open(creds_file, 'a') as f:
+            f.write(f"\n# {instance_name}\n")
+            f.write(f"DATABASE={creds['database']}\n")
+            f.write(f"USERNAME={creds['username']}\n")
+            f.write(f"PASSWORD={creds['password']}\n")
+            f.write(f"URI={creds['uri']}\n")
+        
+        # Set secure permissions
+        os.chmod(creds_file, 0o600)
+        
+        self.printer.success(f"Credentials saved to {creds_file}")
+    
+    def _update_config_mongodb(self, install_path: Path, creds: Dict):
+        """Update product config file with MongoDB connection string"""
+        # Look for config files
+        config_files = list(install_path.glob("config.y*ml")) + list(install_path.glob("config.json"))
+        
+        if not config_files:
+            self.printer.warning("No config file found to update with MongoDB settings")
+            self.printer.info(f"MongoDB URI: {creds['uri']}")
+            return
+        
+        config_file = config_files[0]
+        
+        try:
+            content = config_file.read_text()
+            
+            # Try to find and replace MongoDB URI placeholder
+            # Common patterns: mongoURI, mongodb_uri, database_url, etc.
+            patterns = [
+                (r'mongoURI:\s*["\'].*?["\']', f'mongoURI: "{creds["uri"]}"'),
+                (r'mongodb_uri:\s*["\'].*?["\']', f'mongodb_uri: "{creds["uri"]}"'),
+                (r'database_url:\s*["\'].*?["\']', f'database_url: "{creds["uri"]}"'),
+                (r'MONGO_URI:\s*["\'].*?["\']', f'MONGO_URI: "{creds["uri"]}"'),
+            ]
+            
+            updated = False
+            for pattern, replacement in patterns:
+                if re.search(pattern, content):
+                    content = re.sub(pattern, replacement, content)
+                    updated = True
+                    break
+            
+            if updated:
+                config_file.write_text(content)
+                self.printer.success(f"Updated MongoDB URI in {config_file.name}")
+            else:
+                self.printer.warning(f"Could not find MongoDB URI field in {config_file.name}")
+                self.printer.info(f"Please manually add MongoDB URI: {creds['uri']}")
+                
+        except Exception as e:
+            self.printer.warning(f"Could not auto-update config: {e}")
+            self.printer.info(f"MongoDB URI: {creds['uri']}")
+
     
     def _setup_web(self, instance_name: str, default_port: int, install_path: Path) -> Tuple[str, int]:
         """Setup web server (nginx, SSL)"""

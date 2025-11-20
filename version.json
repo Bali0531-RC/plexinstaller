@@ -1,15 +1,16 @@
 {
-  "version": "3.0.0",
+  "version": "3.1.0",
   "release_date": "2025-11-20",
   "changelog": [
+    "Implemented full MongoDB setup functionality",
+    "Auto-installs MongoDB 7.0 from official repositories",
+    "Creates databases and users with secure random credentials",
+    "Auto-updates config files with MongoDB connection strings",
+    "Stores credentials securely in /etc/plex/mongodb_credentials",
+    "Supports Debian/Ubuntu, RHEL/CentOS/Fedora, and Arch Linux",
     "Complete Python rewrite of installer",
-    "New unified setup.sh with -b flag for beta",
     "Added plex CLI management tool",
-    "Enhanced backup/restore functionality",
-    "Comprehensive SSL management menu",
-    "Improved system health checks",
-    "Multi-instance support",
-    "All 7 products supported"
+    "Enhanced backup/restore functionality"
   ],
   "download_urls": {
     "installer": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/v3-rewrite/installer.py",
