@@ -1,13 +1,12 @@
 {
-  "version": "3.1.4",
+  "version": "3.1.5",
   "release_date": "2025-11-20",
   "changelog": [
+    "Cleans up old MongoDB repository files before installation",
+    "Removes conflicting MongoDB 7.0, 6.0, 5.0, 4.4 repos",
+    "Fixes apt-get update errors from old repositories",
     "Updated MongoDB to version 8.0/8.2",
-    "Uses official MongoDB Bookworm repository for Debian 12",
-    "Follows official MongoDB installation guide",
-    "Ensures gnupg and curl prerequisites are installed",
-    "Fixed repository URLs for Debian and Ubuntu",
-    "Improved MongoDB installation process"
+    "Uses official MongoDB Bookworm repository for Debian 12"
   ],
   "download_urls": {
     "installer": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/v3-rewrite/installer.py",

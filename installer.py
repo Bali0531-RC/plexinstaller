@@ -24,7 +24,7 @@ from utils import (
 )
 
 # Current installer version
-INSTALLER_VERSION = "3.1.4"
+INSTALLER_VERSION = "3.1.5"
 VERSION_CHECK_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/v3-rewrite/version.json"
 
 @dataclass
@@ -636,6 +636,29 @@ class PlexInstaller:
     def _install_mongodb_debian(self) -> bool:
         """Install MongoDB on Debian/Ubuntu"""
         try:
+            # Clean up old MongoDB repository files
+            self.printer.step("Cleaning up old MongoDB repositories...")
+            old_repo_files = [
+                '/etc/apt/sources.list.d/mongodb-org-7.0.list',
+                '/etc/apt/sources.list.d/mongodb-org-6.0.list',
+                '/etc/apt/sources.list.d/mongodb-org-5.0.list',
+                '/etc/apt/sources.list.d/mongodb-org-4.4.list',
+            ]
+            old_gpg_keys = [
+                '/usr/share/keyrings/mongodb-server-7.0.gpg',
+                '/usr/share/keyrings/mongodb-server-6.0.gpg',
+                '/usr/share/keyrings/mongodb-server-5.0.gpg',
+                '/usr/share/keyrings/mongodb-server-4.4.gpg',
+            ]
+            
+            for repo_file in old_repo_files:
+                if Path(repo_file).exists():
+                    Path(repo_file).unlink()
+            
+            for gpg_key in old_gpg_keys:
+                if Path(gpg_key).exists():
+                    Path(gpg_key).unlink()
+            
             # Ensure prerequisites are installed
             self.printer.step("Installing prerequisites (gnupg, curl)...")
             subprocess.run(['apt-get', 'install', '-y', 'gnupg', 'curl'], 
@@ -857,7 +880,7 @@ db.createUser({{
                 (r'mongoURI:\s*["\'].*?["\']', f'mongoURI: "{creds["uri"]}"'),
                 (r'mongodb_uri:\s*["\'].*?["\']', f'mongodb_uri: "{creds["uri"]}"'),
                 (r'database_url:\s*["\'].*?["\']', f'database_url: "{creds["uri"]}"'),
-                (r'MongoURI::\s*["\'].*?["\']', f'MongoURI:: "{creds["uri"]}"'),
+                (r'MongoURI:\s*["\'].*?["\']', f'MongoURI: "{creds["uri"]}"'),
             ]
             
             updated = False
