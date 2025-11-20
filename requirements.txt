@@ -1,5 +1,5 @@
 # PlexDevelopment Installer - Python Dependencies
-# These packages are used by the Python-based installer 
+# These packages are used by the Python-based installer
 
 requests>=2.31.0        
 pyyaml>=6.0            
