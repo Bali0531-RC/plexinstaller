@@ -24,7 +24,7 @@ from utils import (
 )
 
 # Current installer version
-INSTALLER_VERSION = "3.1.0"
+INSTALLER_VERSION = "3.1.1"
 VERSION_CHECK_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/v3-rewrite/version.json"
 
 @dataclass
@@ -117,7 +117,7 @@ class PlexInstaller:
                 if choice == 'y':
                     self._perform_update(version_data)
                 else:
-                    self.printer.info("Continuing with current version...")
+                    self.printer.step("Continuing with current version...")
             else:
                 self.printer.success(f"Installer is up to date (v{INSTALLER_VERSION})")
             
@@ -125,7 +125,7 @@ class PlexInstaller:
             
         except Exception as e:
             self.printer.warning(f"Could not check for updates: {e}")
-            self.printer.info("Continuing with current version...")
+            self.printer.step("Continuing with current version...")
             print()
     
     def _is_newer_version(self, remote: str, local: str) -> bool:
@@ -182,7 +182,7 @@ class PlexInstaller:
                     os.chmod(target, 0o755 if filename.endswith('.py') else 0o644)
             
             self.printer.success("Update completed successfully!")
-            self.printer.info("Restarting installer with new version...")
+            self.printer.step("Restarting installer with new version...")
             
             # Wait a moment for user to see message
             import time
@@ -206,7 +206,7 @@ class PlexInstaller:
             except:
                 self.printer.error("Could not restore backup. Manual intervention may be required.")
             
-            self.printer.info("Continuing with current version...")
+            self.printer.step("Continuing with current version...")
 
     
     def _show_main_menu(self):
@@ -627,7 +627,7 @@ class PlexInstaller:
                 return self._install_mongodb_arch()
             else:
                 self.printer.error(f"Unsupported distribution for automatic MongoDB install: {distro}")
-                self.printer.info("Please install MongoDB manually: https://docs.mongodb.com/manual/installation/")
+                self.printer.step("Please install MongoDB manually: https://docs.mongodb.com/manual/installation/")
                 return False
         except Exception as e:
             self.printer.error(f"MongoDB installation failed: {e}")
@@ -823,7 +823,7 @@ db.createUser({{
         
         if not config_files:
             self.printer.warning("No config file found to update with MongoDB settings")
-            self.printer.info(f"MongoDB URI: {creds['uri']}")
+            self.printer.step(f"MongoDB URI: {creds['uri']}")
             return
         
         config_file = config_files[0]
@@ -837,7 +837,7 @@ db.createUser({{
                 (r'mongoURI:\s*["\'].*?["\']', f'mongoURI: "{creds["uri"]}"'),
                 (r'mongodb_uri:\s*["\'].*?["\']', f'mongodb_uri: "{creds["uri"]}"'),
                 (r'database_url:\s*["\'].*?["\']', f'database_url: "{creds["uri"]}"'),
-                (r'MONGO_URI:\s*["\'].*?["\']', f'MONGO_URI: "{creds["uri"]}"'),
+                (r'MongoURI::\s*["\'].*?["\']', f'MongoURI:: "{creds["uri"]}"'),
             ]
             
             updated = False
@@ -852,11 +852,11 @@ db.createUser({{
                 self.printer.success(f"Updated MongoDB URI in {config_file.name}")
             else:
                 self.printer.warning(f"Could not find MongoDB URI field in {config_file.name}")
-                self.printer.info(f"Please manually add MongoDB URI: {creds['uri']}")
+                self.printer.step(f"Please manually add MongoDB URI: {creds['uri']}")
                 
         except Exception as e:
             self.printer.warning(f"Could not auto-update config: {e}")
-            self.printer.info(f"MongoDB URI: {creds['uri']}")
+            self.printer.step(f"MongoDB URI: {creds['uri']}")
 
     
     def _setup_web(self, instance_name: str, default_port: int, install_path: Path) -> Tuple[str, int]:
@@ -1114,7 +1114,7 @@ db.createUser({{
             else:
                 self.printer.warning("○ MongoDB is not running")
         except:
-            self.printer.info("ℹ MongoDB not installed or not using systemd")
+            self.printer.step("ℹ MongoDB not installed or not using systemd")
         
         # Check SSL certificates
         print("\n=== SSL Certificates ===")
@@ -1125,7 +1125,7 @@ db.createUser({{
                 result = subprocess.run(['certbot', 'certificates'], 
                                       capture_output=True, text=True)
                 if 'No certificates found' in result.stdout:
-                    self.printer.info("ℹ No SSL certificates found")
+                    self.printer.step("ℹ No SSL certificates found")
                 else:
                     # Count certificates
                     cert_count = result.stdout.count('Certificate Name:')
@@ -1133,7 +1133,7 @@ db.createUser({{
             except:
                 self.printer.warning("⚠ Could not check SSL certificates")
         else:
-            self.printer.info("ℹ Certbot not installed")
+            self.printer.step("ℹ Certbot not installed")
         
         # Check memory usage
         print("\n=== Memory Usage ===")
