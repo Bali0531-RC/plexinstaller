@@ -24,7 +24,7 @@ from utils import (
 )
 
 # Current installer version
-INSTALLER_VERSION = "3.1.2"
+INSTALLER_VERSION = "3.1.3"
 VERSION_CHECK_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/v3-rewrite/version.json"
 
 @dataclass
@@ -638,10 +638,6 @@ class PlexInstaller:
         try:
             # Import MongoDB GPG key
             self.printer.step("Adding MongoDB repository...")
-            subprocess.run([
-                'curl', '-fsSL',
-                'https://www.mongodb.org/static/pgp/server-7.0.asc'
-            ], stdout=subprocess.PIPE, check=True)
             
             result = subprocess.run([
                 'curl', '-fsSL',
@@ -653,13 +649,29 @@ class PlexInstaller:
                 '/usr/share/keyrings/mongodb-server-7.0.gpg'
             ], input=result.stdout, check=True)
             
-            # Add repository
+            # Detect distro and codename
+            distro = self.system.distribution.lower()
             distro_codename = subprocess.run(
                 ['lsb_release', '-cs'],
                 capture_output=True, text=True, check=True
             ).stdout.strip()
             
-            repo_line = f"deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu {distro_codename}/mongodb-org/7.0 multiverse\n"
+            # Determine correct repository URL
+            if 'ubuntu' in distro:
+                repo_url = f"https://repo.mongodb.org/apt/ubuntu {distro_codename}/mongodb-org/7.0 multiverse"
+            elif 'debian' in distro:
+                # Map Debian codenames to supported versions
+                debian_version_map = {
+                    'bookworm': 'bullseye',  # Debian 12 -> use Debian 11 repo
+                    'bullseye': 'bullseye',  # Debian 11
+                    'buster': 'buster',      # Debian 10
+                }
+                mapped_codename = debian_version_map.get(distro_codename, 'bullseye')
+                repo_url = f"https://repo.mongodb.org/apt/debian {mapped_codename}/mongodb-org/7.0 main"
+            else:
+                repo_url = f"https://repo.mongodb.org/apt/ubuntu focal/mongodb-org/7.0 multiverse"
+            
+            repo_line = f"deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] {repo_url}\n"
             
             with open('/etc/apt/sources.list.d/mongodb-org-7.0.list', 'w') as f:
                 f.write(repo_line)
