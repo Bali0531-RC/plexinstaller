@@ -71,21 +71,6 @@ class PlexInstaller:
         
         # Main menu
         self._show_main_menu()
-"""
-    echo -e "${BOLD}${CYAN}"
-    echo "  _____  _           _____                 _                                  _   "
-    echo " |  __ \| |         |  __ \               | |                                | |  "
-    echo " | |__) | | _____  _| |  | | _____   _____| | ___  _ __  _ __ ___   ___ _ __ | |_ "
-    echo " |  ___/| |/ _ \ \/ / |  | |/ _ \ \ / / _ \ |/ _ \| '_ \| '_ \` _ \ / _ \ '_ \| __|"
-    echo " | |    | |  __/>  <| |__| |  __/\ V /  __/ | (_) | |_) | | | | | |  __/ | | | |_ "
-    echo " |_|    |_|\___/_/\_\_____/ \___| \_/ \___|_|\___/| .__/|_| |_| |_|\___|_| |_|\__|"
-    echo "                                                  | |                             "
-    echo "                                                  |_|                             "
-    echo -e "${NC}"
-    echo -e "${BOLD}${PURPLE} UNOFFICIAL Installation Script for PlexDevelopment Products${NC}\n"
-
-"""
-
 
     def _display_banner(self):
         """Display PlexDevelopment banner"""
