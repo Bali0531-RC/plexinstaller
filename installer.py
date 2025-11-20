@@ -24,7 +24,7 @@ from utils import (
 )
 
 # Current installer version
-INSTALLER_VERSION = "3.1.1"
+INSTALLER_VERSION = "3.1.2"
 VERSION_CHECK_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/v3-rewrite/version.json"
 
 @dataclass
@@ -616,7 +616,7 @@ class PlexInstaller:
         """Install MongoDB"""
         self.printer.step("Installing MongoDB...")
         
-        distro = self.system.distro.lower()
+        distro = self.system.distribution.lower()
         
         try:
             if 'ubuntu' in distro or 'debian' in distro:
@@ -695,7 +695,7 @@ gpgkey=https://www.mongodb.org/static/pgp/server-7.0.asc
                 f.write(repo_content)
             
             # Install
-            if 'fedora' in self.system.distro.lower():
+            if 'fedora' in self.system.distribution.lower():
                 subprocess.run(['dnf', 'install', '-y', 'mongodb-org'], check=True)
             else:
                 subprocess.run(['yum', 'install', '-y', 'mongodb-org'], check=True)

@@ -1,15 +1,13 @@
 {
-  "version": "3.1.1",
+  "version": "3.1.2",
   "release_date": "2025-11-20",
   "changelog": [
-    "Fixed AttributeError: ColorPrinter.info() method calls",
-    "Replaced all printer.info() with printer.step()",
+    "Fixed AttributeError: SystemDetector.distro attribute",
+    "Changed self.system.distro to self.system.distribution",
+    "Fixed ColorPrinter.info() method calls",
     "Implemented full MongoDB setup functionality",
     "Auto-installs MongoDB 7.0 from official repositories",
-    "Creates databases and users with secure random credentials",
-    "Auto-updates config files with MongoDB connection strings",
-    "Stores credentials securely in /etc/plex/mongodb_credentials",
-    "Supports Debian/Ubuntu, RHEL/CentOS/Fedora, and Arch Linux"
+    "Creates databases and users with secure random credentials"
   ],
   "download_urls": {
     "installer": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/v3-rewrite/installer.py",
