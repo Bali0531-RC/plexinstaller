@@ -1,13 +1,13 @@
 {
-  "version": "3.1.3",
+  "version": "3.1.4",
   "release_date": "2025-11-20",
   "changelog": [
-    "Fixed MongoDB repository for Debian systems",
-    "Detects Debian vs Ubuntu and uses correct repo URL",
-    "Maps Debian Bookworm to Bullseye repo (compatibility)",
-    "Fixed SystemDetector.distro attribute error",
-    "Fixed ColorPrinter.info() method calls",
-    "Implemented full MongoDB setup functionality"
+    "Updated MongoDB to version 8.0/8.2",
+    "Uses official MongoDB Bookworm repository for Debian 12",
+    "Follows official MongoDB installation guide",
+    "Ensures gnupg and curl prerequisites are installed",
+    "Fixed repository URLs for Debian and Ubuntu",
+    "Improved MongoDB installation process"
   ],
   "download_urls": {
     "installer": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/v3-rewrite/installer.py",
