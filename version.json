@@ -1,0 +1,21 @@
+{
+  "version": "3.0.0",
+  "release_date": "2025-11-20",
+  "changelog": [
+    "Complete Python rewrite of installer",
+    "New unified setup.sh with -b flag for beta",
+    "Added plex CLI management tool",
+    "Enhanced backup/restore functionality",
+    "Comprehensive SSL management menu",
+    "Improved system health checks",
+    "Multi-instance support",
+    "All 7 products supported"
+  ],
+  "download_urls": {
+    "installer": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/v3-rewrite/installer.py",
+    "config": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/v3-rewrite/config.py",
+    "utils": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/v3-rewrite/utils.py",
+    "plex_cli": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/v3-rewrite/plex_cli.py",
+    "setup": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/v3-rewrite/setup.sh"
+  }
+}

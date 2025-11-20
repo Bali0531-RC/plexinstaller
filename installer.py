@@ -11,6 +11,8 @@ import shutil
 import tempfile
 import zipfile
 import re
+import json
+import urllib.request
 from pathlib import Path
 from typing import Optional, Dict, Tuple
 from dataclasses import dataclass
@@ -20,6 +22,10 @@ from utils import (
     ColorPrinter, SystemDetector, DNSChecker, FirewallManager,
     NginxManager, SSLManager, SystemdManager, ArchiveExtractor
 )
+
+# Current installer version
+INSTALLER_VERSION = "3.0.0"
+VERSION_CHECK_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/v3-rewrite/version.json"
 
 @dataclass
 class InstallationContext:
@@ -53,6 +59,9 @@ class PlexInstaller:
         os.system('clear' if os.name != 'nt' else 'cls')
         self._display_banner()
         
+        # Check for updates
+        self._check_for_updates()
+        
         # System checks
         if not self._check_root():
             return
@@ -62,18 +71,31 @@ class PlexInstaller:
         
         # Main menu
         self._show_main_menu()
+"""
+    echo -e "${BOLD}${CYAN}"
+    echo "  _____  _           _____                 _                                  _   "
+    echo " |  __ \| |         |  __ \               | |                                | |  "
+    echo " | |__) | | _____  _| |  | | _____   _____| | ___  _ __  _ __ ___   ___ _ __ | |_ "
+    echo " |  ___/| |/ _ \ \/ / |  | |/ _ \ \ / / _ \ |/ _ \| '_ \| '_ \` _ \ / _ \ '_ \| __|"
+    echo " | |    | |  __/>  <| |__| |  __/\ V /  __/ | (_) | |_) | | | | | |  __/ | | | |_ "
+    echo " |_|    |_|\___/_/\_\_____/ \___| \_/ \___|_|\___/| .__/|_| |_| |_|\___|_| |_|\__|"
+    echo "                                                  | |                             "
+    echo "                                                  |_|                             "
+    echo -e "${NC}"
+    echo -e "${BOLD}${PURPLE} UNOFFICIAL Installation Script for PlexDevelopment Products${NC}\n"
 
+"""
 
 
     def _display_banner(self):
         """Display PlexDevelopment banner"""
         print(f"{ColorPrinter.BOLD}{ColorPrinter.CYAN}", end="")
         print("  _____  _           _____                 _                                  _   ")
-        print(" |  __ \\| |         |  __ \\               | |                                | |  ")
+        print(" |  __ \| |         |  __ \               | |                                | |  ")
         print(" | |__) | | _____  _| |  | | _____   _____| | ___  _ __  _ __ ___   ___ _ __ | |_ ")
-        print(" |  ___/| |/ _ \\ \\/ / |  | |/ _ \\ \\ / / _ \\ |/ _ \\| '_ \\| '_ \\` _ \\ / _ \\ '_ \\| __|")
-        print(" | |    | |  __/>  <| |__| |  __/\\ V /  __/ | (_) | |_) | | | | | |  __/ | | | |_ ")
-        print(" |_|    |_|\\___/_/\\_\\_____/ \\___| \\_/ \\___|_|\\___/| .__/|_| |_| |_|\\___|_| |_|\\__|")
+        print(" |  ___/| |/ _ \ \/ / |  | |/ _ \ \ / / _ \ |/ _ \| '_ \| '_ \` _ \ / _ \ '_ \| __|")
+        print(" | |    | |  __/>  <| |__| |  __/\ V /  __/ | (_) | |_) | | | | | |  __/ | | | |_ ")
+        print(" |_|    |_|\___/_/\_\_____/ \___| \_/ \___|_|\___/| .__/|_| |_| |_|\___|_| |_|\__|")
         print("                                                  | |                             ")
         print("                                                  |_|                             ")
         print(ColorPrinter.NC)
@@ -87,10 +109,126 @@ class PlexInstaller:
             return False
         return True
     
+    def _check_for_updates(self):
+        """Check for installer updates and auto-update if newer version available"""
+        try:
+            self.printer.step("Checking for installer updates...")
+            
+            # Fetch version info
+            with urllib.request.urlopen(VERSION_CHECK_URL, timeout=5) as response:
+                version_data = json.loads(response.read().decode())
+            
+            remote_version = version_data.get('version', '0.0.0')
+            
+            # Compare versions
+            if self._is_newer_version(remote_version, INSTALLER_VERSION):
+                self.printer.warning(f"New installer version available: {remote_version} (current: {INSTALLER_VERSION})")
+                print(f"\n{ColorPrinter.CYAN}Changelog:{ColorPrinter.NC}")
+                for item in version_data.get('changelog', []):
+                    print(f"  • {item}")
+                
+                choice = input(f"\n{ColorPrinter.YELLOW}Auto-update to latest version? (y/n): {ColorPrinter.NC}").strip().lower()
+                
+                if choice == 'y':
+                    self._perform_update(version_data)
+                else:
+                    self.printer.info("Continuing with current version...")
+            else:
+                self.printer.success(f"Installer is up to date (v{INSTALLER_VERSION})")
+            
+            print()  # Add spacing
+            
+        except Exception as e:
+            self.printer.warning(f"Could not check for updates: {e}")
+            self.printer.info("Continuing with current version...")
+            print()
+    
+    def _is_newer_version(self, remote: str, local: str) -> bool:
+        """Compare version strings (semantic versioning)"""
+        try:
+            remote_parts = [int(x) for x in remote.split('.')]
+            local_parts = [int(x) for x in local.split('.')]
+            
+            # Pad to same length
+            while len(remote_parts) < len(local_parts):
+                remote_parts.append(0)
+            while len(local_parts) < len(remote_parts):
+                local_parts.append(0)
+            
+            return remote_parts > local_parts
+        except:
+            return False
+    
+    def _perform_update(self, version_data: Dict):
+        """Download and install new installer version"""
+        try:
+            self.printer.step("Downloading updated installer files...")
+            
+            install_dir = Path("/opt/plexinstaller")
+            backup_dir = install_dir / "backup"
+            backup_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Backup current files
+            current_files = ['installer.py', 'config.py', 'utils.py', 'plex_cli.py']
+            for filename in current_files:
+                src = install_dir / filename
+                if src.exists():
+                    shutil.copy2(src, backup_dir / f"{filename}.bak")
+            
+            # Download new files
+            urls = version_data.get('download_urls', {})
+            files_to_update = {
+                'installer': 'installer.py',
+                'config': 'config.py',
+                'utils': 'utils.py',
+                'plex_cli': 'plex_cli.py'
+            }
+            
+            for key, filename in files_to_update.items():
+                if key in urls:
+                    url = urls[key]
+                    target = install_dir / filename
+                    
+                    self.printer.step(f"Downloading {filename}...")
+                    with urllib.request.urlopen(url, timeout=30) as response:
+                        content = response.read()
+                    
+                    target.write_bytes(content)
+                    os.chmod(target, 0o755 if filename.endswith('.py') else 0o644)
+            
+            self.printer.success("Update completed successfully!")
+            self.printer.info("Restarting installer with new version...")
+            
+            # Wait a moment for user to see message
+            import time
+            time.sleep(2)
+            
+            # Restart the installer
+            os.execv(sys.executable, [sys.executable] + sys.argv)
+            
+        except Exception as e:
+            self.printer.error(f"Update failed: {e}")
+            self.printer.warning("Restoring backup files...")
+            
+            # Restore backups
+            try:
+                for filename in current_files:
+                    backup = backup_dir / f"{filename}.bak"
+                    target = install_dir / filename
+                    if backup.exists():
+                        shutil.copy2(backup, target)
+                self.printer.success("Backup restored successfully")
+            except:
+                self.printer.error("Could not restore backup. Manual intervention may be required.")
+            
+            self.printer.info("Continuing with current version...")
+
+    
     def _show_main_menu(self):
         """Display main menu and handle user choice"""
         while True:
             os.system('clear' if os.name != 'nt' else 'cls')
+            self._display_banner()
             self.printer.header("Main Menu")
             
             # Show quick status overview
