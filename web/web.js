@@ -149,18 +149,18 @@ app.get('/faq.html', (req, res) => {
 
 
 // --- Script Serving Routes ---
-app.get('/install.sh', (req, res) => {
-  const filePath = path.join(__dirname, 'install.sh');
+app.get('/setup.sh', (req, res) => {
+  const filePath = path.join(__dirname, 'setup.sh');
   const data = readFileSafe(filePath);
 
   if (data !== null) {
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.setHeader('Content-Disposition', 'inline; filename="install.sh"');
+    res.setHeader('Content-Disposition', 'inline; filename="setup.sh"');
     res.setHeader('Cache-Control', 'public, max-age=1800'); // 30 minutes for scripts
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.send(data);
   } else {
-    res.status(404).send('Stable installer script (install.sh) not found or unreadable.');
+    res.status(404).send('Setup script (setup.sh) not found or unreadable.');
   }
 });
 // --- Script Serving Routes ---
@@ -187,21 +187,6 @@ app.get('/.well-known/security.txt', (req, res) => {
     res.send(data);
   } else {
     res.status(404).send('security.txt file not found.');
-  }
-});
-app.get('/beta.sh', (req, res) => {
-  const filePath = path.join(__dirname, 'beta.sh');
-  const data = readFileSafe(filePath); // Uses the safe reader
-
-  if (data !== null) {
-    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.setHeader('Content-Disposition', 'inline; filename="beta.sh"');
-    res.setHeader('Cache-Control', 'public, max-age=1800'); // 30 minutes for scripts
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.send(data);
-  } else {
-    // If readFileSafe returned null, it means it doesn't exist or wasn't readable
-    res.status(404).send('Beta installer script (beta.sh) not found or unreadable.');
   }
 });
 
@@ -457,11 +442,6 @@ app.use((req, res) => {
 app.listen(port, () => {
   console.log(`Server running at http://localhost:${port}/`);
   console.log(`Simple guide available at http://localhost:${port}/guide`);
-  console.log(`Stable installer script available at http://localhost:${port}/install.sh`);
-  if (betaScriptExists) {
-    console.log(`Beta installer script available at http://localhost:${port}/beta.sh`);
-  } else {
-    console.warn('Beta installer script (beta.sh) not found. Beta toggle will be disabled on the website.');
-  }
+  console.log(`Setup script available at http://localhost:${port}/setup.sh`);
   console.log(`SEO files available: robots.txt, sitemap.xml, ads.txt`);
 });
