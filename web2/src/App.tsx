@@ -32,7 +32,7 @@ export const App = () => {
           <a className="ghost" href="/guide.html" target="_blank" rel="noreferrer">
             Read the guide
           </a>
-          <a className="ghost" href="https://github.com/Plexlabs/plexinstaller" target="_blank" rel="noreferrer">
+          <a className="ghost" href="https://github.com/Bali0531-RC/plexinstaller" target="_blank" rel="noreferrer">
             View on GitHub
           </a>
         </div>

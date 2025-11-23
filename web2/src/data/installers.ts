@@ -22,7 +22,7 @@ export const installerContent: Record<InstallerTab, InstallerContent> = {
     title: "Manual Install",
     description: "Prefer to inspect scripts first? Clone the repo and run the Python installer yourself.",
     steps: [
-      "git clone https://github.com/Plexlabs/plexinstaller.git",
+      "git clone https://github.com/Bali0531-RC/plexinstaller.git",
       "cd plexinstaller",
       "python3 -m venv .venv && source .venv/bin/activate",
       "pip install -r requirements.txt",
