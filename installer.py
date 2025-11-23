@@ -427,6 +427,7 @@ class PlexInstaller:
         ]
         
         archives = []
+        seen_paths = set()
         product_lower = product.lower()
         patterns = ["*.zip", "*.rar"]
 
@@ -437,7 +438,11 @@ class PlexInstaller:
             for pattern in patterns:
                 for archive in search_dir.rglob(pattern):
                     if product_lower in archive.name.lower():
-                        archives.append(archive)
+                        resolved = archive.resolve()
+                        if str(resolved) in seen_paths:
+                            continue
+                        seen_paths.add(str(resolved))
+                        archives.append(resolved)
         
         if not archives:
             self.printer.warning("No archives found automatically")
