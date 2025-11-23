@@ -24,7 +24,7 @@ from utils import (
 )
 
 # Current installer version
-INSTALLER_VERSION = "3.1.5"
+INSTALLER_VERSION = "3.1.6"
 VERSION_CHECK_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/v3-rewrite/version.json"
 
 @dataclass
@@ -427,11 +427,17 @@ class PlexInstaller:
         ]
         
         archives = []
+        product_lower = product.lower()
+        patterns = ["*.zip", "*.rar"]
+
         for search_dir in search_dirs:
-            if search_dir.exists():
-                # Look for product-specific archives
-                for pattern in [f"*{product}*.zip", f"*{product}*.rar"]:
-                    archives.extend(search_dir.rglob(pattern))
+            if not search_dir.exists():
+                continue
+
+            for pattern in patterns:
+                for archive in search_dir.rglob(pattern):
+                    if product_lower in archive.name.lower():
+                        archives.append(archive)
         
         if not archives:
             self.printer.warning("No archives found automatically")
