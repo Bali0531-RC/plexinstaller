@@ -1,0 +1,17 @@
+{
+  "version": "3.1.6",
+  "release_date": "2025-11-23",
+  "changelog": [
+    "Unified the new React website and docs pages under a shared navigation/header",
+    "Converted guide/FAQ/terms/privacy pages to the modern Vite stack with SEO metadata",
+    "Updated support flows (email + GitHub) and release timeline dates on plexdev.live",
+    "Improved archive discovery in the installer to match case-insensitive filenames like PlexStaff-Unobf.zip"
+  ],
+  "download_urls": {
+    "installer": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/v3-rewrite/installer.py",
+    "config": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/v3-rewrite/config.py",
+    "utils": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/v3-rewrite/utils.py",
+    "plex_cli": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/v3-rewrite/plex_cli.py",
+    "setup": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/v3-rewrite/setup.sh"
+  }
+}
