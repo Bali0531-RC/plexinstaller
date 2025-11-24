@@ -179,7 +179,7 @@ class PlexInstaller:
                 'installer': 'installer.py',
                 'config': 'config.py',
                 'utils': 'utils.py',
-                'plex_cli': 'plex_cli.py'
+                'plex_cli': 'plex_cli.py',
                 'telemetry_client': 'telemetry_client.py'
             }
             

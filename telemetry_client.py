@@ -157,4 +157,3 @@ class TelemetryClient:
         timestamp = datetime.utcnow().isoformat()
         with self._current_log_path.open("a", encoding="utf-8") as handle:
             handle.write(f"{timestamp} :: {message}\n")
-*** End Patch
