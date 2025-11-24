@@ -3,6 +3,7 @@
 Configuration module for PlexDevelopment Installer
 """
 
+import os
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Dict, List
@@ -24,6 +25,9 @@ class Config:
     NGINX_AVAILABLE = Path("/etc/nginx/sites-available")
     NGINX_ENABLED = Path("/etc/nginx/sites-enabled")
     PLEX_SETUP_FILE = Path("/etc/plex/setup")
+    TELEMETRY_ENDPOINT = os.environ.get("PLEX_TELEMETRY_URL", "https://plexdev.live/tel")
+    TELEMETRY_LOG_DIR = Path(os.environ.get("PLEX_TELEMETRY_LOG_DIR", "/opt/plexinstaller/telemetry/logs"))
+    PASTE_ENDPOINT = os.environ.get("PLEX_INSTALLER_PASTE_URL", "https://paste.plexdev.live/documents")
     
     # Node.js
     NODE_MIN_VERSION = 20

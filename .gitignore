@@ -28,6 +28,7 @@ web/.env.local
 web/.env.development.local
 web/.env.test.local
 web/.env.production.local
+web2/plex.conf
 
 # OS generated files
 .DS_Store

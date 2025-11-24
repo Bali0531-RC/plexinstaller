@@ -272,6 +272,17 @@ class FirewallManager:
         else:
             self.printer.warning("No supported firewall found")
     
+    def close_port(self, port: int):
+        """Close firewall port that was previously opened."""
+        self.printer.step(f"Reverting firewall rule on port {port}")
+
+        if shutil.which('ufw'):
+            self._close_ufw(port)
+        elif shutil.which('firewall-cmd'):
+            self._close_firewalld(port)
+        elif shutil.which('iptables'):
+            self._close_iptables(port)
+
     def _open_ufw(self, port: int, description: str):
         """Open port in UFW"""
         try:
@@ -313,6 +324,44 @@ class FirewallManager:
             self.printer.warning("iptables rule may not persist after reboot")
         except subprocess.CalledProcessError:
             self.printer.warning("Failed to open port in iptables")
+
+    def _close_ufw(self, port: int):
+        try:
+            subprocess.run(
+                ['sudo', 'ufw', 'delete', 'allow', f'{port}/tcp'],
+                check=True,
+                capture_output=True
+            )
+            self.printer.success(f"Port {port} rule removed from UFW")
+        except subprocess.CalledProcessError:
+            self.printer.warning("Failed to remove UFW rule")
+
+    def _close_firewalld(self, port: int):
+        try:
+            subprocess.run(
+                ['sudo', 'firewall-cmd', '--permanent', f'--remove-port={port}/tcp'],
+                check=True,
+                capture_output=True
+            )
+            subprocess.run(
+                ['sudo', 'firewall-cmd', '--reload'],
+                check=True,
+                capture_output=True
+            )
+            self.printer.success(f"Port {port} removed from firewalld")
+        except subprocess.CalledProcessError:
+            self.printer.warning("Failed to remove firewalld rule")
+
+    def _close_iptables(self, port: int):
+        try:
+            subprocess.run(
+                ['sudo', 'iptables', '-D', 'INPUT', '-p', 'tcp', '--dport', str(port), '-j', 'ACCEPT'],
+                check=True,
+                capture_output=True
+            )
+            self.printer.success(f"Port {port} rule removed from iptables")
+        except subprocess.CalledProcessError:
+            self.printer.warning("Failed to remove iptables rule")
 
 class NginxManager:
     """Nginx configuration management"""

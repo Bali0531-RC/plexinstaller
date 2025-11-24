@@ -134,6 +134,7 @@ FILES_TO_DOWNLOAD=(
     "config.py"
     "utils.py"
     "plex_cli.py"
+    "telemetry_client.py"
 )
 
 print_step "Downloading from GitHub repository: $GITHUB_REPO (branch: $GITHUB_BRANCH)"
@@ -160,6 +161,7 @@ chmod +x "$INSTALL_DIR/installer.py"
 chmod +x "$INSTALL_DIR/plex_cli.py"
 chmod 644 "$INSTALL_DIR/config.py"
 chmod 644 "$INSTALL_DIR/utils.py"
+chmod 644 "$INSTALL_DIR/telemetry_client.py"
 
 # Create symbolic link for the main installer
 print_step "Creating installer command..."
