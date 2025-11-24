@@ -10,7 +10,7 @@ export const guideSections: DocsSection[] = [
     bullets: [
       "Ensure ports 3000-3010 are open if you want the defaults.",
       "Point your domain’s DNS records before enabling HTTPS inside products.",
-      "Have SMTP and OAuth credentials ready for PlexTickets notifications."
+      "Keep the PlexDevelopment archives and license keys you own staged before launching the installer."
     ]
   },
   {
@@ -32,14 +32,14 @@ export const guideSections: DocsSection[] = [
     ],
     bullets: [
       "All services are written to systemd so you can manage them with systemctl.",
-      "Configs live in /etc/plexdev/<app> for easy editing."
+      "Configs live in /var/www/plex/<app>/config.yml for easy editing."
     ]
   },
   {
     title: "After installation",
     paragraphs: [
       "Use plex list to confirm running services.",
-      "Create database backups via the built-in script in /opt/plexinstaller/tools/backup.sh.",
+      "Create backups via Manage Backups (option 9 inside plexinstaller).",
       "Harden SSH and enable unattended-upgrades to keep the OS patched."
     ]
   }
