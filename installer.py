@@ -61,16 +61,23 @@ class PlexInstaller:
         self.ssl = SSLManager()
         self.systemd = SystemdManager()
         self.extractor = ArchiveExtractor()
+        self.telemetry_enabled = self._initialize_telemetry_preference()
         self.telemetry = TelemetryClient(
             endpoint=self.config.TELEMETRY_ENDPOINT,
             log_dir=self.config.TELEMETRY_LOG_DIR,
-            paste_endpoint=self.config.PASTE_ENDPOINT
+            paste_endpoint=self.config.PASTE_ENDPOINT,
+            enabled=self.telemetry_enabled
         )
         
     def run(self):
         """Main entry point"""
         os.system('clear' if os.name != 'nt' else 'cls')
         self._display_banner()
+
+        if not self.telemetry_enabled:
+            self.printer.step(
+                f"Telemetry is disabled. Edit {self.config.telemetry_pref_file} to re-enable it."
+            )
         
         # Check for updates
         self._check_for_updates()
@@ -106,6 +113,41 @@ class PlexInstaller:
             self.printer.error("This installer must be run as root (use sudo)")
             return False
         return True
+
+    def _initialize_telemetry_preference(self) -> bool:
+        """Load or prompt for the user's telemetry preference."""
+        pref_file = self.config.telemetry_pref_file
+
+        try:
+            if pref_file.exists():
+                stored = pref_file.read_text().strip().lower()
+                return stored not in {"disabled", "opted_out", "false", "0"}
+        except Exception as exc:
+            self.printer.warning(f"Could not read telemetry preference: {exc}")
+
+        return self._prompt_telemetry_preference(pref_file)
+
+    def _prompt_telemetry_preference(self, pref_file: Path) -> bool:
+        """Prompt the user to opt in or out of telemetry on first launch."""
+        print(f"{ColorPrinter.BOLD}{ColorPrinter.CYAN}Telemetry Preference{ColorPrinter.NC}")
+        print("We collect anonymous install diagnostics (steps completed, errors, log snippets)"
+              " to improve PlexInstaller reliability. No API keys or customer data are sent.")
+        choice = input("Share anonymous telemetry to help improve the installer? (Y/n): ").strip().lower()
+        enabled = choice not in {"n", "no"}
+
+        try:
+            pref_file.parent.mkdir(parents=True, exist_ok=True)
+            pref_file.write_text("enabled\n" if enabled else "disabled\n")
+        except Exception as exc:
+            self.printer.warning(f"Could not save telemetry preference: {exc}")
+
+        if enabled:
+            self.printer.success("Telemetry enabled – thank you for helping us improve!")
+        else:
+            self.printer.warning("Telemetry disabled. You can re-enable it by editing "
+                                 f"{pref_file}")
+
+        return enabled
     
     def _check_for_updates(self):
         """Check for installer updates and auto-update if newer version available"""

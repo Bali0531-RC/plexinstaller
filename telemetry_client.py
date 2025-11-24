@@ -26,10 +26,12 @@ class TelemetrySummary:
 class TelemetryClient:
     """Small helper that logs installer steps and pushes them to the telemetry API."""
 
-    def __init__(self, endpoint: str, log_dir: Path, paste_endpoint: str):
+    def __init__(self, endpoint: str, log_dir: Path, paste_endpoint: str, enabled: bool = True):
+        self.enabled = enabled
         self.endpoint = endpoint.rstrip("/") if endpoint else ""
         self.log_dir = log_dir
-        self.log_dir.mkdir(parents=True, exist_ok=True)
+        if self.enabled:
+            self.log_dir.mkdir(parents=True, exist_ok=True)
         self.paste_endpoint = paste_endpoint
 
         self._active = False
@@ -45,6 +47,9 @@ class TelemetryClient:
 
     def start_session(self, product: str, instance: str) -> str:
         """Start a new telemetry session for a product installation."""
+        if not self.enabled:
+            return ""
+
         timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
         self._session_id = f"{timestamp}-{product}-{instance}"
         self._product = product
@@ -60,7 +65,7 @@ class TelemetryClient:
 
     def log_step(self, step: str, status: str, detail: Optional[str] = None):
         """Record a step result inside the session log."""
-        if not self._active or not self._session_id:
+        if not self.enabled or not self._active or not self._session_id:
             return
 
         entry = {
@@ -81,7 +86,7 @@ class TelemetryClient:
         error: Optional[str] = None,
     ) -> Optional[TelemetrySummary]:
         """Finalize the session and push data to the telemetry API."""
-        if not self._active or not self._session_id:
+        if not self.enabled or not self._active or not self._session_id:
             return None
 
         summary = TelemetrySummary(
@@ -117,7 +122,8 @@ class TelemetryClient:
 
     def share_log(self) -> Optional[str]:
         """Upload the current log file to the configured paste service."""
-        if not self.paste_endpoint or not self._current_log_path or not self._current_log_path.exists():
+        if (not self.enabled or not self.paste_endpoint or
+            not self._current_log_path or not self._current_log_path.exists()):
             return None
 
         try:
@@ -135,12 +141,12 @@ class TelemetryClient:
             return None
 
     def _read_log_contents(self) -> str:
-        if self._current_log_path and self._current_log_path.exists():
+        if self.enabled and self._current_log_path and self._current_log_path.exists():
             return self._current_log_path.read_text()
         return ""
 
     def _post_payload(self, payload: Dict[str, Any]):
-        if not self.endpoint:
+        if not self.enabled or not self.endpoint:
             return
         try:
             requests.post(
@@ -152,7 +158,7 @@ class TelemetryClient:
             pass
 
     def _write_line(self, message: str):
-        if not self._current_log_path:
+        if not self.enabled or not self._current_log_path:
             return
         timestamp = datetime.utcnow().isoformat()
         with self._current_log_path.open("a", encoding="utf-8") as handle:
