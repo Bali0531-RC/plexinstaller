@@ -23,11 +23,27 @@ for path in (DATA_DIR, LOG_DIR):
 def _load_stats() -> Dict[str, Any]:
     if STATS_FILE.exists():
         return json.loads(STATS_FILE.read_text())
-    return {"success": 0, "failure": 0, "failures_by_step": {}, "most_recent": []}
+    return {
+        "success": 0,
+        "failure": 0,
+        "other": 0,
+        "failures_by_step": {},
+        "most_recent": [],
+    }
 
 
 def _save_stats(stats: Dict[str, Any]):
     STATS_FILE.write_text(json.dumps(stats, indent=2))
+
+
+def _derive_stats(stats: Dict[str, Any]) -> Dict[str, Any]:
+    success = stats.get("success", 0)
+    failure = stats.get("failure", 0)
+    other = stats.get("other", 0)
+    total = success + failure + other
+    stats["total"] = total
+    stats["success_rate"] = round((success / total) * 100, 2) if total else 0.0
+    return stats
 
 
 class TelemetryPayload(BaseModel):
@@ -85,7 +101,7 @@ async def add_event(payload: TelemetryPayload):
 
 @app.get("/stats")
 async def get_stats():
-    stats = _load_stats()
+    stats = _derive_stats(_load_stats())
     return stats
 
 
