@@ -3,6 +3,7 @@
 Configuration module for PlexDevelopment Installer
 """
 
+import os
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Dict, List
@@ -24,6 +25,10 @@ class Config:
     NGINX_AVAILABLE = Path("/etc/nginx/sites-available")
     NGINX_ENABLED = Path("/etc/nginx/sites-enabled")
     PLEX_SETUP_FILE = Path("/etc/plex/setup")
+    TELEMETRY_ENDPOINT = os.environ.get("PLEX_TELEMETRY_URL", "https://plexdev.live/tel")
+    TELEMETRY_LOG_DIR = Path(os.environ.get("PLEX_TELEMETRY_LOG_DIR", "/opt/plexinstaller/telemetry/logs"))
+    PASTE_ENDPOINT = os.environ.get("PLEX_INSTALLER_PASTE_URL", "https://paste.plexdev.live/documents")
+    TELEMETRY_PREF_FILE = Path(os.environ.get("PLEX_TELEMETRY_PREF_FILE", "/etc/plex/telemetry_pref"))
     
     # Node.js
     NODE_MIN_VERSION = 20
@@ -119,6 +124,7 @@ class Config:
         self.nginx_available = self.NGINX_AVAILABLE
         self.nginx_enabled = self.NGINX_ENABLED
         self.plex_setup_file = self.PLEX_SETUP_FILE
+        self.telemetry_pref_file = self.TELEMETRY_PREF_FILE
     
     def get_product(self, name: str) -> ProductConfig:
         """Get product configuration"""

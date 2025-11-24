@@ -22,9 +22,10 @@ from utils import (
     ColorPrinter, SystemDetector, DNSChecker, FirewallManager,
     NginxManager, SSLManager, SystemdManager, ArchiveExtractor
 )
+from telemetry_client import TelemetryClient
 
 # Current installer version
-INSTALLER_VERSION = "3.1.6"
+INSTALLER_VERSION = "3.1.7"
 VERSION_CHECK_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/v3-rewrite/version.json"
 
 @dataclass
@@ -38,6 +39,13 @@ class InstallationContext:
     email: Optional[str] = None
     needs_web_setup: bool = True
     has_dashboard: bool = False
+    install_path_ready: bool = False
+    service_created: bool = False
+    nginx_configured: bool = False
+    ssl_configured: bool = False
+    opened_port: Optional[int] = None
+    telemetry_session: Optional[str] = None
+    log_path: Optional[Path] = None
 
 class PlexInstaller:
     """Main installer class"""
@@ -53,11 +61,23 @@ class PlexInstaller:
         self.ssl = SSLManager()
         self.systemd = SystemdManager()
         self.extractor = ArchiveExtractor()
+        self.telemetry_enabled = self._initialize_telemetry_preference()
+        self.telemetry = TelemetryClient(
+            endpoint=self.config.TELEMETRY_ENDPOINT,
+            log_dir=self.config.TELEMETRY_LOG_DIR,
+            paste_endpoint=self.config.PASTE_ENDPOINT,
+            enabled=self.telemetry_enabled
+        )
         
     def run(self):
         """Main entry point"""
         os.system('clear' if os.name != 'nt' else 'cls')
         self._display_banner()
+
+        if not self.telemetry_enabled:
+            self.printer.step(
+                f"Telemetry is disabled. Edit {self.config.telemetry_pref_file} to re-enable it."
+            )
         
         # Check for updates
         self._check_for_updates()
@@ -93,6 +113,41 @@ class PlexInstaller:
             self.printer.error("This installer must be run as root (use sudo)")
             return False
         return True
+
+    def _initialize_telemetry_preference(self) -> bool:
+        """Load or prompt for the user's telemetry preference."""
+        pref_file = self.config.telemetry_pref_file
+
+        try:
+            if pref_file.exists():
+                stored = pref_file.read_text().strip().lower()
+                return stored not in {"disabled", "opted_out", "false", "0"}
+        except Exception as exc:
+            self.printer.warning(f"Could not read telemetry preference: {exc}")
+
+        return self._prompt_telemetry_preference(pref_file)
+
+    def _prompt_telemetry_preference(self, pref_file: Path) -> bool:
+        """Prompt the user to opt in or out of telemetry on first launch."""
+        print(f"{ColorPrinter.BOLD}{ColorPrinter.CYAN}Telemetry Preference{ColorPrinter.NC}")
+        print("We collect anonymous install diagnostics (steps completed, errors, log snippets)"
+              " to improve PlexInstaller reliability. No API keys or customer data are sent.")
+        choice = input("Share anonymous telemetry to help improve the installer? (Y/n): ").strip().lower()
+        enabled = choice not in {"n", "no"}
+
+        try:
+            pref_file.parent.mkdir(parents=True, exist_ok=True)
+            pref_file.write_text("enabled\n" if enabled else "disabled\n")
+        except Exception as exc:
+            self.printer.warning(f"Could not save telemetry preference: {exc}")
+
+        if enabled:
+            self.printer.success("Telemetry enabled – thank you for helping us improve!")
+        else:
+            self.printer.warning("Telemetry disabled. You can re-enable it by editing "
+                                 f"{pref_file}")
+
+        return enabled
     
     def _check_for_updates(self):
         """Check for installer updates and auto-update if newer version available"""
@@ -154,7 +209,7 @@ class PlexInstaller:
             backup_dir.mkdir(parents=True, exist_ok=True)
             
             # Backup current files
-            current_files = ['installer.py', 'config.py', 'utils.py', 'plex_cli.py']
+            current_files = ['installer.py', 'config.py', 'utils.py', 'plex_cli.py', 'telemetry_client.py']
             for filename in current_files:
                 src = install_dir / filename
                 if src.exists():
@@ -166,7 +221,8 @@ class PlexInstaller:
                 'installer': 'installer.py',
                 'config': 'config.py',
                 'utils': 'utils.py',
-                'plex_cli': 'plex_cli.py'
+                'plex_cli': 'plex_cli.py',
+                'telemetry_client': 'telemetry_client.py'
             }
             
             for key, filename in files_to_update.items():
@@ -339,53 +395,117 @@ class PlexInstaller:
         needs_web: bool = True
     ):
         """Install a product"""
+        instance_name = None
+        context: Optional[InstallationContext] = None
+        current_step = "initializing"
+
         try:
             # Check for multi-instance
             instance_name = self._handle_multi_instance(product)
-            
+            install_path = self.config.install_dir / instance_name
+            context = InstallationContext(
+                product=product,
+                instance_name=instance_name,
+                install_path=install_path,
+                port=default_port,
+                needs_web_setup=needs_web,
+                has_dashboard=has_dashboard
+            )
+            session_id = self.telemetry.start_session(product, instance_name)
+            context.telemetry_session = session_id
+            context.log_path = self.telemetry.log_path
+            self.telemetry.log_step("instance", "success", f"Instance: {instance_name}")
+
             # Find archive
+            current_step = "archive_selection"
+            self.telemetry.log_step(current_step, "start", "Searching for product archive")
             archive_path = self._find_archive(product)
             if not archive_path:
+                self.telemetry.log_step(current_step, "aborted", "No archive selected")
+                self.telemetry.finish_session("aborted", current_step, "Archive not provided")
                 return
-            
+            self.telemetry.log_step(current_step, "success", str(archive_path))
+
             # Extract product
-            install_path = self._extract_product(archive_path, instance_name)
-            if not install_path:
-                return
-            
+            current_step = "extraction"
+            self.telemetry.log_step(current_step, "start", f"-> {install_path}")
+            extracted_path = self._extract_product(archive_path, instance_name)
+            if not extracted_path:
+                raise RuntimeError("Archive extraction failed")
+            context.install_path = extracted_path
+            context.install_path_ready = True
+            self.telemetry.log_step(current_step, "success", f"Extracted to {extracted_path}")
+
             # Install NPM dependencies
-            if not self._install_npm_dependencies(install_path):
-                return
-            
+            current_step = "npm_install"
+            self.telemetry.log_step(current_step, "start")
+            if not self._install_npm_dependencies(extracted_path):
+                raise RuntimeError("NPM install failed")
+            self.telemetry.log_step(current_step, "success")
+
             # Create 502 error page
-            self._create_502_page(install_path, product)
-            
+            current_step = "error_page"
+            self._create_502_page(extracted_path, product)
+            self.telemetry.log_step(current_step, "success")
+
             # MongoDB setup
-            mongo_creds = self._setup_mongodb(instance_name, install_path)
-            
+            current_step = "mongodb"
+            mongo_creds = self._setup_mongodb(instance_name, extracted_path)
+            detail = "configured" if mongo_creds else "skipped"
+            self.telemetry.log_step(current_step, "success", detail)
+
             # Web setup (domain, SSL, nginx)
             domain = None
             port = default_port
             if needs_web:
-                domain, port = self._setup_web(instance_name, default_port, install_path)
-            
+                current_step = "web_setup"
+                domain, port, email = self._setup_web(instance_name, default_port, extracted_path, context)
+                context.domain = domain
+                context.email = email
+                context.port = port
+                self.telemetry.log_step(current_step, "success", f"{domain}:{port}")
+
             # Dashboard setup for PlexTickets
             if has_dashboard:
-                self._install_dashboard(install_path)
-            
+                current_step = "dashboard"
+                self._install_dashboard(extracted_path)
+                self.telemetry.log_step(current_step, "success")
+
             # Systemd service
-            self._setup_systemd(instance_name, install_path)
-            
+            current_step = "systemd"
+            self._setup_systemd(instance_name, extracted_path)
+            context.service_created = True
+            self.telemetry.log_step(current_step, "success")
+
             # Post-installation
-            self._post_install(instance_name, install_path, domain, needs_web)
-            
+            current_step = "post_install"
+            self._post_install(instance_name, extracted_path, domain, needs_web)
+            self.telemetry.log_step(current_step, "success")
+
             self.printer.success(f"{product} installed successfully!")
-            
+            self.telemetry.finish_session("success")
         except KeyboardInterrupt:
             self.printer.warning("\nInstallation cancelled by user")
+            if self.telemetry:
+                self.telemetry.log_step(current_step, "cancelled")
+                self.telemetry.finish_session("cancelled", current_step, "User interrupted")
+            if context:
+                self._cleanup_failed_install(context)
         except Exception as e:
             self.printer.error(f"Installation failed: {e}")
-            raise
+            failure_url = None
+            if self.telemetry:
+                summary = self.telemetry.finish_session("failure", current_step, str(e))
+                failure_url = self.telemetry.share_log()
+            if context:
+                self._cleanup_failed_install(context)
+            if failure_url:
+                self.printer.warning(f"Failure log uploaded: {failure_url}")
+                self.printer.step("Please open an issue at https://github.com/Bali0531-RC/plexinstaller/issues and include the log URL.")
+            else:
+                self.printer.step("Please open an issue at https://github.com/Bali0531-RC/plexinstaller/issues with the console output above.")
+        finally:
+            pass
     
     def _handle_multi_instance(self, product: str) -> str:
         """Handle multi-instance installations"""
@@ -913,22 +1033,44 @@ db.createUser({{
             self.printer.step(f"MongoDB URI: {creds['uri']}")
 
     
-    def _setup_web(self, instance_name: str, default_port: int, install_path: Path) -> Tuple[str, int]:
-        """Setup web server (nginx, SSL)"""
-        # Get port
-        port_input = input(f"Enter port (default: {default_port}): ").strip()
-        port = int(port_input) if port_input else default_port
-        
+    def _setup_web(
+        self,
+        instance_name: str,
+        default_port: int,
+        install_path: Path,
+        context: InstallationContext
+    ) -> Tuple[str, int, str]:
+        """Setup web server (nginx, SSL) with validation and context tracking."""
+
+        # Get port with validation
+        while True:
+            port_input = input(f"Enter port (default: {default_port}): ").strip()
+            if not port_input:
+                port = default_port
+                break
+            if port_input.isdigit():
+                port = int(port_input)
+                break
+            self.printer.error("Port must be a number. Please try again.")
+
         # Get domain
-        domain = input(f"Enter domain (e.g., {instance_name}.example.com): ").strip()
-        if not domain:
-            raise ValueError("Domain cannot be empty")
-        
+        domain = ""
+        while not domain:
+            domain = input(f"Enter domain (e.g., {instance_name}.example.com): ").strip()
+            if not domain:
+                self.printer.error("Domain cannot be empty")
+
         # Get email for SSL
-        email = input("Enter email for SSL certificates: ").strip()
-        if not email:
-            raise ValueError("Email cannot be empty")
-        
+        email = ""
+        while not email:
+            email = input("Enter email for SSL certificates: ").strip()
+            if not email:
+                self.printer.error("Email cannot be empty")
+
+        context.opened_port = port
+        context.domain = domain
+        context.email = email
+
         # Open firewall port
         self.firewall.open_port(port, instance_name)
         
@@ -940,11 +1082,13 @@ db.createUser({{
         
         # Setup nginx
         self.nginx.setup(domain, port, instance_name, install_path)
+        context.nginx_configured = True
         
         # Setup SSL
         self.ssl.setup(domain, email)
+        context.ssl_configured = True
         
-        return domain, port
+        return domain, port, email
     
     def _install_dashboard(self, install_path: Path):
         """Install PlexTickets dashboard addon"""
@@ -994,6 +1138,65 @@ db.createUser({{
         
         print(f"\nManage service: sudo systemctl [start|stop|restart|status] plex-{instance_name}")
         print(f"View logs: sudo journalctl -u plex-{instance_name} -f")
+
+    def _cleanup_failed_install(self, context: InstallationContext):
+        """Attempt to roll back artifacts from a failed installation."""
+        self.printer.warning("Rolling back partial installation...")
+
+        try:
+            if context.service_created:
+                self.systemd.remove_service(f"plex-{context.instance_name}")
+        except Exception as exc:
+            self.printer.warning(f"Could not remove systemd service: {exc}")
+
+        if context.nginx_configured and context.domain:
+            self._remove_nginx_config(context.domain)
+
+        if context.ssl_configured and context.domain:
+            self._remove_ssl_certificate(context.domain)
+
+        if context.install_path and context.install_path.exists():
+            try:
+                shutil.rmtree(context.install_path, ignore_errors=True)
+                self.printer.step(f"Removed {context.install_path}")
+            except Exception as exc:
+                self.printer.warning(f"Failed to remove install directory: {exc}")
+
+        if context.opened_port:
+            self.firewall.close_port(context.opened_port)
+
+    def _remove_nginx_config(self, domain: str):
+        config_file = self.config.nginx_available / f"{domain}.conf"
+        enabled_link = self.config.nginx_enabled / f"{domain}.conf"
+
+        if enabled_link.exists() or enabled_link.is_symlink():
+            try:
+                enabled_link.unlink()
+            except Exception as exc:
+                self.printer.warning(f"Failed to remove enabled nginx config: {exc}")
+
+        if config_file.exists():
+            try:
+                config_file.unlink()
+            except Exception as exc:
+                self.printer.warning(f"Failed to remove nginx config: {exc}")
+
+        try:
+            subprocess.run(['sudo', 'nginx', '-t'], check=False, capture_output=True)
+            subprocess.run(['sudo', 'systemctl', 'reload', 'nginx'], check=False)
+        except Exception:
+            pass
+
+    def _remove_ssl_certificate(self, domain: str):
+        try:
+            subprocess.run(
+                ['sudo', 'certbot', 'delete', '--cert-name', domain, '--non-interactive'],
+                check=True,
+                capture_output=True
+            )
+            self.printer.step(f"Removed SSL certificate for {domain}")
+        except subprocess.CalledProcessError:
+            self.printer.warning("Could not remove SSL certificate (may not have been issued)")
     
     def _manage_installations(self):
         """Manage existing installations"""
