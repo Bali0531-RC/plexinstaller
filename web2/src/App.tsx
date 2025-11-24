@@ -18,8 +18,8 @@ export const App = () => {
   return (
     <div className="page">
       <SiteNav />
-
-      <header className="hero">
+      <main>
+        <header className="hero">
         <p className="eyebrow">PlexDev Installer · v3.1.6</p>
         <h1>Unofficial PlexDevelopment installer for Linux hosts</h1>
         <p>
@@ -123,6 +123,7 @@ export const App = () => {
           </a>
         </div>
       </section>
+      </main>
     </div>
   );
 };
