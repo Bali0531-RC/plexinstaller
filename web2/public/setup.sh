@@ -155,6 +155,14 @@ for file in "${FILES_TO_DOWNLOAD[@]}"; do
     fi
 done
 
+# Install Python dependencies for telemetry client
+print_step "Installing Python dependencies..."
+if command -v pip3 &> /dev/null; then
+    pip3 install requests --quiet 2>/dev/null || pip3 install requests --break-system-packages --quiet 2>/dev/null || print_warning "Could not install requests module"
+else
+    print_warning "pip3 not found, telemetry may not work"
+fi
+
 # Make Python files executable
 print_step "Setting permissions..."
 chmod +x "${INSTALL_DIR}/installer.py"

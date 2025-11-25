@@ -1,14 +1,13 @@
 {
-  "version": "3.1.8",
+  "version": "3.1.9",
   "release_date": "2025-11-25",
   "changelog": [
-    "Auto-updates now verify SHA256 checksums before applying downloaded files.",
-    "Lock file prevents multiple installer instances from running concurrently.",
-    "Root check moved before telemetry prompt so preferences save correctly on first run.",
-    "Archive extraction validates paths to prevent directory traversal attacks.",
-    "All subprocess calls now have timeouts to prevent hung processes.",
-    "Input validation for port (1-65535), domain format, and email format.",
-    "Removed insecure --unsafe-perm flag from npm install."
+    "Setup script now installs requests module for telemetry client.",
+    "RAR extraction validates paths post-extraction to prevent directory traversal.",
+    "MongoDB shell fallback no longer crashes when neither mongosh nor mongo exist.",
+    "Telemetry server uses file locking to prevent concurrent write corruption.",
+    "Archive extraction provides user-friendly errors for corrupted/inaccessible files.",
+    "SystemdManager.get_status now catches all exceptions correctly."
   ],
   "download_urls": {
     "installer": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/installer.py",
@@ -19,9 +18,9 @@
     "telemetry_client": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/telemetry_client.py"
   },
   "checksums": {
-    "installer": "d8f997e1c6d02175f57d0522034196a6adb973cd800d09acdc669aa1c111c2ba",
+    "installer": "f94c3fa572c5c1ef7e1fdbe8260ea91229cb40a2bbd2ffe452eac2db5edbb6cb",
     "config": "fa1a6a5beb04678a8d0ff69a24f2f5f2eb6aa34ef99bc037fc5b41a5152d8d35",
-    "utils": "4eeeec3fdbbb6ffab00559f44a6ea3e600e32dec4dbb0f1b69bcfebaf0ef9ec3",
+    "utils": "dde2c947f542e1d91bc9e460e7cf687d3aeba9dd29a522ddb7c74be160b08a23",
     "plex_cli": "f6368f22e1d25facdcec56a51540792bfec850fd37c11f50ab48aed9a6d060ba",
     "telemetry_client": "5c60706649c918edf49feb986c6ee3f8be47bbc721e98e02eaeec7373c200302"
   }

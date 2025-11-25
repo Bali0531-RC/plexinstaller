@@ -6,6 +6,18 @@ export type ReleaseNote = {
 
 export const releases: ReleaseNote[] = [
   {
+    version: "3.1.9",
+    date: "2025-11-25",
+    highlights: [
+      "Setup script now installs requests module so telemetry works out of the box.",
+      "RAR extraction validates paths post-extraction to block directory traversal.",
+      "MongoDB shell fallback handles missing mongosh/mongo gracefully instead of crashing.",
+      "Telemetry server uses file locking to prevent concurrent write corruption.",
+      "Archive extraction shows user-friendly errors for corrupted or inaccessible files.",
+      "Fixed SystemdManager.get_status to catch exceptions correctly."
+    ]
+  },
+  {
     version: "3.1.8",
     date: "2025-11-25",
     highlights: [

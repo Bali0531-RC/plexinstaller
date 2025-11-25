@@ -28,7 +28,7 @@ from utils import (
 from telemetry_client import TelemetryClient
 
 # Current installer version
-INSTALLER_VERSION = "3.1.8"
+INSTALLER_VERSION = "3.1.9"
 VERSION_CHECK_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/v3-rewrite/version.json"
 LOCK_FILE = "/var/run/plexinstaller.lock"
 
@@ -1011,11 +1011,16 @@ db.createUser({{
             )
             
             if result.returncode != 0:
-                # Try old mongo shell
-                result = subprocess.run(
-                    ['mongo', '--eval', create_user_script],
-                    capture_output=True, text=True, check=True, timeout=30
-                )
+                # Try old mongo shell (without check=True to handle missing binary gracefully)
+                try:
+                    result = subprocess.run(
+                        ['mongo', '--eval', create_user_script],
+                        capture_output=True, text=True, timeout=30
+                    )
+                    if result.returncode != 0:
+                        raise RuntimeError(f"MongoDB shell failed: {result.stderr}")
+                except FileNotFoundError:
+                    raise RuntimeError("Neither mongosh nor mongo shell found. Is MongoDB installed?")
             
             self.printer.success(f"Database '{db_name}' created with user '{username}'")
             

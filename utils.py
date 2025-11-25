@@ -555,8 +555,8 @@ WantedBy=multi-user.target
                 text=True,
                 timeout=10
             )
-            return result.stdout.strip()
-        except subprocess.CalledProcessError:
+            return result.stdout.strip() or "unknown"
+        except Exception:
             return "unknown"
     
     def view_logs(self, service_name: str):
@@ -594,22 +594,36 @@ class ArchiveExtractor:
         """Extract archive to target directory"""
         self.printer.step(f"Extracting {archive_path.name}")
         
+        # Verify archive exists and is readable
+        if not archive_path.exists():
+            raise FileNotFoundError(f"Archive not found: {archive_path}")
+        
         # Create target directory
-        target_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            target_dir.mkdir(parents=True, exist_ok=True)
+        except PermissionError:
+            raise PermissionError(f"Cannot create directory {target_dir}: permission denied")
         
         # Create temporary extraction directory
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
             
-            # Extract based on file type
-            if archive_path.suffix == '.zip':
-                self._extract_zip(archive_path, temp_path)
-            elif archive_path.suffix in ['.tar', '.gz', '.bz2', '.xz']:
-                self._extract_tar(archive_path, temp_path)
-            elif archive_path.suffix == '.rar':
-                self._extract_rar(archive_path, temp_path)
-            else:
-                raise ValueError(f"Unsupported archive format: {archive_path.suffix}")
+            # Extract based on file type with improved error handling
+            try:
+                if archive_path.suffix == '.zip':
+                    self._extract_zip(archive_path, temp_path)
+                elif archive_path.suffix in ['.tar', '.gz', '.bz2', '.xz']:
+                    self._extract_tar(archive_path, temp_path)
+                elif archive_path.suffix == '.rar':
+                    self._extract_rar(archive_path, temp_path)
+                else:
+                    raise ValueError(f"Unsupported archive format: {archive_path.suffix}")
+            except zipfile.BadZipFile:
+                raise ValueError(f"Corrupted or invalid ZIP archive: {archive_path.name}")
+            except tarfile.TarError as e:
+                raise ValueError(f"Corrupted or invalid TAR archive: {archive_path.name} ({e})")
+            except PermissionError:
+                raise PermissionError(f"Cannot read archive {archive_path.name}: permission denied")
             
             # Find actual product directory
             source_dir = self._find_product_dir(temp_path, target_dir.name)
@@ -653,11 +667,23 @@ class ArchiveExtractor:
             tar_ref.extractall(target_path)
     
     def _extract_rar(self, archive_path: Path, target_path: Path):
-        """Extract RAR file"""
-        # Note: RAR extraction is done via unrar command which has its own protections
+        """Extract RAR file with path traversal protection"""
+        # Check if unrar is available
+        if not shutil.which('unrar'):
+            raise FileNotFoundError("unrar command not found. Install it with: apt install unrar")
+        
         subprocess.run([
             'unrar', 'x', '-o+', str(archive_path), str(target_path) + '/'
         ], check=True, timeout=300)
+        
+        # Post-extraction validation: ensure all files are within target
+        target_resolved = target_path.resolve()
+        for item in target_path.rglob('*'):
+            if not str(item.resolve()).startswith(str(target_resolved)):
+                # Remove the offending file and raise error
+                if item.is_file():
+                    item.unlink()
+                raise ValueError(f"Path traversal attempt detected in RAR archive: {item}")
     
     def _find_product_dir(self, temp_path: Path, product_name: str) -> Path:
         """Find actual product directory within extracted archive"""

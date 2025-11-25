@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import fcntl
 import json
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -19,10 +21,27 @@ EVENTS_FILE = DATA_DIR / "events.jsonl"
 for path in (DATA_DIR, LOG_DIR):
     path.mkdir(parents=True, exist_ok=True)
 
+LOCK_FILE = DATA_DIR / ".stats.lock"
+
+
+@contextmanager
+def _file_lock():
+    """Context manager for file-based locking to prevent race conditions."""
+    lock_fd = open(LOCK_FILE, "w")
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        lock_fd.close()
+
 
 def _load_stats() -> Dict[str, Any]:
     if STATS_FILE.exists():
-        return json.loads(STATS_FILE.read_text())
+        try:
+            return json.loads(STATS_FILE.read_text())
+        except json.JSONDecodeError:
+            pass
     return {
         "success": 0,
         "failure": 0,
@@ -63,34 +82,35 @@ app = FastAPI(title="PlexInstaller Telemetry", version="1.0.0")
 
 @app.post("/events")
 async def add_event(payload: TelemetryPayload):
-    stats = _load_stats()
+    with _file_lock():
+        stats = _load_stats()
 
-    if payload.status.lower() == "success":
-        stats["success"] = stats.get("success", 0) + 1
-    elif payload.status.lower() == "failure":
-        stats["failure"] = stats.get("failure", 0) + 1
-        if payload.failure_step:
-            failures = stats.setdefault("failures_by_step", {})
-            failures[payload.failure_step] = failures.get(payload.failure_step, 0) + 1
-    else:
-        stats.setdefault("other", 0)
-        stats["other"] += 1
+        if payload.status.lower() == "success":
+            stats["success"] = stats.get("success", 0) + 1
+        elif payload.status.lower() == "failure":
+            stats["failure"] = stats.get("failure", 0) + 1
+            if payload.failure_step:
+                failures = stats.setdefault("failures_by_step", {})
+                failures[payload.failure_step] = failures.get(payload.failure_step, 0) + 1
+        else:
+            stats.setdefault("other", 0)
+            stats["other"] += 1
 
-    recent = stats.setdefault("most_recent", [])
-    recent.insert(0, {
-        "session_id": payload.session_id,
-        "product": payload.product,
-        "status": payload.status,
-        "timestamp": payload.timestamp,
-        "failure_step": payload.failure_step,
-    })
-    stats["most_recent"] = recent[:20]
+        recent = stats.setdefault("most_recent", [])
+        recent.insert(0, {
+            "session_id": payload.session_id,
+            "product": payload.product,
+            "status": payload.status,
+            "timestamp": payload.timestamp,
+            "failure_step": payload.failure_step,
+        })
+        stats["most_recent"] = recent[:20]
 
-    _save_stats(stats)
+        _save_stats(stats)
 
-    # Append JSONL event log
-    with EVENTS_FILE.open("a", encoding="utf-8") as handle:
-        handle.write(payload.model_dump_json() + "\n")
+        # Append JSONL event log
+        with EVENTS_FILE.open("a", encoding="utf-8") as handle:
+            handle.write(payload.model_dump_json() + "\n")
 
     if payload.log:
         log_target = LOG_DIR / f"{payload.session_id}.log"
