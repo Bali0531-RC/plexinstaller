@@ -18,7 +18,7 @@
     "telemetry_client": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/telemetry_client.py"
   },
   "checksums": {
-    "installer": "f94c3fa572c5c1ef7e1fdbe8260ea91229cb40a2bbd2ffe452eac2db5edbb6cb",
+    "installer": "eadae50035b201848078f958640bc632e248f44b52e8ed3a5c7c6c092f85ae8a",
     "config": "fa1a6a5beb04678a8d0ff69a24f2f5f2eb6aa34ef99bc037fc5b41a5152d8d35",
     "utils": "dde2c947f542e1d91bc9e460e7cf687d3aeba9dd29a522ddb7c74be160b08a23",
     "plex_cli": "f6368f22e1d25facdcec56a51540792bfec850fd37c11f50ab48aed9a6d060ba",
