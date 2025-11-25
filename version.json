@@ -11,12 +11,12 @@
     "Removed insecure --unsafe-perm flag from npm install."
   ],
   "download_urls": {
-    "installer": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/v3-rewrite/installer.py",
-    "config": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/v3-rewrite/config.py",
-    "utils": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/v3-rewrite/utils.py",
-    "plex_cli": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/v3-rewrite/plex_cli.py",
-    "setup": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/v3-rewrite/setup.sh",
-    "telemetry_client": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/v3-rewrite/telemetry_client.py"
+    "installer": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/installer.py",
+    "config": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/config.py",
+    "utils": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/utils.py",
+    "plex_cli": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/plex_cli.py",
+    "setup": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/setup.sh",
+    "telemetry_client": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/telemetry_client.py"
   },
   "checksums": {
     "installer": "d8f997e1c6d02175f57d0522034196a6adb973cd800d09acdc669aa1c111c2ba",

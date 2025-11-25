@@ -18,7 +18,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 GITHUB_REPO="Bali0531-RC/plexinstaller"
-GITHUB_BRANCH="v3-rewrite"
+GITHUB_BRANCH="main"
 VERSION="Stable"
 INSTALL_DIR="/opt/plexinstaller"
 BIN_DIR="/usr/local/bin"
