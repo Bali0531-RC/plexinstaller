@@ -13,6 +13,9 @@ import zipfile
 import re
 import json
 import urllib.request
+import fcntl
+import hashlib
+import atexit
 from pathlib import Path
 from typing import Optional, Dict, Tuple
 from dataclasses import dataclass
@@ -25,8 +28,9 @@ from utils import (
 from telemetry_client import TelemetryClient
 
 # Current installer version
-INSTALLER_VERSION = "3.1.7"
+INSTALLER_VERSION = "3.1.8"
 VERSION_CHECK_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/v3-rewrite/version.json"
+LOCK_FILE = "/var/run/plexinstaller.lock"
 
 @dataclass
 class InstallationContext:
@@ -54,6 +58,18 @@ class PlexInstaller:
         self.version = version
         self.config = Config()
         self.printer = ColorPrinter()
+        self._lock_fd = None
+        
+        # Check root FIRST before any file operations
+        if os.geteuid() != 0:
+            self.printer.error("This installer must be run as root (use sudo)")
+            sys.exit(1)
+        
+        # Acquire lock to prevent concurrent runs
+        if not self._acquire_lock():
+            self.printer.error("Another instance of PlexInstaller is already running.")
+            sys.exit(1)
+        
         self.system = SystemDetector()
         self.dns_checker = DNSChecker()
         self.firewall = FirewallManager()
@@ -69,6 +85,38 @@ class PlexInstaller:
             enabled=self.telemetry_enabled
         )
         
+        # Register cleanup on exit
+        atexit.register(self._release_lock)
+    
+    def _acquire_lock(self) -> bool:
+        """Acquire exclusive lock to prevent concurrent installer runs"""
+        try:
+            self._lock_fd = open(LOCK_FILE, 'w')
+            fcntl.flock(self._lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            self._lock_fd.write(str(os.getpid()))
+            self._lock_fd.flush()
+            return True
+        except (IOError, OSError):
+            if self._lock_fd:
+                self._lock_fd.close()
+                self._lock_fd = None
+            return False
+    
+    def _release_lock(self):
+        """Release the lock file"""
+        if self._lock_fd:
+            try:
+                fcntl.flock(self._lock_fd.fileno(), fcntl.LOCK_UN)
+                self._lock_fd.close()
+                self._lock_fd = None
+                # Remove lock file
+                try:
+                    os.unlink(LOCK_FILE)
+                except OSError:
+                    pass
+            except Exception:
+                pass
+        
     def run(self):
         """Main entry point"""
         os.system('clear' if os.name != 'nt' else 'cls')
@@ -82,10 +130,7 @@ class PlexInstaller:
         # Check for updates
         self._check_for_updates()
         
-        # System checks
-        if not self._check_root():
-            return
-        
+        # Root already checked in __init__, detect system and install deps
         self.system.detect()
         self.system.install_dependencies()
         
@@ -196,17 +241,20 @@ class PlexInstaller:
                 local_parts.append(0)
             
             return remote_parts > local_parts
-        except:
+        except Exception:
             return False
     
     def _perform_update(self, version_data: Dict):
-        """Download and install new installer version"""
+        """Download and install new installer version with checksum verification"""
         try:
             self.printer.step("Downloading updated installer files...")
             
             install_dir = Path("/opt/plexinstaller")
             backup_dir = install_dir / "backup"
             backup_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Get checksums from version data
+            checksums = version_data.get('checksums', {})
             
             # Backup current files
             current_files = ['installer.py', 'config.py', 'utils.py', 'plex_cli.py', 'telemetry_client.py']
@@ -234,6 +282,16 @@ class PlexInstaller:
                     with urllib.request.urlopen(url, timeout=30) as response:
                         content = response.read()
                     
+                    # Verify checksum if provided
+                    if key in checksums:
+                        expected_hash = checksums[key]
+                        actual_hash = hashlib.sha256(content).hexdigest()
+                        if actual_hash != expected_hash:
+                            raise ValueError(f"Checksum mismatch for {filename}: expected {expected_hash}, got {actual_hash}")
+                        self.printer.success(f"Checksum verified for {filename}")
+                    else:
+                        self.printer.warning(f"No checksum available for {filename}, skipping verification")
+                    
                     target.write_bytes(content)
                     os.chmod(target, 0o755 if filename.endswith('.py') else 0o644)
             
@@ -259,7 +317,7 @@ class PlexInstaller:
                     if backup.exists():
                         shutil.copy2(backup, target)
                 self.printer.success("Backup restored successfully")
-            except:
+            except Exception:
                 self.printer.error("Could not restore backup. Manual intervention may be required.")
             
             self.printer.step("Continuing with current version...")
@@ -623,10 +681,11 @@ class PlexInstaller:
         
         try:
             subprocess.run(
-                ["npm", "install", "--unsafe-perm", "--loglevel=error"],
+                ["npm", "install", "--loglevel=error"],
                 cwd=install_path,
                 check=True,
-                capture_output=True
+                capture_output=True,
+                timeout=300
             )
             self.printer.success("NPM dependencies installed")
             return True
@@ -732,15 +791,17 @@ class PlexInstaller:
         """Check if MongoDB is installed"""
         try:
             result = subprocess.run(['mongosh', '--version'], 
-                                  capture_output=True, text=True)
+                                  capture_output=True, text=True, timeout=10)
             if result.returncode == 0:
                 return True
             
             # Try old mongo shell
             result = subprocess.run(['mongo', '--version'], 
-                                  capture_output=True, text=True)
+                                  capture_output=True, text=True, timeout=10)
             return result.returncode == 0
         except FileNotFoundError:
+            return False
+        except subprocess.TimeoutExpired:
             return False
     
     def _install_mongodb(self) -> bool:
@@ -793,7 +854,7 @@ class PlexInstaller:
             # Ensure prerequisites are installed
             self.printer.step("Installing prerequisites (gnupg, curl)...")
             subprocess.run(['apt-get', 'install', '-y', 'gnupg', 'curl'], 
-                         check=True, capture_output=True)
+                         check=True, capture_output=True, timeout=120)
             
             # Import MongoDB GPG key (using pipe method as per MongoDB docs)
             self.printer.step("Adding MongoDB repository...")
@@ -804,7 +865,8 @@ class PlexInstaller:
             subprocess.run(
                 ['gpg', '-o', '/usr/share/keyrings/mongodb-server-8.0.gpg', '--dearmor'],
                 stdin=curl_process.stdout,
-                check=True
+                check=True,
+                timeout=30
             )
             curl_process.wait()
             
@@ -812,7 +874,7 @@ class PlexInstaller:
             distro = self.system.distribution.lower()
             distro_codename = subprocess.run(
                 ['lsb_release', '-cs'],
-                capture_output=True, text=True, check=True
+                capture_output=True, text=True, check=True, timeout=10
             ).stdout.strip()
             
             # Determine correct repository URL
@@ -837,15 +899,15 @@ class PlexInstaller:
             
             # Update and install
             self.printer.step("Updating package database...")
-            subprocess.run(['apt-get', 'update'], check=True)
+            subprocess.run(['apt-get', 'update'], check=True, timeout=120)
             
             self.printer.step("Installing MongoDB packages...")
-            subprocess.run(['apt-get', 'install', '-y', 'mongodb-org'], check=True)
+            subprocess.run(['apt-get', 'install', '-y', 'mongodb-org'], check=True, timeout=300)
             
             # Start and enable service
             self.printer.step("Starting MongoDB service...")
-            subprocess.run(['systemctl', 'start', 'mongod'], check=True)
-            subprocess.run(['systemctl', 'enable', 'mongod'], check=True)
+            subprocess.run(['systemctl', 'start', 'mongod'], check=True, timeout=60)
+            subprocess.run(['systemctl', 'enable', 'mongod'], check=True, timeout=30)
             
             self.printer.success("MongoDB installed successfully")
             return True
@@ -870,13 +932,13 @@ gpgkey=https://www.mongodb.org/static/pgp/server-7.0.asc
             
             # Install
             if 'fedora' in self.system.distribution.lower():
-                subprocess.run(['dnf', 'install', '-y', 'mongodb-org'], check=True)
+                subprocess.run(['dnf', 'install', '-y', 'mongodb-org'], check=True, timeout=300)
             else:
-                subprocess.run(['yum', 'install', '-y', 'mongodb-org'], check=True)
+                subprocess.run(['yum', 'install', '-y', 'mongodb-org'], check=True, timeout=300)
             
             # Start and enable
-            subprocess.run(['systemctl', 'start', 'mongod'], check=True)
-            subprocess.run(['systemctl', 'enable', 'mongod'], check=True)
+            subprocess.run(['systemctl', 'start', 'mongod'], check=True, timeout=60)
+            subprocess.run(['systemctl', 'enable', 'mongod'], check=True, timeout=30)
             
             self.printer.success("MongoDB installed successfully")
             return True
@@ -888,9 +950,9 @@ gpgkey=https://www.mongodb.org/static/pgp/server-7.0.asc
     def _install_mongodb_arch(self) -> bool:
         """Install MongoDB on Arch Linux"""
         try:
-            subprocess.run(['pacman', '-S', '--noconfirm', 'mongodb-bin'], check=True)
-            subprocess.run(['systemctl', 'start', 'mongodb'], check=True)
-            subprocess.run(['systemctl', 'enable', 'mongodb'], check=True)
+            subprocess.run(['pacman', '-S', '--noconfirm', 'mongodb-bin'], check=True, timeout=300)
+            subprocess.run(['systemctl', 'start', 'mongodb'], check=True, timeout=60)
+            subprocess.run(['systemctl', 'enable', 'mongodb'], check=True, timeout=30)
             
             self.printer.success("MongoDB installed successfully")
             return True
@@ -904,18 +966,18 @@ gpgkey=https://www.mongodb.org/static/pgp/server-7.0.asc
         try:
             # Try mongod service name
             result = subprocess.run(['systemctl', 'is-active', 'mongod'],
-                                  capture_output=True, text=True)
+                                  capture_output=True, text=True, timeout=10)
             if result.stdout.strip() != 'active':
-                subprocess.run(['systemctl', 'start', 'mongod'], check=True)
+                subprocess.run(['systemctl', 'start', 'mongod'], check=True, timeout=60)
             
-        except:
+        except Exception:
             # Try mongodb service name (Arch)
             try:
                 result = subprocess.run(['systemctl', 'is-active', 'mongodb'],
-                                      capture_output=True, text=True)
+                                      capture_output=True, text=True, timeout=10)
                 if result.stdout.strip() != 'active':
-                    subprocess.run(['systemctl', 'start', 'mongodb'], check=True)
-            except:
+                    subprocess.run(['systemctl', 'start', 'mongodb'], check=True, timeout=60)
+            except Exception:
                 pass
     
     def _create_mongodb_user(self, instance_name: str) -> Optional[Dict]:
@@ -945,14 +1007,14 @@ db.createUser({{
             # Try mongosh first
             result = subprocess.run(
                 ['mongosh', '--eval', create_user_script],
-                capture_output=True, text=True
+                capture_output=True, text=True, timeout=30
             )
             
             if result.returncode != 0:
                 # Try old mongo shell
                 result = subprocess.run(
                     ['mongo', '--eval', create_user_script],
-                    capture_output=True, text=True, check=True
+                    capture_output=True, text=True, check=True, timeout=30
                 )
             
             self.printer.success(f"Database '{db_name}' created with user '{username}'")
@@ -1042,7 +1104,7 @@ db.createUser({{
     ) -> Tuple[str, int, str]:
         """Setup web server (nginx, SSL) with validation and context tracking."""
 
-        # Get port with validation
+        # Get port with validation (including range check)
         while True:
             port_input = input(f"Enter port (default: {default_port}): ").strip()
             if not port_input:
@@ -1050,22 +1112,34 @@ db.createUser({{
                 break
             if port_input.isdigit():
                 port = int(port_input)
-                break
-            self.printer.error("Port must be a number. Please try again.")
+                if 1 <= port <= 65535:
+                    break
+                else:
+                    self.printer.error("Port must be between 1 and 65535. Please try again.")
+            else:
+                self.printer.error("Port must be a number. Please try again.")
 
-        # Get domain
+        # Get domain with format validation
+        domain_pattern = re.compile(r'^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$')
         domain = ""
         while not domain:
             domain = input(f"Enter domain (e.g., {instance_name}.example.com): ").strip()
             if not domain:
                 self.printer.error("Domain cannot be empty")
+            elif not domain_pattern.match(domain):
+                self.printer.error("Invalid domain format. Please enter a valid domain.")
+                domain = ""
 
-        # Get email for SSL
+        # Get email with format validation
+        email_pattern = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
         email = ""
         while not email:
             email = input("Enter email for SSL certificates: ").strip()
             if not email:
                 self.printer.error("Email cannot be empty")
+            elif not email_pattern.match(email):
+                self.printer.error("Invalid email format. Please enter a valid email.")
+                email = ""
 
         context.opened_port = port
         context.domain = domain

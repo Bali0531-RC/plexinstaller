@@ -516,16 +516,16 @@ WantedBy=multi-user.target
         os.chmod(service_file, 0o644)
         
         # Reload systemd and enable service
-        subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
-        subprocess.run(['sudo', 'systemctl', 'enable', f'plex-{service_name}'], check=True)
-        subprocess.run(['sudo', 'systemctl', 'start', f'plex-{service_name}'], check=True)
+        subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True, timeout=30)
+        subprocess.run(['sudo', 'systemctl', 'enable', f'plex-{service_name}'], check=True, timeout=30)
+        subprocess.run(['sudo', 'systemctl', 'start', f'plex-{service_name}'], check=True, timeout=60)
         
         self.printer.success(f"Service plex-{service_name} created and started")
     
     def start(self, service_name: str):
         """Start service"""
         try:
-            subprocess.run(['sudo', 'systemctl', 'start', service_name], check=True)
+            subprocess.run(['sudo', 'systemctl', 'start', service_name], check=True, timeout=60)
             self.printer.success(f"{service_name} started")
         except subprocess.CalledProcessError:
             self.printer.error(f"Failed to start {service_name}")
@@ -533,7 +533,7 @@ WantedBy=multi-user.target
     def stop(self, service_name: str):
         """Stop service"""
         try:
-            subprocess.run(['sudo', 'systemctl', 'stop', service_name], check=True)
+            subprocess.run(['sudo', 'systemctl', 'stop', service_name], check=True, timeout=60)
             self.printer.success(f"{service_name} stopped")
         except subprocess.CalledProcessError:
             self.printer.error(f"Failed to stop {service_name}")
@@ -541,7 +541,7 @@ WantedBy=multi-user.target
     def restart(self, service_name: str):
         """Restart service"""
         try:
-            subprocess.run(['sudo', 'systemctl', 'restart', service_name], check=True)
+            subprocess.run(['sudo', 'systemctl', 'restart', service_name], check=True, timeout=60)
             self.printer.success(f"{service_name} restarted")
         except subprocess.CalledProcessError:
             self.printer.error(f"Failed to restart {service_name}")
@@ -552,7 +552,8 @@ WantedBy=multi-user.target
             result = subprocess.run(
                 ['systemctl', 'is-active', service_name],
                 capture_output=True,
-                text=True
+                text=True,
+                timeout=10
             )
             return result.stdout.strip()
         except subprocess.CalledProcessError:
@@ -568,14 +569,17 @@ WantedBy=multi-user.target
     def remove_service(self, service_name: str):
         """Remove systemd service"""
         try:
-            subprocess.run(['sudo', 'systemctl', 'stop', service_name], check=False)
-            subprocess.run(['sudo', 'systemctl', 'disable', service_name], check=False)
+            subprocess.run(['sudo', 'systemctl', 'stop', service_name], check=False, timeout=60)
+            subprocess.run(['sudo', 'systemctl', 'disable', service_name], check=False, timeout=30)
             
             service_file = Path(f"/etc/systemd/system/{service_name}.service")
-            if service_file.exists():
+            # Use try/except instead of check-then-act to avoid race condition
+            try:
                 service_file.unlink()
+            except FileNotFoundError:
+                pass
             
-            subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
+            subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True, timeout=30)
             self.printer.success(f"Service {service_name} removed")
         except subprocess.CalledProcessError as e:
             self.printer.error(f"Failed to remove service: {e}")
@@ -621,28 +625,39 @@ class ArchiveExtractor:
                 shutil.move(str(item), str(target_dir))
             
             # Set permissions
-            subprocess.run(['sudo', 'chown', '-R', 'root:root', str(target_dir)])
-            subprocess.run(['sudo', 'find', str(target_dir), '-type', 'd', '-exec', 'chmod', '755', '{}', ';'])
-            subprocess.run(['sudo', 'find', str(target_dir), '-type', 'f', '-exec', 'chmod', '644', '{}', ';'])
+            subprocess.run(['sudo', 'chown', '-R', 'root:root', str(target_dir)], timeout=60)
+            subprocess.run(['sudo', 'find', str(target_dir), '-type', 'd', '-exec', 'chmod', '755', '{}', ';'], timeout=60)
+            subprocess.run(['sudo', 'find', str(target_dir), '-type', 'f', '-exec', 'chmod', '644', '{}', ';'], timeout=60)
         
         self.printer.success(f"Extracted to {target_dir}")
         return target_dir
     
     def _extract_zip(self, archive_path: Path, target_path: Path):
-        """Extract ZIP file"""
+        """Extract ZIP file with path traversal protection"""
         with zipfile.ZipFile(archive_path, 'r') as zip_ref:
+            for member in zip_ref.namelist():
+                # Validate each path before extraction
+                member_path = (target_path / member).resolve()
+                if not str(member_path).startswith(str(target_path.resolve())):
+                    raise ValueError(f"Path traversal attempt detected: {member}")
             zip_ref.extractall(target_path)
     
     def _extract_tar(self, archive_path: Path, target_path: Path):
-        """Extract TAR file"""
+        """Extract TAR file with path traversal protection"""
         with tarfile.open(archive_path, 'r:*') as tar_ref:
+            for member in tar_ref.getmembers():
+                # Validate each path before extraction
+                member_path = (target_path / member.name).resolve()
+                if not str(member_path).startswith(str(target_path.resolve())):
+                    raise ValueError(f"Path traversal attempt detected: {member.name}")
             tar_ref.extractall(target_path)
     
     def _extract_rar(self, archive_path: Path, target_path: Path):
         """Extract RAR file"""
+        # Note: RAR extraction is done via unrar command which has its own protections
         subprocess.run([
             'unrar', 'x', '-o+', str(archive_path), str(target_path) + '/'
-        ], check=True)
+        ], check=True, timeout=300)
     
     def _find_product_dir(self, temp_path: Path, product_name: str) -> Path:
         """Find actual product directory within extracted archive"""

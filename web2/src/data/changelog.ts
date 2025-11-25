@@ -6,6 +6,18 @@ export type ReleaseNote = {
 
 export const releases: ReleaseNote[] = [
   {
+    version: "3.1.8",
+    date: "2025-11-25",
+    highlights: [
+      "Auto-updates now verify SHA256 checksums before applying downloaded files.",
+      "Lock file prevents multiple installer instances from running concurrently.",
+      "Root check moved before telemetry prompt so preferences save correctly on first run.",
+      "Archive extraction validates paths to prevent directory traversal attacks.",
+      "All subprocess calls now have timeouts to prevent hung processes.",
+      "Input validation for port (1-65535), domain format, and email format."
+    ]
+  },
+  {
     version: "3.1.7",
     date: "2025-11-24",
     highlights: [

@@ -4,7 +4,7 @@
 # Usage: curl -sSL https://plexdev.live/setup.sh | sudo bash
 # Or with beta flag: curl -sSL https://plexdev.live/setup.sh | sudo bash -s -- -b
 
-set -e
+set -euo pipefail
 
 # Colors
 RED='\033[0;31m'
@@ -157,23 +157,23 @@ done
 
 # Make Python files executable
 print_step "Setting permissions..."
-chmod +x "$INSTALL_DIR/installer.py"
-chmod +x "$INSTALL_DIR/plex_cli.py"
-chmod 644 "$INSTALL_DIR/config.py"
-chmod 644 "$INSTALL_DIR/utils.py"
-chmod 644 "$INSTALL_DIR/telemetry_client.py"
+chmod +x "${INSTALL_DIR}/installer.py"
+chmod +x "${INSTALL_DIR}/plex_cli.py"
+chmod 644 "${INSTALL_DIR}/config.py"
+chmod 644 "${INSTALL_DIR}/utils.py"
+chmod 644 "${INSTALL_DIR}/telemetry_client.py"
 
 # Create symbolic link for the main installer
 print_step "Creating installer command..."
-ln -sf "$INSTALL_DIR/installer.py" "$BIN_DIR/plexinstaller"
+ln -sf "${INSTALL_DIR}/installer.py" "${BIN_DIR}/plexinstaller"
 print_success "Created 'plexinstaller' command"
 
 # Install the plex CLI tool
 print_header "Installing Plex CLI Management Tool"
 print_step "Setting up 'plex' command..."
 
-cp "$INSTALL_DIR/plex_cli.py" "$BIN_DIR/plex"
-chmod +x "$BIN_DIR/plex"
+cp "${INSTALL_DIR}/plex_cli.py" "${BIN_DIR}/plex"
+chmod +x "${BIN_DIR}/plex"
 
 print_success "Plex CLI tool installed successfully!"
 

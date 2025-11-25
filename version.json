@@ -1,10 +1,14 @@
 {
-  "version": "3.1.7",
-  "release_date": "2025-11-24",
+  "version": "3.1.8",
+  "release_date": "2025-11-25",
   "changelog": [
-    "Installer now tracks each install attempt with step-by-step telemetry, auto-uploading failure logs and cleaning up partial deployments.",
-    "Mobile tweaks keep command snippets and tabs contained on smaller screens, plus product blurbs and docs now reflect the correct Plex product behavior.",
-    "New FastAPI telemetry collector ships in /telemetry so self-hosters can aggregate success/failure metrics and view captured logs."
+    "Auto-updates now verify SHA256 checksums before applying downloaded files.",
+    "Lock file prevents multiple installer instances from running concurrently.",
+    "Root check moved before telemetry prompt so preferences save correctly on first run.",
+    "Archive extraction validates paths to prevent directory traversal attacks.",
+    "All subprocess calls now have timeouts to prevent hung processes.",
+    "Input validation for port (1-65535), domain format, and email format.",
+    "Removed insecure --unsafe-perm flag from npm install."
   ],
   "download_urls": {
     "installer": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/v3-rewrite/installer.py",
@@ -13,5 +17,12 @@
     "plex_cli": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/v3-rewrite/plex_cli.py",
     "setup": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/v3-rewrite/setup.sh",
     "telemetry_client": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/v3-rewrite/telemetry_client.py"
+  },
+  "checksums": {
+    "installer": "d8f997e1c6d02175f57d0522034196a6adb973cd800d09acdc669aa1c111c2ba",
+    "config": "fa1a6a5beb04678a8d0ff69a24f2f5f2eb6aa34ef99bc037fc5b41a5152d8d35",
+    "utils": "4eeeec3fdbbb6ffab00559f44a6ea3e600e32dec4dbb0f1b69bcfebaf0ef9ec3",
+    "plex_cli": "f6368f22e1d25facdcec56a51540792bfec850fd37c11f50ab48aed9a6d060ba",
+    "telemetry_client": "5c60706649c918edf49feb986c6ee3f8be47bbc721e98e02eaeec7373c200302"
   }
 }
