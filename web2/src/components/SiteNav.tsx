@@ -20,6 +20,9 @@ export const SiteNav = ({ sticky = false }: { sticky?: boolean }) => (
           {link.label}
         </a>
       ))}
+      <a href="https://addons.plexdev.live" className="nav-addons" target="_blank" rel="noreferrer">
+        🧩 Addons
+      </a>
     </div>
   </nav>
 );

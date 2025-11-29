@@ -97,6 +97,18 @@ a {
   color: var(--text);
 }
 
+.nav-addons {
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.15), rgba(236, 72, 153, 0.15));
+  border: 1px solid rgba(168, 85, 247, 0.3) !important;
+  color: #e879f9 !important;
+}
+
+.nav-addons:hover {
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.25), rgba(236, 72, 153, 0.25));
+  border-color: rgba(168, 85, 247, 0.5) !important;
+  color: #f0abfc !important;
+}
+
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -302,6 +314,59 @@ a {
 
 .notice p {
   margin: 0;
+}
+
+/* Addons Promo Section */
+.addons-promo {
+  display: grid;
+  gap: 24px;
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.08), rgba(236, 72, 153, 0.08), rgba(10, 14, 25, 0.75));
+  border: 1px solid rgba(168, 85, 247, 0.25);
+}
+
+@media (min-width: 768px) {
+  .addons-promo {
+    grid-template-columns: 1fr auto;
+    align-items: center;
+  }
+}
+
+.addons-promo-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.addons-promo-content h2 {
+  margin: 0;
+  font-size: 1.75rem;
+}
+
+.addons-promo-content > p:not(.eyebrow) {
+  color: var(--muted);
+  max-width: 500px;
+}
+
+.addons-promo-features {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.addons-feature {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.addons-feature-icon {
+  font-size: 1.1rem;
 }
 
 .docs-page {

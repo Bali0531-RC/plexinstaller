@@ -110,6 +110,39 @@ export const App = () => {
         <ReleaseTimeline />
       </section>
 
+      <section id="addons" className="addons-promo card">
+        <div className="addons-promo-content">
+          <p className="eyebrow">New Platform</p>
+          <h2>🧩 PlexDev Addons</h2>
+          <p>
+            Discover and share community-built addons for PlexDevelopment products. 
+            Version checking, automatic updates, and a growing library of extensions.
+          </p>
+          <div className="actions">
+            <a className="primary" href="https://addons.plexdev.live" target="_blank" rel="noreferrer">
+              Explore Addons
+            </a>
+            <a className="ghost" href="https://addons.plexdev.live/docs" target="_blank" rel="noreferrer">
+              Developer Docs
+            </a>
+          </div>
+        </div>
+        <div className="addons-promo-features">
+          <div className="addons-feature">
+            <span className="addons-feature-icon">📦</span>
+            <span>Addon Registry</span>
+          </div>
+          <div className="addons-feature">
+            <span className="addons-feature-icon">🔄</span>
+            <span>Auto Updates</span>
+          </div>
+          <div className="addons-feature">
+            <span className="addons-feature-icon">🔐</span>
+            <span>Discord Auth</span>
+          </div>
+        </div>
+      </section>
+
       <section id="support" className="cta card">
         <p className="eyebrow">Fast help</p>
         <h2>Need support?</h2>
