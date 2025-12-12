@@ -140,14 +140,14 @@ class PlexInstaller:
     def _display_banner(self):
         """Display PlexDevelopment banner"""
         print(f"{ColorPrinter.BOLD}{ColorPrinter.CYAN}", end="")
-        print("  _____  _           _____                 _                                  _   ")
-        print(" |  __ \| |         |  __ \               | |                                | |  ")
-        print(" | |__) | | _____  _| |  | | _____   _____| | ___  _ __  _ __ ___   ___ _ __ | |_ ")
-        print(" |  ___/| |/ _ \ \/ / |  | |/ _ \ \ / / _ \ |/ _ \| '_ \| '_ \` _ \ / _ \ '_ \| __|")
-        print(" | |    | |  __/>  <| |__| |  __/\ V /  __/ | (_) | |_) | | | | | |  __/ | | | |_ ")
-        print(" |_|    |_|\___/_/\_\_____/ \___| \_/ \___|_|\___/| .__/|_| |_| |_|\___|_| |_|\__|")
-        print("                                                  | |                             ")
-        print("                                                  |_|                             ")
+        print(r"  _____  _           _____                 _                                  _   ")
+        print(r" |  __ \| |         |  __ \               | |                                | |  ")
+        print(r" | |__) | | _____  _| |  | | _____   _____| | ___  _ __  _ __ ___   ___ _ __ | |_ ")
+        print(r" |  ___/| |/ _ \ \/ / |  | |/ _ \ \ / / _ \ |/ _ \| '_ \| '_ \` _ \ / _ \ '_ \| __|")
+        print(r" | |    | |  __/>  <| |__| |  __/\ V /  __/ | (_) | |_) | | | | | |  __/ | | | |_ ")
+        print(r" |_|    |_|\___/_/\_\_____/ \___| \_/ \___|_|\___/| .__/|_| |_| |_|\___|_| |_|\__|")
+        print(r"                                                  | |                             ")
+        print(r"                                                  |_|                             ")
         print(ColorPrinter.NC)
         print(f"{ColorPrinter.BOLD}{ColorPrinter.PURPLE} UNOFFICIAL Installation Script for PlexDevelopment Products{ColorPrinter.NC}")
         print(f"{ColorPrinter.CYAN}{self.version.upper()} Version - Python-Based Installer{ColorPrinter.NC}\n")
@@ -220,6 +220,9 @@ class PlexInstaller:
                     self.printer.step("Continuing with current version...")
             else:
                 self.printer.success(f"Installer is up to date (v{INSTALLER_VERSION})")
+
+            # Ensure CLI entrypoints are wired correctly (older installs used a copied plex CLI).
+            self._ensure_cli_entrypoints()
             
             print()  # Add spacing
             
@@ -227,6 +230,39 @@ class PlexInstaller:
             self.printer.warning(f"Could not check for updates: {e}")
             self.printer.step("Continuing with current version...")
             print()
+
+    def _ensure_cli_entrypoints(self):
+        """Ensure `plexinstaller` and `plex` commands point at the current installer bundle."""
+        try:
+            install_dir = Path("/opt/plexinstaller")
+            bin_dir = Path("/usr/local/bin")
+            bin_dir.mkdir(parents=True, exist_ok=True)
+
+            installer_target = install_dir / "installer.py"
+            plex_target = install_dir / "plex_cli.py"
+            if installer_target.exists():
+                self._ensure_symlink(bin_dir / "plexinstaller", installer_target)
+            if plex_target.exists():
+                self._ensure_symlink(bin_dir / "plex", plex_target)
+        except Exception as exc:
+            self.printer.warning(f"Could not ensure CLI entrypoints: {exc}")
+
+    def _ensure_symlink(self, link_path: Path, target: Path):
+        """Force link_path to be a symlink pointing at target."""
+        try:
+            if link_path.is_symlink():
+                if link_path.resolve() == target.resolve():
+                    return
+                link_path.unlink(missing_ok=True)
+            elif link_path.exists():
+                link_path.unlink(missing_ok=True)
+
+            link_path.symlink_to(target)
+        except TypeError:
+            # Python < 3.8 compatibility for missing_ok
+            if link_path.is_symlink() or link_path.exists():
+                link_path.unlink()
+            link_path.symlink_to(target)
     
     def _is_newer_version(self, remote: str, local: str) -> bool:
         """Compare version strings (semantic versioning)"""
@@ -246,18 +282,19 @@ class PlexInstaller:
     
     def _perform_update(self, version_data: Dict):
         """Download and install new installer version with checksum verification"""
+        install_dir: Path = Path("/opt/plexinstaller")
+        backup_dir: Path = install_dir / "backup"
+        current_files = ['installer.py', 'config.py', 'utils.py', 'plex_cli.py', 'telemetry_client.py']
+
         try:
             self.printer.step("Downloading updated installer files...")
-            
-            install_dir = Path("/opt/plexinstaller")
-            backup_dir = install_dir / "backup"
+
             backup_dir.mkdir(parents=True, exist_ok=True)
-            
+
             # Get checksums from version data
             checksums = version_data.get('checksums', {})
-            
+
             # Backup current files
-            current_files = ['installer.py', 'config.py', 'utils.py', 'plex_cli.py', 'telemetry_client.py']
             for filename in current_files:
                 src = install_dir / filename
                 if src.exists():
@@ -297,6 +334,9 @@ class PlexInstaller:
             
             self.printer.success("Update completed successfully!")
             self.printer.step("Restarting installer with new version...")
+
+            # Make sure CLI entrypoints are updated to point at the refreshed bundle.
+            self._ensure_cli_entrypoints()
             
             # Wait a moment for user to see message
             import time
@@ -311,12 +351,15 @@ class PlexInstaller:
             
             # Restore backups
             try:
-                for filename in current_files:
-                    backup = backup_dir / f"{filename}.bak"
-                    target = install_dir / filename
-                    if backup.exists():
-                        shutil.copy2(backup, target)
-                self.printer.success("Backup restored successfully")
+                if backup_dir.exists():
+                    for filename in current_files:
+                        backup = backup_dir / f"{filename}.bak"
+                        target = install_dir / filename
+                        if backup.exists():
+                            shutil.copy2(backup, target)
+                    self.printer.success("Backup restored successfully")
+                else:
+                    self.printer.warning("No backup directory found; nothing to restore.")
             except Exception:
                 self.printer.error("Could not restore backup. Manual intervention may be required.")
             
@@ -808,7 +851,7 @@ class PlexInstaller:
         """Install MongoDB"""
         self.printer.step("Installing MongoDB...")
         
-        distro = self.system.distribution.lower()
+        distro = (self.system.distribution or "").lower()
         
         try:
             if 'ubuntu' in distro or 'debian' in distro:
@@ -871,7 +914,7 @@ class PlexInstaller:
             curl_process.wait()
             
             # Detect distro and codename
-            distro = self.system.distribution.lower()
+            distro = (self.system.distribution or "").lower()
             distro_codename = subprocess.run(
                 ['lsb_release', '-cs'],
                 capture_output=True, text=True, check=True, timeout=10
@@ -931,7 +974,7 @@ gpgkey=https://www.mongodb.org/static/pgp/server-7.0.asc
                 f.write(repo_content)
             
             # Install
-            if 'fedora' in self.system.distribution.lower():
+            if 'fedora' in (self.system.distribution or "").lower():
                 subprocess.run(['dnf', 'install', '-y', 'mongodb-org'], check=True, timeout=300)
             else:
                 subprocess.run(['yum', 'install', '-y', 'mongodb-org'], check=True, timeout=300)

@@ -180,8 +180,8 @@ print_success "Created 'plexinstaller' command"
 print_header "Installing Plex CLI Management Tool"
 print_step "Setting up 'plex' command..."
 
-cp "${INSTALL_DIR}/plex_cli.py" "${BIN_DIR}/plex"
-chmod +x "${BIN_DIR}/plex"
+# Use a symlink so autoupdates to /opt/plexinstaller also update the CLI.
+ln -sf "${INSTALL_DIR}/plex_cli.py" "${BIN_DIR}/plex"
 
 print_success "Plex CLI tool installed successfully!"
 

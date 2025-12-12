@@ -12,6 +12,7 @@ import zipfile
 import tarfile
 import socket
 import time
+import re
 from pathlib import Path
 from typing import Optional, List, Tuple
 
@@ -98,6 +99,10 @@ class SystemDetector:
         from config import Config
         
         self.printer.header("Installing Dependencies")
+        
+        if self.pkg_manager is None:
+            self.printer.error("Package manager not detected. Run detect() first.")
+            return
         
         config = Config()
         packages = config.SYSTEM_PACKAGES.get(self.pkg_manager, [])
@@ -251,6 +256,70 @@ class DNSChecker:
                 continue
         
         return None
+
+
+SENSITIVE_YAML_KEYS = {
+    "token",
+    "mongouri",
+    "licensekey",
+    "secretkey",
+}
+
+
+def redact_mongo_uri_credentials(value: str) -> str:
+    """Redact username/password in mongodb:// and mongodb+srv:// URIs."""
+
+    def _repl(match: re.Match) -> str:
+        scheme = match.group("scheme")
+        host_part = match.group("host")
+        return f"{scheme}://<REDACTED>:<REDACTED>@{host_part}"
+
+    # mongodb+srv://user:pass@host/...
+    return re.sub(
+        r"(?P<scheme>mongodb(?:\+srv)?)://(?P<user>[^:@/\s]+):(?P<pw>[^@/\s]+)@(?P<host>[^/\s]+)",
+        _repl,
+        value,
+        flags=re.IGNORECASE,
+    )
+
+
+def redact_sensitive_yaml(text: str) -> str:
+    """Redact known sensitive values in YAML-ish files without parsing YAML."""
+    lines: List[str] = []
+    for line in text.splitlines():
+        # Preserve comments/empty lines
+        if not line.strip() or line.lstrip().startswith("#"):
+            lines.append(line)
+            continue
+
+        # Match: <indent><key><sep><value><optional comment>
+        match = re.match(r"^(?P<indent>\s*)(?P<key>[A-Za-z0-9_\-]+)\s*:\s*(?P<value>.*)$", line)
+        if match:
+            key = match.group("key")
+            if key.lower() in SENSITIVE_YAML_KEYS:
+                # Keep inline comment if present
+                value_part = match.group("value")
+                comment = ""
+                if "#" in value_part:
+                    before, after = value_part.split("#", 1)
+                    comment = "#" + after
+                redacted = f"{match.group('indent')}{key}: \"<REDACTED>\""
+                if comment:
+                    redacted = f"{redacted} {comment.strip()}"
+                lines.append(redacted)
+                continue
+
+            # Always redact mongo credentials if it's a MongoURI-like value
+            value_part = match.group("value")
+            redacted_value = redact_mongo_uri_credentials(value_part)
+            if redacted_value != value_part:
+                lines.append(f"{match.group('indent')}{key}: {redacted_value}")
+                continue
+
+        # Fallback: redact mongo URI credentials even if it appears in non-YAML lines.
+        lines.append(redact_mongo_uri_credentials(line))
+
+    return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
 
 class FirewallManager:
     """Firewall port management"""

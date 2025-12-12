@@ -7,11 +7,33 @@ Command-line interface for managing PlexDevelopment applications
 import sys
 import subprocess
 import os
+import json
+import urllib.request
+import hashlib
+import shutil
+import re
 from pathlib import Path
 from typing import List, Dict, Optional
 
+try:
+    from config import Config
+except Exception:  # pragma: no cover
+    Config = None
+
+try:
+    import requests
+except Exception:  # pragma: no cover
+    requests = None
+
+try:
+    from utils import redact_sensitive_yaml
+except Exception:  # pragma: no cover
+    redact_sensitive_yaml = None
+
 # Configuration
 INSTALL_DIR = Path("/var/www/plex")
+INSTALLER_DIR = Path("/opt/plexinstaller")
+VERSION_CHECK_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/version.json"
 
 # ANSI Colors
 RED = '\033[0;31m'
@@ -52,6 +74,7 @@ def show_help():
     print(f"  {GREEN}plex config <app>{NC}      - Edit application configuration file")
     print(f"  {GREEN}plex enable <app>{NC}      - Enable application to start on boot")
     print(f"  {GREEN}plex disable <app>{NC}     - Disable application from starting on boot")
+    print(f"  {GREEN}plex debug <app>{NC}       - Upload redacted config + logs for support")
     print()
     print(f"{YELLOW}Examples:{NC}")
     print("  plex list")
@@ -59,6 +82,161 @@ def show_help():
     print("  plex restart plexstore")
     print("  plex logs plextickets")
     print("  plex config plexstore")
+    print("  plex debug plextickets")
+
+
+def _is_newer_version(remote: str, local: str) -> bool:
+    """Compare semantic-ish version strings."""
+    try:
+        remote_parts = [int(x) for x in remote.split('.')]
+        local_parts = [int(x) for x in local.split('.')]
+
+        while len(remote_parts) < len(local_parts):
+            remote_parts.append(0)
+        while len(local_parts) < len(remote_parts):
+            local_parts.append(0)
+
+        return remote_parts > local_parts
+    except Exception:
+        return False
+
+
+def _read_local_installer_version() -> str:
+    """Read INSTALLER_VERSION from the installed installer.py without importing it."""
+    try:
+        installer_py = INSTALLER_DIR / "installer.py"
+        if not installer_py.exists():
+            return "0.0.0"
+        text = installer_py.read_text(encoding="utf-8", errors="replace")
+        match = re.search(r"^\s*INSTALLER_VERSION\s*=\s*\"(?P<v>[^\"]+)\"\s*$", text, re.MULTILINE)
+        return match.group("v") if match else "0.0.0"
+    except Exception:
+        return "0.0.0"
+
+
+def _ensure_cli_entrypoints():
+    """Ensure `/usr/local/bin/plex` and `/usr/local/bin/plexinstaller` point at the bundle."""
+    if os.geteuid() != 0:
+        return
+
+    try:
+        bin_dir = Path("/usr/local/bin")
+        bin_dir.mkdir(parents=True, exist_ok=True)
+
+        def _ensure_symlink(link_path: Path, target: Path):
+            if not target.exists():
+                return
+            if link_path.is_symlink():
+                if link_path.resolve() == target.resolve():
+                    return
+                link_path.unlink(missing_ok=True)
+            elif link_path.exists():
+                link_path.unlink(missing_ok=True)
+            link_path.symlink_to(target)
+
+        _ensure_symlink(bin_dir / "plexinstaller", INSTALLER_DIR / "installer.py")
+        _ensure_symlink(bin_dir / "plex", INSTALLER_DIR / "plex_cli.py")
+    except TypeError:
+        # Python < 3.8 missing_ok fallback
+        try:
+            bin_dir = Path("/usr/local/bin")
+            for name, target in {
+                "plexinstaller": INSTALLER_DIR / "installer.py",
+                "plex": INSTALLER_DIR / "plex_cli.py",
+            }.items():
+                link_path = bin_dir / name
+                if link_path.is_symlink() or link_path.exists():
+                    link_path.unlink()
+                if target.exists():
+                    link_path.symlink_to(target)
+        except Exception:
+            return
+    except Exception:
+        return
+
+
+def _perform_update(version_data: Dict):
+    """Download and install new installer version with checksum verification."""
+    if os.geteuid() != 0:
+        print_warning("Auto-update requires root. Re-run the command with sudo.")
+        return
+
+    install_dir = INSTALLER_DIR
+    backup_dir = install_dir / "backup"
+    current_files = ['installer.py', 'config.py', 'utils.py', 'plex_cli.py', 'telemetry_client.py']
+
+    backup_dir.mkdir(parents=True, exist_ok=True)
+
+    checksums = version_data.get('checksums', {})
+    urls = version_data.get('download_urls', {})
+    files_to_update = {
+        'installer': 'installer.py',
+        'config': 'config.py',
+        'utils': 'utils.py',
+        'plex_cli': 'plex_cli.py',
+        'telemetry_client': 'telemetry_client.py'
+    }
+
+    for filename in current_files:
+        src = install_dir / filename
+        if src.exists():
+            shutil.copy2(src, backup_dir / f"{filename}.bak")
+
+    for key, filename in files_to_update.items():
+        if key not in urls:
+            continue
+        url = urls[key]
+        target = install_dir / filename
+
+        print_info(f"Downloading {filename}...")
+        with urllib.request.urlopen(url, timeout=30) as response:
+            content = response.read()
+
+        if key in checksums:
+            expected_hash = checksums[key]
+            actual_hash = hashlib.sha256(content).hexdigest()
+            if actual_hash != expected_hash:
+                raise ValueError(
+                    f"Checksum mismatch for {filename}: expected {expected_hash}, got {actual_hash}"
+                )
+
+        target.write_bytes(content)
+        os.chmod(target, 0o755 if filename.endswith('.py') else 0o644)
+
+    _ensure_cli_entrypoints()
+
+    print_success("Update completed successfully. Restarting...")
+    os.execv(sys.executable, [sys.executable] + sys.argv)
+
+
+def _maybe_auto_update():
+    """Check for installer updates and prompt if a newer version is available."""
+    if not sys.stdin.isatty():
+        return
+
+    try:
+        with urllib.request.urlopen(VERSION_CHECK_URL, timeout=5) as response:
+            version_data = json.loads(response.read().decode())
+        remote_version = version_data.get('version', '0.0.0')
+        local_version = _read_local_installer_version()
+
+        if _is_newer_version(remote_version, local_version):
+            print_warning(f"New installer version available: {remote_version} (current: {local_version})")
+            changelog = version_data.get('changelog', [])
+            if changelog:
+                print(f"\n{CYAN}Changelog:{NC}")
+                for item in changelog:
+                    print(f"  • {item}")
+            choice = input(f"\n{YELLOW}Auto-update to latest version? (y/n): {NC}").strip().lower()
+            if choice == 'y':
+                _perform_update(version_data)
+    except KeyboardInterrupt:
+        return
+    except Exception:
+        # Never block normal CLI usage if update checks fail.
+        return
+    finally:
+        _ensure_cli_entrypoints()
 
 def get_installed_apps() -> List[str]:
     """Get list of installed Plex applications"""
@@ -74,15 +252,51 @@ def get_installed_apps() -> List[str]:
     
     return sorted(apps)
 
+
+def resolve_app_instance(name: str) -> Optional[str]:
+    """Resolve a user-provided name to an installed instance folder.
+
+    Supports:
+    - Exact instance folder name (recommended)
+    - Base product name only if it resolves unambiguously to a single installed instance
+    """
+    if not name:
+        return None
+
+    installed = get_installed_apps()
+    if not installed:
+        return None
+
+    by_lower = {app.lower(): app for app in installed}
+    normalized = name.strip().lower()
+
+    # Exact match
+    if normalized in by_lower:
+        return by_lower[normalized]
+
+    # Unambiguous prefix match for multi-instance installs (e.g. plextickets -> plextickets-ab12)
+    candidates = [app for app in installed if app.lower().startswith(f"{normalized}-")]
+    if len(candidates) == 1:
+        return candidates[0]
+
+    if len(candidates) > 1:
+        print_error(f"Multiple instances match '{name}'. Please specify the exact instance name:")
+        for app in candidates:
+            print(f"  - {app}")
+        return None
+
+    return None
+
 def is_valid_app(app: str) -> bool:
     """Check if app is a valid installed application"""
-    return app in get_installed_apps()
+    return resolve_app_instance(app) is not None
 
 def get_service_name(app: str) -> str:
     """Get systemd service name for app"""
-    return f"plex-{app}"
+    instance = resolve_app_instance(app) or app
+    return f"plex-{instance}"
 
-def get_service_status(service_name: str) -> Dict[str, str]:
+def get_service_status(service_name: str) -> Dict[str, object]:
     """Get detailed service status"""
     try:
         result = subprocess.run(
@@ -164,16 +378,17 @@ def list_apps():
 
 def start_app(app: str):
     """Start an application"""
-    if not is_valid_app(app):
+    instance = resolve_app_instance(app)
+    if not instance:
         print_error(f"Application '{app}' not found. Use 'plex list' to see installed apps.")
         return 1
     
-    service_name = get_service_name(app)
-    print_info(f"Starting {app}...")
+    service_name = get_service_name(instance)
+    print_info(f"Starting {instance}...")
     
     try:
         subprocess.run(['systemctl', 'start', service_name], check=True)
-        print_success(f"{app} started successfully")
+        print_success(f"{instance} started successfully")
         
         # Wait a moment and check if it's actually running
         import time
@@ -181,46 +396,48 @@ def start_app(app: str):
         
         status_info = get_service_status(service_name)
         if status_info['active']:
-            print_success(f"{app} is now running")
+            print_success(f"{instance} is now running")
         else:
-            print_error(f"{app} failed to start properly")
-            print(f"Check logs with: plex logs {app}")
+            print_error(f"{instance} failed to start properly")
+            print(f"Check logs with: plex logs {instance}")
             return 1
         
         return 0
     except subprocess.CalledProcessError:
-        print_error(f"Failed to start {app}")
+        print_error(f"Failed to start {instance}")
         return 1
 
 def stop_app(app: str):
     """Stop an application"""
-    if not is_valid_app(app):
+    instance = resolve_app_instance(app)
+    if not instance:
         print_error(f"Application '{app}' not found. Use 'plex list' to see installed apps.")
         return 1
     
-    service_name = get_service_name(app)
-    print_info(f"Stopping {app}...")
+    service_name = get_service_name(instance)
+    print_info(f"Stopping {instance}...")
     
     try:
         subprocess.run(['systemctl', 'stop', service_name], check=True)
-        print_success(f"{app} stopped successfully")
+        print_success(f"{instance} stopped successfully")
         return 0
     except subprocess.CalledProcessError:
-        print_error(f"Failed to stop {app}")
+        print_error(f"Failed to stop {instance}")
         return 1
 
 def restart_app(app: str):
     """Restart an application"""
-    if not is_valid_app(app):
+    instance = resolve_app_instance(app)
+    if not instance:
         print_error(f"Application '{app}' not found. Use 'plex list' to see installed apps.")
         return 1
     
-    service_name = get_service_name(app)
-    print_info(f"Restarting {app}...")
+    service_name = get_service_name(instance)
+    print_info(f"Restarting {instance}...")
     
     try:
         subprocess.run(['systemctl', 'restart', service_name], check=True)
-        print_success(f"{app} restarted successfully")
+        print_success(f"{instance} restarted successfully")
         
         # Wait a moment and check if it's running
         import time
@@ -228,25 +445,26 @@ def restart_app(app: str):
         
         status_info = get_service_status(service_name)
         if status_info['active']:
-            print_success(f"{app} is now running")
+            print_success(f"{instance} is now running")
         else:
-            print_error(f"{app} failed to start after restart")
-            print(f"Check logs with: plex logs {app}")
+            print_error(f"{instance} failed to start after restart")
+            print(f"Check logs with: plex logs {instance}")
             return 1
         
         return 0
     except subprocess.CalledProcessError:
-        print_error(f"Failed to restart {app}")
+        print_error(f"Failed to restart {instance}")
         return 1
 
 def show_status(app: str):
     """Show detailed status of an application"""
-    if not is_valid_app(app):
+    instance = resolve_app_instance(app)
+    if not instance:
         print_error(f"Application '{app}' not found. Use 'plex list' to see installed apps.")
         return 1
     
-    service_name = get_service_name(app)
-    print(f"{BOLD}{CYAN}Status for {app}:{NC}")
+    service_name = get_service_name(instance)
+    print(f"{BOLD}{CYAN}Status for {instance}:{NC}")
     print()
     
     try:
@@ -257,12 +475,13 @@ def show_status(app: str):
 
 def view_logs(app: str):
     """View application logs"""
-    if not is_valid_app(app):
+    instance = resolve_app_instance(app)
+    if not instance:
         print_error(f"Application '{app}' not found. Use 'plex list' to see installed apps.")
         return 1
     
-    service_name = get_service_name(app)
-    print_info(f"Showing logs for {app} (Press Ctrl+C to exit)...")
+    service_name = get_service_name(instance)
+    print_info(f"Showing logs for {instance} (Press Ctrl+C to exit)...")
     print()
     
     try:
@@ -272,16 +491,17 @@ def view_logs(app: str):
         print()
         return 0
     except subprocess.CalledProcessError:
-        print_error(f"Failed to view logs for {app}")
+        print_error(f"Failed to view logs for {instance}")
         return 1
 
 def edit_config(app: str):
     """Edit application configuration"""
-    if not is_valid_app(app):
+    instance = resolve_app_instance(app)
+    if not instance:
         print_error(f"Application '{app}' not found. Use 'plex list' to see installed apps.")
         return 1
     
-    app_dir = INSTALL_DIR / app
+    app_dir = INSTALL_DIR / instance
     config_file = None
     
     # Look for config files
@@ -309,7 +529,7 @@ def edit_config(app: str):
         subprocess.run([editor, str(config_file)])
         print()
         print(f"{YELLOW}Configuration file updated. Restart the application to apply changes:{NC}")
-        print(f"  {GREEN}plex restart {app}{NC}")
+        print(f"  {GREEN}plex restart {instance}{NC}")
         return 0
     except subprocess.CalledProcessError:
         print_error("Failed to open editor")
@@ -317,40 +537,127 @@ def edit_config(app: str):
 
 def enable_app(app: str):
     """Enable application to start on boot"""
-    if not is_valid_app(app):
+    instance = resolve_app_instance(app)
+    if not instance:
         print_error(f"Application '{app}' not found. Use 'plex list' to see installed apps.")
         return 1
     
-    service_name = get_service_name(app)
-    print_info(f"Enabling {app} to start on boot...")
+    service_name = get_service_name(instance)
+    print_info(f"Enabling {instance} to start on boot...")
     
     try:
         subprocess.run(['systemctl', 'enable', service_name], check=True)
-        print_success(f"{app} will now start automatically on boot")
+        print_success(f"{instance} will now start automatically on boot")
         return 0
     except subprocess.CalledProcessError:
-        print_error(f"Failed to enable {app}")
+        print_error(f"Failed to enable {instance}")
         return 1
 
 def disable_app(app: str):
     """Disable application from starting on boot"""
-    if not is_valid_app(app):
+    instance = resolve_app_instance(app)
+    if not instance:
         print_error(f"Application '{app}' not found. Use 'plex list' to see installed apps.")
         return 1
     
-    service_name = get_service_name(app)
-    print_info(f"Disabling {app} from starting on boot...")
+    service_name = get_service_name(instance)
+    print_info(f"Disabling {instance} from starting on boot...")
     
     try:
         subprocess.run(['systemctl', 'disable', service_name], check=True)
-        print_success(f"{app} will no longer start automatically on boot")
+        print_success(f"{instance} will no longer start automatically on boot")
         return 0
     except subprocess.CalledProcessError:
-        print_error(f"Failed to disable {app}")
+        print_error(f"Failed to disable {instance}")
+        return 1
+
+
+def debug_app(app: str) -> int:
+    """Upload redacted config + recent logs for support."""
+    instance = resolve_app_instance(app)
+    if not instance:
+        print_error(f"Application '{app}' not found. Use 'plex list' to see installed apps.")
+        return 1
+
+    app_dir = INSTALL_DIR / instance
+    config_path = None
+    for config_name in ["config.yml", "config.yaml"]:
+        candidate = app_dir / config_name
+        if candidate.exists():
+            config_path = candidate
+            break
+
+    if config_path:
+        try:
+            config_contents = config_path.read_text(encoding="utf-8", errors="replace")
+        except Exception as exc:
+            config_contents = f"<Could not read config file: {exc}>\n"
+    else:
+        config_contents = "<No config.yml/config.yaml found>\n"
+
+    service_name = get_service_name(instance)
+    try:
+        result = subprocess.run(
+            ["journalctl", "-u", service_name, "-n", "500", "--no-pager"],
+            capture_output=True,
+            text=True,
+        )
+        logs_contents = result.stdout if result.stdout else result.stderr
+    except Exception as exc:
+        logs_contents = f"<Could not run journalctl: {exc}>\n"
+
+    bundle = (
+        f"===== instance =====\n{instance}\n\n"
+        f"===== config.yml =====\n{config_contents}\n\n"
+        f"===== journalctl (last 500 lines) =====\n{logs_contents}\n"
+    )
+
+    if redact_sensitive_yaml:
+        bundle = redact_sensitive_yaml(bundle)
+
+    paste_endpoint = "https://paste.plexdev.live/documents"
+    if Config is not None:
+        try:
+            paste_endpoint = Config.PASTE_ENDPOINT
+        except Exception:
+            pass
+
+    if requests is None:
+        print_error("Python package 'requests' is required for plex debug uploads")
+        return 1
+
+    print_info("Uploading debug bundle to paste service...")
+    try:
+        response = requests.post(
+            paste_endpoint,
+            data=bundle.encode("utf-8"),
+            headers={"Content-Type": "text/plain"},
+            timeout=15,
+        )
+        response.raise_for_status()
+        data = response.json()
+        url = data.get("url")
+        key = data.get("key")
+        if not url and key:
+            base = paste_endpoint
+            if base.endswith("/documents"):
+                base = base[: -len("/documents")]
+            url = f"{base}/{key}"
+        if not url:
+            print_error("Paste upload succeeded but no URL was returned")
+            return 1
+
+        print_success(f"Debug bundle uploaded: {url}")
+        print_warning("Only share this link in official plexdevelopment tickets.")
+        return 0
+    except Exception as exc:
+        print_error(f"Failed to upload debug bundle: {exc}")
         return 1
 
 def main():
     """Main entry point"""
+    _maybe_auto_update()
+
     if len(sys.argv) < 2:
         show_help()
         return 1
@@ -415,6 +722,13 @@ def main():
             print("Use 'plex list' to see available applications")
             return 1
         return disable_app(sys.argv[2])
+
+    elif command == 'debug':
+        if len(sys.argv) < 3:
+            print_error("Usage: plex debug <app_name>")
+            print("Use 'plex list' to see available applications")
+            return 1
+        return debug_app(sys.argv[2])
     
     elif command in ['help', '-h', '--help']:
         show_help()
