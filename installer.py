@@ -28,7 +28,7 @@ from utils import (
 from telemetry_client import TelemetryClient
 
 # Current installer version
-INSTALLER_VERSION = "3.1.9"
+INSTALLER_VERSION = "3.1.10"
 VERSION_CHECK_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/version.json"
 LOCK_FILE = "/var/run/plexinstaller.lock"
 

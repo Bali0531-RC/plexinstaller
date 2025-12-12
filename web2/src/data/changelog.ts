@@ -6,6 +6,16 @@ export type ReleaseNote = {
 
 export const releases: ReleaseNote[] = [
   {
+    version: "3.1.10",
+    date: "2025-12-12",
+    highlights: [
+      "Fixed plex CLI autoupdates by ensuring the setup installs /usr/local/bin/plex as a symlink to /opt/plexinstaller/plex_cli.py.",
+      "Running 'plex' now checks for installer updates too (same auto-update prompt behavior as plexinstaller).",
+      "Added 'plex debug <app>' to upload redacted config.yml + last 500 journalctl lines to the paste service.",
+      "Debug command supports multi-instance installs (e.g. plextickets-ab12) and redacts Token, LicenseKey, SecretKey, and MongoURI values (including MongoDB URI credentials)."
+    ]
+  },
+  {
     version: "3.1.9",
     date: "2025-11-25",
     highlights: [
