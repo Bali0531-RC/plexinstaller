@@ -1219,11 +1219,12 @@ gpgkey=https://www.mongodb.org/static/pgp/server-7.0.asc
         # YAML-ish config update via regex
         try:
             content = config_file.read_text(encoding="utf-8", errors="replace")
+            escaped_uri = mongo_uri.replace('\\', '\\\\').replace('"', '\\"')
             patterns = [
-                (r'(mongoURI\s*:\s*)["\']?.*?["\']?\s*$', r'\\1"' + mongo_uri.replace('\\', '\\\\').replace('"', '\\"') + r'"'),
-                (r'(mongodb_uri\s*:\s*)["\']?.*?["\']?\s*$', r'\\1"' + mongo_uri.replace('\\', '\\\\').replace('"', '\\"') + r'"'),
-                (r'(database_url\s*:\s*)["\']?.*?["\']?\s*$', r'\\1"' + mongo_uri.replace('\\', '\\\\').replace('"', '\\"') + r'"'),
-                (r'(MongoURI\s*:\s*)["\']?.*?["\']?\s*$', r'\\1"' + mongo_uri.replace('\\', '\\\\').replace('"', '\\"') + r'"'),
+                (r'(mongoURI\s*:\s*)["\']?.*?["\']?\s*$', r'\1"' + escaped_uri + '"'),
+                (r'(mongodb_uri\s*:\s*)["\']?.*?["\']?\s*$', r'\1"' + escaped_uri + '"'),
+                (r'(database_url\s*:\s*)["\']?.*?["\']?\s*$', r'\1"' + escaped_uri + '"'),
+                (r'(MongoURI\s*:\s*)["\']?.*?["\']?\s*$', r'\1"' + escaped_uri + '"'),
             ]
             updated = False
             for pattern, replacement in patterns:
