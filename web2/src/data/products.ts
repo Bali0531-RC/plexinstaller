@@ -12,5 +12,6 @@ export const products: Product[] = [
   { name: "PlexStore", description: "Direct digital goods and license key sales without extra webhook wiring.", port: 3003, category: "Commerce" },
   { name: "PlexForms", description: "Self-hosted form builder for intake flows and lightweight automation.", port: 3004, category: "Automation" },
   { name: "PlexLinks", description: "Link directory and short-link manager.", port: 3005, category: "Content" },
-  { name: "PlexPaste", description: "Secure pastebin with temporary secrets.", port: 3006, category: "Utilities" }
+  { name: "PlexPaste", description: "Secure pastebin with temporary secrets.", port: 3006, category: "Utilities" },
+  { name: "PlexTracker", description: "Tracking suggestions and bugs.", port: 3007, category: "Tracking" }
 ];

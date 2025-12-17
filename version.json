@@ -1,11 +1,12 @@
 {
-  "version": "3.1.10",
-  "release_date": "2025-12-12",
+  "version": "3.1.11",
+  "release_date": "2025-12-17",
   "changelog": [
-    "Fixed plex CLI autoupdates by ensuring /usr/local/bin/plex is a symlink to /opt/plexinstaller/plex_cli.py.",
-    "Running 'plex' now checks for installer updates too (same prompt flow as plexinstaller).",
-    "Added 'plex debug <app>' to upload redacted config.yml + recent journalctl logs for support.",
-    "Debug upload supports multi-instance installs and redacts Token, LicenseKey, SecretKey, and MongoURI values (including MongoDB URI credentials)."
+    "Added PlexTracker as a supported product (default port 3007).",
+    "MongoDB provisioning is now more reliable: waits for mongod readiness and idempotently creates/updates per-instance DB users.",
+    "Installer validates MongoDB credentials by authenticating with the generated URI before continuing.",
+    "Post-install self-tests now verify Node version, systemd service health, local port/HTTP response, nginx wiring, and MongoDB auth (DNS/HTTPS checks are warnings only).",
+    "MongoDB URI injection now supports config.json in addition to config.yml/config.yaml."
   ],
   "download_urls": {
     "installer": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/installer.py",
@@ -16,8 +17,8 @@
     "telemetry_client": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/telemetry_client.py"
   },
   "checksums": {
-    "installer": "7d52c4caf8b9c3c9160edd297dd36b69e0632e6d88e7c87f4e5b3ed72bc0c874",
-    "config": "fa1a6a5beb04678a8d0ff69a24f2f5f2eb6aa34ef99bc037fc5b41a5152d8d35",
+    "installer": "d42b59f136962b2ed232ad77ed4392f142be6ce8a1a2b2e3892a5da2ac066823",
+    "config": "db16c1f06c8c8c516d888a66ff82baca6a247b5a4d5bd3f4ad1bba695801f4d6",
     "utils": "aef9149d5272532592807964cb071658daf9a9629a425e7af0da02ddb48037af",
     "plex_cli": "281ced81fd8eda02654ed2f105b194203cba216b8fad600f146c12957d0f15a1",
     "telemetry_client": "5c60706649c918edf49feb986c6ee3f8be47bbc721e98e02eaeec7373c200302"

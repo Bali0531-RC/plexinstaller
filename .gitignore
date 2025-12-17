@@ -42,7 +42,8 @@ Thumbs.db
 # Editor directories and files
 /.idea
 /.vscode
-
+/.venv
+/_PYCACHE_
 # Temporary files
 *.swp
 

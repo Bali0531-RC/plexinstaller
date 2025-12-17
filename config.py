@@ -77,6 +77,12 @@ class Config:
             default_port=3006,
             requires_mongodb=True,
             description="Pastebin service"
+        ),
+        "plextracker": ProductConfig(
+            name="plextracker",
+            default_port=3007,
+            requires_mongodb=True,
+            description="Bug and Suggestion tracker"
         )
     }
     

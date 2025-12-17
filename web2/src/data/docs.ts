@@ -39,7 +39,7 @@ export const guideSections: DocsSection[] = [
     title: "After installation",
     paragraphs: [
       "Use plex list to confirm running services.",
-      "Create backups via Manage Backups (option 9 inside plexinstaller).",
+      "Create backups via Manage Backups (option 10 inside plexinstaller).",
       "Harden SSH and enable unattended-upgrades to keep the OS patched."
     ]
   }

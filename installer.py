@@ -13,11 +13,15 @@ import zipfile
 import re
 import json
 import urllib.request
+import time
+import socket
+import ssl
+import http.client
 import fcntl
 import hashlib
 import atexit
 from pathlib import Path
-from typing import Optional, Dict, Tuple
+from typing import Optional, Dict, Tuple, List
 from dataclasses import dataclass
 
 from config import Config, ProductConfig
@@ -28,7 +32,7 @@ from utils import (
 from telemetry_client import TelemetryClient
 
 # Current installer version
-INSTALLER_VERSION = "3.1.10"
+INSTALLER_VERSION = "3.1.11"
 VERSION_CHECK_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/version.json"
 LOCK_FILE = "/var/run/plexinstaller.lock"
 
@@ -384,11 +388,12 @@ class PlexInstaller:
             print("5) Install PlexForms")
             print("6) Install PlexLinks")
             print("7) Install PlexPaste")
+            print("8) Install PlexTracker")
             print("----------------------------------------")
-            print("8) Manage Installations")
-            print("9) Manage Backups")
-            print("10) SSL Certificate Management")
-            print("11) System Health Check")
+            print("9) Manage Installations")
+            print("10) Manage Backups")
+            print("11) SSL Certificate Management")
+            print("12) System Health Check")
             print("----------------------------------------")
             print("0) Exit")
             
@@ -412,12 +417,14 @@ class PlexInstaller:
             elif choice == "7":
                 self._install_product("plexpaste", 3006)
             elif choice == "8":
-                self._manage_installations()
+                self._install_product("plextracker", 3007)
             elif choice == "9":
-                self._manage_backups()
+                self._manage_installations()
             elif choice == "10":
-                self._ssl_management_menu()
+                self._manage_backups()
             elif choice == "11":
+                self._ssl_management_menu()
+            elif choice == "12":
                 self._system_health_check()
             else:
                 self.printer.error("Invalid choice")
@@ -551,7 +558,9 @@ class PlexInstaller:
 
             # MongoDB setup
             current_step = "mongodb"
-            mongo_creds = self._setup_mongodb(instance_name, extracted_path)
+            product_config = self.config.get_product(product) if hasattr(self.config, "get_product") else None
+            requires_mongo = bool(getattr(product_config, "requires_mongodb", False))
+            mongo_creds = self._setup_mongodb(instance_name, extracted_path, required=requires_mongo)
             detail = "configured" if mongo_creds else "skipped"
             self.telemetry.log_step(current_step, "success", detail)
 
@@ -574,9 +583,20 @@ class PlexInstaller:
 
             # Systemd service
             current_step = "systemd"
-            self._setup_systemd(instance_name, extracted_path)
-            context.service_created = True
+            context.service_created = self._setup_systemd(instance_name, extracted_path)
             self.telemetry.log_step(current_step, "success")
+
+            # Post-install self-tests
+            current_step = "self_tests"
+            results = self._run_post_install_self_tests(context, mongo_creds=mongo_creds)
+            failed = [r for r in results if r.status == "fail"]
+            warned = [r for r in results if r.status == "warn"]
+            if failed:
+                self.telemetry.log_step(current_step, "failure", f"failures={len(failed)} warnings={len(warned)}")
+            elif warned:
+                self.telemetry.log_step(current_step, "warning", f"warnings={len(warned)}")
+            else:
+                self.telemetry.log_step(current_step, "success")
 
             # Post-installation
             current_step = "post_install"
@@ -794,11 +814,25 @@ class PlexInstaller:
         os.chmod(error_page, 0o644)
         self.printer.success("Created 502 error page")
     
-    def _setup_mongodb(self, instance_name: str, install_path: Path) -> Optional[Dict]:
+    @dataclass
+    class _SelfTestResult:
+        name: str
+        status: str  # pass|fail|warn
+        detail: str = ""
+        hint: str = ""
+
+    def _setup_mongodb(self, instance_name: str, install_path: Path, required: bool = False) -> Optional[Dict]:
         """Setup MongoDB for product"""
-        choice = input("Install and configure MongoDB locally? (y/n): ").strip().lower()
-        
-        if choice != 'y':
+        prompt = "Install and configure MongoDB locally? (Y/n): " if required else "Install and configure MongoDB locally? (y/n): "
+        choice = input(prompt).strip().lower()
+
+        if required and choice in {"", "y", "yes"}:
+            choice = "y"
+
+        if choice not in {'y', 'yes'}:
+            if required:
+                self.printer.warning("This product requires MongoDB.")
+                self.printer.step("If you are using a remote MongoDB, update your config with its URI.")
             return None
         
         try:
@@ -812,23 +846,33 @@ class PlexInstaller:
                 self.printer.success("MongoDB already installed")
             
             # Ensure MongoDB service is running
-            self._ensure_mongodb_running()
+            service_name = self._ensure_mongodb_running()
+
+            # Wait for MongoDB to accept connections
+            if not self._wait_for_tcp_port("127.0.0.1", 27017, timeout_seconds=60):
+                raise RuntimeError(f"MongoDB service '{service_name}' did not become ready on 27017")
             
             # Create database and user for this instance
             mongo_creds = self._create_mongodb_user(instance_name)
             
-            if mongo_creds:
-                # Save credentials for reuse
-                self._save_mongodb_credentials(instance_name, mongo_creds)
-                
-                # Update config file with MongoDB connection string
-                self._update_config_mongodb(install_path, mongo_creds)
-                
-                return mongo_creds
+            if not mongo_creds:
+                raise RuntimeError("Failed to create MongoDB database/user")
+
+            # Save credentials for reuse
+            self._save_mongodb_credentials(instance_name, mongo_creds)
+
+            # Update config file with MongoDB connection string
+            self._update_config_mongodb(install_path, mongo_creds)
+
+            # Validate the generated URI works
+            if not self._validate_mongodb_uri(mongo_creds['uri']):
+                raise RuntimeError("MongoDB credentials were created but authentication failed when validating the generated URI")
+
+            return mongo_creds
             
         except Exception as e:
             self.printer.error(f"MongoDB setup failed: {e}")
-            return None
+            raise
     
     def _check_mongodb_installed(self) -> bool:
         """Check if MongoDB is installed"""
@@ -1004,24 +1048,50 @@ gpgkey=https://www.mongodb.org/static/pgp/server-7.0.asc
             self.printer.error(f"Failed to install MongoDB: {e}")
             return False
     
-    def _ensure_mongodb_running(self):
-        """Ensure MongoDB service is running"""
-        try:
-            # Try mongod service name
-            result = subprocess.run(['systemctl', 'is-active', 'mongod'],
-                                  capture_output=True, text=True, timeout=10)
-            if result.stdout.strip() != 'active':
-                subprocess.run(['systemctl', 'start', 'mongod'], check=True, timeout=60)
-            
-        except Exception:
-            # Try mongodb service name (Arch)
+    def _ensure_mongodb_running(self) -> str:
+        """Ensure MongoDB service is running; returns the detected service name."""
+        for service in ("mongod", "mongodb"):
             try:
-                result = subprocess.run(['systemctl', 'is-active', 'mongodb'],
-                                      capture_output=True, text=True, timeout=10)
-                if result.stdout.strip() != 'active':
-                    subprocess.run(['systemctl', 'start', 'mongodb'], check=True, timeout=60)
+                result = subprocess.run(
+                    ['systemctl', 'is-active', service],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                if result.stdout.strip() == 'active':
+                    return service
+
+                # If the service exists but is inactive, try starting it.
+                subprocess.run(['systemctl', 'start', service], check=True, timeout=60)
+                result2 = subprocess.run(
+                    ['systemctl', 'is-active', service],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                if result2.stdout.strip() == 'active':
+                    return service
             except Exception:
-                pass
+                continue
+
+        raise RuntimeError("Could not start MongoDB service (tried 'mongod' and 'mongodb')")
+
+    def _run_mongo_shell(self, args: List[str], timeout: int = 30) -> subprocess.CompletedProcess:
+        """Run mongosh/mongo with args and return completed process; prefers mongosh."""
+        try:
+            return subprocess.run(
+                ['mongosh'] + args,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+        except FileNotFoundError:
+            return subprocess.run(
+                ['mongo'] + args,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
     
     def _create_mongodb_user(self, instance_name: str) -> Optional[Dict]:
         """Create MongoDB database and user for instance"""
@@ -1032,53 +1102,66 @@ gpgkey=https://www.mongodb.org/static/pgp/server-7.0.asc
         random_suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=5))
         db_name = f"{instance_name}_{random_suffix}"
         username = f"{instance_name}_user"
-        password = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
+        password = ''.join(random.choices(string.ascii_letters + string.digits, k=24))
         
         self.printer.step(f"Creating MongoDB database: {db_name}")
         
-        try:
-            # Create user using mongosh (MongoDB Shell)
-            create_user_script = f"""
-use {db_name}
-db.createUser({{
-  user: "{username}",
-  pwd: "{password}",
-  roles: [{{ role: "readWrite", db: "{db_name}" }}]
-}})
-"""
-            
-            # Try mongosh first
-            result = subprocess.run(
-                ['mongosh', '--eval', create_user_script],
-                capture_output=True, text=True, timeout=30
-            )
-            
-            if result.returncode != 0:
-                # Try old mongo shell (without check=True to handle missing binary gracefully)
-                try:
-                    result = subprocess.run(
-                        ['mongo', '--eval', create_user_script],
-                        capture_output=True, text=True, timeout=30
-                    )
-                    if result.returncode != 0:
-                        raise RuntimeError(f"MongoDB shell failed: {result.stderr}")
-                except FileNotFoundError:
-                    raise RuntimeError("Neither mongosh nor mongo shell found. Is MongoDB installed?")
-            
-            self.printer.success(f"Database '{db_name}' created with user '{username}'")
-            
-            return {
-                'database': db_name,
-                'username': username,
-                'password': password,
-                'host': 'localhost',
-                'port': 27017,
-                'uri': f"mongodb://{username}:{password}@localhost:27017/{db_name}?authSource={db_name}"
-            }
-            
-        except Exception as e:
-            self.printer.error(f"Failed to create MongoDB user: {e}")
-            return None
+        create_user_script = (
+            "(function() {\n"
+            f"  const dbName = {json.dumps(db_name)};\n"
+            f"  const username = {json.dumps(username)};\n"
+            f"  const password = {json.dumps(password)};\n"
+            "  const roles = [{ role: 'readWrite', db: dbName }];\n"
+            "  try {\n"
+            "    const target = db.getSiblingDB(dbName);\n"
+            "    const existing = target.getUser(username);\n"
+            "    if (existing) {\n"
+            "      target.updateUser(username, { pwd: password, roles: roles });\n"
+            "    } else {\n"
+            "      target.createUser({ user: username, pwd: password, roles: roles });\n"
+            "    }\n"
+            "    const ping = target.runCommand({ ping: 1 });\n"
+            "    if (!ping || ping.ok !== 1) { throw new Error('ping failed'); }\n"
+            "    print('__PLEXINSTALLER_OK__');\n"
+            "  } catch (e) {\n"
+            "    print('__PLEXINSTALLER_ERROR__ ' + e);\n"
+            "    quit(2);\n"
+            "  }\n"
+            "})();"
+        )
+
+        # Retry a few times in case mongod is still coming up.
+        last_error = ""
+        for attempt in range(1, 6):
+            try:
+                result = self._run_mongo_shell(['--quiet', '--eval', create_user_script], timeout=30)
+                combined = (result.stdout or "") + "\n" + (result.stderr or "")
+
+                if result.returncode == 0 and "__PLEXINSTALLER_OK__" in combined:
+                    self.printer.success(f"Database '{db_name}' ready with user '{username}'")
+                    return {
+                        'database': db_name,
+                        'username': username,
+                        'password': password,
+                        'host': 'localhost',
+                        'port': 27017,
+                        'uri': f"mongodb://{username}:{password}@localhost:27017/{db_name}?authSource={db_name}",
+                    }
+
+                last_error = combined.strip()[-800:]
+            except Exception as exc:
+                last_error = str(exc)
+
+            self.printer.warning(f"MongoDB user creation attempt {attempt}/5 failed; retrying...")
+            time.sleep(2)
+
+        if "not authorized" in last_error.lower() or "unauthorized" in last_error.lower():
+            self.printer.error("MongoDB appears to have authentication enabled already.")
+            self.printer.step("This installer can only auto-provision users on a local MongoDB without prior auth.")
+            self.printer.step("Workaround: temporarily disable auth or create the DB/user manually, then paste the URI into your app config.")
+
+        self.printer.error(f"Failed to create MongoDB user after retries. Last error: {last_error}")
+        return None
     
     def _save_mongodb_credentials(self, instance_name: str, creds: Dict):
         """Save MongoDB credentials to file for reuse"""
@@ -1111,36 +1194,363 @@ db.createUser({{
             return
         
         config_file = config_files[0]
-        
+        mongo_uri = creds["uri"]
+
+        if config_file.suffix.lower() == ".json":
+            try:
+                data = json.loads(config_file.read_text(encoding="utf-8", errors="replace"))
+                candidate_keys = ["mongoURI", "mongodb_uri", "database_url", "MongoURI", "MONGO_URI", "MONGODB_URI"]
+                set_key = None
+                for key in candidate_keys:
+                    if key in data:
+                        set_key = key
+                        break
+                if not set_key:
+                    set_key = "mongoURI"
+                data[set_key] = mongo_uri
+                config_file.write_text(json.dumps(data, indent=2) + "\n")
+                self.printer.success(f"Updated MongoDB URI in {config_file.name} ({set_key})")
+                return
+            except Exception as e:
+                self.printer.warning(f"Could not auto-update JSON config: {e}")
+                self.printer.step(f"MongoDB URI: {mongo_uri}")
+                return
+
+        # YAML-ish config update via regex
         try:
-            content = config_file.read_text()
-            
-            # Try to find and replace MongoDB URI placeholder
-            # Common patterns: mongoURI, mongodb_uri, database_url, etc.
+            content = config_file.read_text(encoding="utf-8", errors="replace")
             patterns = [
-                (r'mongoURI:\s*["\'].*?["\']', f'mongoURI: "{creds["uri"]}"'),
-                (r'mongodb_uri:\s*["\'].*?["\']', f'mongodb_uri: "{creds["uri"]}"'),
-                (r'database_url:\s*["\'].*?["\']', f'database_url: "{creds["uri"]}"'),
-                (r'MongoURI:\s*["\'].*?["\']', f'MongoURI: "{creds["uri"]}"'),
+                (r'(mongoURI\s*:\s*)["\']?.*?["\']?\s*$', r'\\1"' + mongo_uri.replace('\\', '\\\\').replace('"', '\\"') + r'"'),
+                (r'(mongodb_uri\s*:\s*)["\']?.*?["\']?\s*$', r'\\1"' + mongo_uri.replace('\\', '\\\\').replace('"', '\\"') + r'"'),
+                (r'(database_url\s*:\s*)["\']?.*?["\']?\s*$', r'\\1"' + mongo_uri.replace('\\', '\\\\').replace('"', '\\"') + r'"'),
+                (r'(MongoURI\s*:\s*)["\']?.*?["\']?\s*$', r'\\1"' + mongo_uri.replace('\\', '\\\\').replace('"', '\\"') + r'"'),
             ]
-            
             updated = False
             for pattern, replacement in patterns:
-                if re.search(pattern, content):
-                    content = re.sub(pattern, replacement, content)
+                if re.search(pattern, content, flags=re.IGNORECASE | re.MULTILINE):
+                    content = re.sub(pattern, replacement, content, flags=re.IGNORECASE | re.MULTILINE)
                     updated = True
                     break
-            
+
             if updated:
                 config_file.write_text(content)
                 self.printer.success(f"Updated MongoDB URI in {config_file.name}")
             else:
                 self.printer.warning(f"Could not find MongoDB URI field in {config_file.name}")
-                self.printer.step(f"Please manually add MongoDB URI: {creds['uri']}")
-                
+                self.printer.step(f"Please manually add MongoDB URI: {mongo_uri}")
         except Exception as e:
             self.printer.warning(f"Could not auto-update config: {e}")
-            self.printer.step(f"MongoDB URI: {creds['uri']}")
+            self.printer.step(f"MongoDB URI: {mongo_uri}")
+
+    def _validate_mongodb_uri(self, uri: str) -> bool:
+        """Validate that a MongoDB URI can authenticate and run a ping."""
+        script = (
+            "(function() {\n"
+            "  try {\n"
+            "    const res = db.runCommand({ ping: 1 });\n"
+            "    if (res && res.ok === 1) { print('__PLEXINSTALLER_OK__'); quit(0); }\n"
+            "    print('__PLEXINSTALLER_ERROR__ ping not ok'); quit(2);\n"
+            "  } catch (e) {\n"
+            "    print('__PLEXINSTALLER_ERROR__ ' + e); quit(2);\n"
+            "  }\n"
+            "})();"
+        )
+
+        try:
+            result = self._run_mongo_shell([uri, '--quiet', '--eval', script], timeout=20)
+            combined = (result.stdout or "") + "\n" + (result.stderr or "")
+            return result.returncode == 0 and "__PLEXINSTALLER_OK__" in combined
+        except Exception:
+            return False
+
+    def _wait_for_tcp_port(self, host: str, port: int, timeout_seconds: int = 30) -> bool:
+        """Wait until a TCP port accepts connections."""
+        deadline = time.time() + timeout_seconds
+        while time.time() < deadline:
+            try:
+                with socket.create_connection((host, port), timeout=2):
+                    return True
+            except OSError:
+                time.sleep(1)
+        return False
+
+    def _probe_http(self, host: str, port: int, path: str = "/", timeout: int = 3) -> Tuple[bool, str]:
+        """Probe an HTTP endpoint; returns (ok, detail)."""
+        try:
+            conn = http.client.HTTPConnection(host, port, timeout=timeout)
+            conn.request("GET", path)
+            resp = conn.getresponse()
+            detail = f"HTTP {resp.status} {resp.reason}"
+            return True, detail
+        except Exception as exc:
+            return False, str(exc)
+
+    def _check_node_version(self) -> Tuple[bool, str]:
+        try:
+            result = subprocess.run(['node', '-v'], capture_output=True, text=True, timeout=10)
+            if result.returncode != 0:
+                return False, (result.stderr or result.stdout or "node -v failed").strip()
+            version = (result.stdout or "").strip().lstrip('v')
+            major = int(version.split('.')[0])
+            if major < self.config.NODE_MIN_VERSION:
+                return False, f"Node.js v{version} (needs >= {self.config.NODE_MIN_VERSION})"
+            return True, f"Node.js v{version}"
+        except Exception as exc:
+            return False, str(exc)
+
+    def _run_post_install_self_tests(self, context: InstallationContext, mongo_creds: Optional[Dict]) -> List[_SelfTestResult]:
+        results: List[PlexInstaller._SelfTestResult] = []
+
+        # Node runtime
+        ok, detail = self._check_node_version()
+        results.append(self._SelfTestResult(
+            name="Node.js version",
+            status="pass" if ok else "fail",
+            detail=detail,
+            hint="Install/upgrade Node.js and re-run installer" if not ok else "",
+        ))
+
+        # Install integrity
+        package_json = context.install_path / "package.json"
+        results.append(self._SelfTestResult(
+            name="package.json present",
+            status="pass" if package_json.exists() else "fail",
+            detail=str(package_json) if package_json.exists() else "missing",
+            hint="Ensure the archive contains a Node app with package.json" if not package_json.exists() else "",
+        ))
+
+        node_modules = context.install_path / "node_modules"
+        results.append(self._SelfTestResult(
+            name="node_modules present",
+            status="pass" if node_modules.exists() else "warn",
+            detail=str(node_modules) if node_modules.exists() else "missing",
+            hint="If the app fails to start, re-run npm install in the install directory" if not node_modules.exists() else "",
+        ))
+
+        # Config file existence
+        config_files = list(context.install_path.glob("config.y*ml")) + list(context.install_path.glob("config.json"))
+        results.append(self._SelfTestResult(
+            name="Config file present",
+            status="pass" if bool(config_files) else "warn",
+            detail=config_files[0].name if config_files else "no config.yml/config.json found",
+            hint="You may need to create/configure the app config manually" if not config_files else "",
+        ))
+
+        service_name = f"plex-{context.instance_name}"
+        if context.service_created:
+            # Wait for service to become active
+            is_active = False
+            for _ in range(20):
+                status = self.systemd.get_status(service_name)
+                if status.strip() == "active":
+                    is_active = True
+                    break
+                time.sleep(1)
+
+            results.append(self._SelfTestResult(
+                name="systemd service active",
+                status="pass" if is_active else "fail",
+                detail=f"{service_name} is {self.systemd.get_status(service_name)}",
+                hint=f"Run: systemctl status {service_name} --no-pager" if not is_active else "",
+            ))
+        else:
+            results.append(self._SelfTestResult(
+                name="systemd auto-start",
+                status="warn",
+                detail="not configured",
+                hint=f"Enable it later with: systemctl enable --now {service_name}",
+            ))
+
+        # App port checks (only meaningful if service is running)
+        if context.service_created:
+            port_ready = self._wait_for_tcp_port("127.0.0.1", context.port, timeout_seconds=45)
+            results.append(self._SelfTestResult(
+                name="Local TCP port reachable",
+                status="pass" if port_ready else "fail",
+                detail=f"127.0.0.1:{context.port}",
+                hint=f"Check the service logs: journalctl -u {service_name} -n 200 --no-pager" if not port_ready else "",
+            ))
+
+            if port_ready:
+                http_ok, http_detail = self._probe_http("127.0.0.1", context.port)
+                results.append(self._SelfTestResult(
+                    name="Local HTTP responds",
+                    status="pass" if http_ok else "warn",
+                    detail=http_detail,
+                    hint="The app may not expose /; verify the configured bind/port" if not http_ok else "",
+                ))
+
+        # Mongo validation (only if we generated creds)
+        if mongo_creds and mongo_creds.get('uri'):
+            uri = mongo_creds['uri']
+            ok = self._validate_mongodb_uri(uri)
+            results.append(self._SelfTestResult(
+                name="MongoDB auth via generated URI",
+                status="pass" if ok else "fail",
+                detail="ping ok" if ok else "authentication/ping failed",
+                hint="Re-run MongoDB setup or create the DB/user manually and update the app config" if not ok else "",
+            ))
+
+            if ok:
+                # Optional write/read sanity check
+                script = (
+                    "(function() {\n"
+                    "  try {\n"
+                    "    const c = db.getCollection('__plexinstaller_selftest');\n"
+                    "    const doc = { ok: true, ts: new Date() };\n"
+                    "    c.insertOne(doc);\n"
+                    "    const found = c.findOne({ ok: true });\n"
+                    "    if (!found) throw new Error('readback failed');\n"
+                    "    print('__PLEXINSTALLER_OK__');\n"
+                    "  } catch (e) {\n"
+                    "    print('__PLEXINSTALLER_ERROR__ ' + e); quit(2);\n"
+                    "  }\n"
+                    "})();"
+                )
+                try:
+                    result = self._run_mongo_shell([uri, '--quiet', '--eval', script], timeout=20)
+                    combined = (result.stdout or "") + "\n" + (result.stderr or "")
+                    rw_ok = result.returncode == 0 and "__PLEXINSTALLER_OK__" in combined
+                except Exception:
+                    rw_ok = False
+                results.append(self._SelfTestResult(
+                    name="MongoDB read/write",
+                    status="pass" if rw_ok else "warn",
+                    detail="ok" if rw_ok else "could not verify insert/read",
+                    hint="Check MongoDB logs and permissions" if not rw_ok else "",
+                ))
+        else:
+            # Only warn if the product requires MongoDB
+            product_cfg = self.config.get_product(context.product) if hasattr(self.config, "get_product") else None
+            requires = bool(getattr(product_cfg, "requires_mongodb", False))
+            if requires:
+                results.append(self._SelfTestResult(
+                    name="MongoDB configured",
+                    status="warn",
+                    detail="no MongoDB credentials generated",
+                    hint="This product requires MongoDB; set mongoURI in the config and restart the service",
+                ))
+
+        # Nginx + SSL checks
+        if context.domain:
+            try:
+                nginx_active = subprocess.run(['systemctl', 'is-active', 'nginx'], capture_output=True, text=True, timeout=10)
+                results.append(self._SelfTestResult(
+                    name="nginx service active",
+                    status="pass" if nginx_active.stdout.strip() == 'active' else "fail",
+                    detail=nginx_active.stdout.strip() or nginx_active.stderr.strip(),
+                    hint="Run: systemctl status nginx --no-pager" if nginx_active.stdout.strip() != 'active' else "",
+                ))
+            except Exception as exc:
+                results.append(self._SelfTestResult(
+                    name="nginx service active",
+                    status="warn",
+                    detail=str(exc),
+                    hint="Ensure nginx is installed and running",
+                ))
+
+            config_file = self.config.nginx_available / f"{context.domain}.conf"
+            enabled_link = self.config.nginx_enabled / f"{context.domain}.conf"
+            results.append(self._SelfTestResult(
+                name="nginx site config present",
+                status="pass" if config_file.exists() else "fail",
+                detail=str(config_file) if config_file.exists() else "missing",
+                hint="Re-run web setup or recreate the nginx config",
+            ))
+            results.append(self._SelfTestResult(
+                name="nginx site enabled",
+                status="pass" if (enabled_link.exists() or enabled_link.is_symlink()) else "fail",
+                detail=str(enabled_link) if (enabled_link.exists() or enabled_link.is_symlink()) else "missing",
+                hint="Create symlink in sites-enabled and reload nginx",
+            ))
+
+            try:
+                t = subprocess.run(['nginx', '-t'], capture_output=True, text=True, timeout=15)
+                results.append(self._SelfTestResult(
+                    name="nginx config test",
+                    status="pass" if t.returncode == 0 else "fail",
+                    detail=(t.stdout or t.stderr or "").strip()[-200:],
+                    hint="Fix nginx errors then reload: systemctl reload nginx" if t.returncode != 0 else "",
+                ))
+            except Exception as exc:
+                results.append(self._SelfTestResult(
+                    name="nginx config test",
+                    status="warn",
+                    detail=str(exc),
+                    hint="Install nginx and run nginx -t",
+                ))
+
+            # Cert presence (warning only)
+            cert_path = Path(f"/etc/letsencrypt/live/{context.domain}/fullchain.pem")
+            results.append(self._SelfTestResult(
+                name="SSL certificate present",
+                status="pass" if cert_path.exists() else "warn",
+                detail=str(cert_path) if cert_path.exists() else "not found",
+                hint="Re-run SSL setup or run certbot manually" if not cert_path.exists() else "",
+            ))
+
+            # DNS/HTTPS reachability checks are warnings only
+            try:
+                resolved = socket.gethostbyname(context.domain)
+                results.append(self._SelfTestResult(
+                    name="DNS resolves",
+                    status="pass",
+                    detail=resolved,
+                ))
+            except Exception as exc:
+                results.append(self._SelfTestResult(
+                    name="DNS resolves",
+                    status="warn",
+                    detail=str(exc),
+                    hint="Ensure your A/AAAA records point to this server",
+                ))
+
+            try:
+                ctx = ssl.create_default_context()
+                with socket.create_connection((context.domain, 443), timeout=5) as sock:
+                    with ctx.wrap_socket(sock, server_hostname=context.domain) as ssock:
+                        ssock.getpeercert()
+                results.append(self._SelfTestResult(
+                    name="HTTPS handshake",
+                    status="pass",
+                    detail="ok",
+                ))
+            except Exception as exc:
+                results.append(self._SelfTestResult(
+                    name="HTTPS handshake",
+                    status="warn",
+                    detail=str(exc),
+                    hint="Public HTTPS may fail until DNS/ports 443 are correct",
+                ))
+
+        self._print_self_test_summary(results)
+        return results
+
+    def _print_self_test_summary(self, results: List[_SelfTestResult]):
+        self.printer.header("Post-Install Self-Tests")
+        failures = 0
+        warnings = 0
+
+        for r in results:
+            if r.status == "pass":
+                self.printer.success(f"{r.name}: {r.detail}".rstrip())
+            elif r.status == "warn":
+                warnings += 1
+                self.printer.warning(f"{r.name}: {r.detail}".rstrip())
+                if r.hint:
+                    self.printer.step(r.hint)
+            else:
+                failures += 1
+                self.printer.error(f"{r.name}: {r.detail}".rstrip())
+                if r.hint:
+                    self.printer.step(r.hint)
+
+        if failures:
+            self.printer.error(f"Self-tests completed with {failures} failure(s) and {warnings} warning(s)")
+        elif warnings:
+            self.printer.warning(f"Self-tests completed with {warnings} warning(s)")
+        else:
+            self.printer.success("All self-tests passed")
 
     
     def _setup_web(
@@ -1230,15 +1640,17 @@ db.createUser({{
             self._install_npm_dependencies(extracted)
             self.printer.success("Dashboard addon installed")
     
-    def _setup_systemd(self, instance_name: str, install_path: Path):
+    def _setup_systemd(self, instance_name: str, install_path: Path) -> bool:
         """Setup systemd service"""
         choice = input(f"Set up '{instance_name}' to auto-start on boot? (y/n): ").strip().lower()
         
         if choice == 'y':
             self.systemd.create_service(instance_name, install_path)
             self.printer.success("Systemd service configured")
+            return True
         else:
             self.printer.warning("Auto-start not configured")
+            return False
     
     def _post_install(self, instance_name: str, install_path: Path, domain: Optional[str], needs_web: bool):
         """Post-installation tasks"""

@@ -1,6 +1,6 @@
 # PlexInstaller (Python)
 
-PlexInstaller is the unified Python-based installer and management tool for the PlexDevelopment product line (Tickets, Staff, Status, Store, Forms, Links, Paste, and supporting dashboards). It handles archive discovery, extraction, dependency installation, MongoDB/user provisioning, nginx + SSL wiring, firewall rules, telemetry, and post-install management from a single TUI-like workflow.
+PlexInstaller is the unified Python-based installer and management tool for the PlexDevelopment product line (Tickets, Staff, Status, Store, Forms, Links, Paste, Tracker, and supporting dashboards). It handles archive discovery, extraction, dependency installation, MongoDB/user provisioning, nginx + SSL wiring, firewall rules, telemetry, and post-install management from a single TUI-like workflow.
 
 ## Highlights
 - **Single-command bootstrap** via `setup.sh` that downloads the latest signed installer bundle and telemetry client.

@@ -6,6 +6,17 @@ export type ReleaseNote = {
 
 export const releases: ReleaseNote[] = [
   {
+    version: "3.1.11",
+    date: "2025-12-17",
+    highlights: [
+      "Added PlexTracker as a supported product (default port 3007).",
+      "MongoDB provisioning is now more reliable: waits for mongod readiness and idempotently creates/updates per-instance DB users.",
+      "Installer validates MongoDB credentials by authenticating with the generated URI before continuing.",
+      "Post-install self-tests now verify Node version, systemd service health, local port/HTTP response, nginx wiring, and MongoDB auth (DNS/HTTPS checks are warnings only).",
+      "MongoDB URI injection now supports config.json in addition to config.yml/config.yaml."
+    ]
+  },
+  {
     version: "3.1.10",
     date: "2025-12-12",
     highlights: [
