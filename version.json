@@ -1,12 +1,16 @@
 {
-  "version": "3.1.11",
-  "release_date": "2025-12-17",
+  "version": "3.1.12",
+  "release_date": "2026-01-16",
   "changelog": [
-    "Added PlexTracker as a supported product (default port 3007).",
-    "MongoDB provisioning is now more reliable: waits for mongod readiness and idempotently creates/updates per-instance DB users.",
-    "Installer validates MongoDB credentials by authenticating with the generated URI before continuing.",
-    "Post-install self-tests now verify Node version, systemd service health, local port/HTTP response, nginx wiring, and MongoDB auth (DNS/HTTPS checks are warnings only).",
-    "MongoDB URI injection now supports config.json in addition to config.yml/config.yaml."
+    "Added Addon Management for PlexTickets and PlexStaff products.",
+    "Addons can be installed from .zip/.rar archives with smart extraction handling.",
+    "Smart extraction handles both correctly packaged (single folder) and incorrectly packaged (loose files) addons.",
+    "Addon collision detection prevents overwriting existing addons without explicit removal.",
+    "Addon configuration editing with YAML syntax validation.",
+    "Automatic backup creation before addon removal.",
+    "New TUI menu: 'Manage Addons' for interactive addon management.",
+    "New CLI commands: plex addon list|install|remove|config.",
+    "Service restart prompts after addon installation/removal/configuration."
   ],
   "download_urls": {
     "installer": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/installer.py",
@@ -14,13 +18,15 @@
     "utils": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/utils.py",
     "plex_cli": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/plex_cli.py",
     "setup": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/setup.sh",
-    "telemetry_client": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/telemetry_client.py"
+    "telemetry_client": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/telemetry_client.py",
+    "addon_manager": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/addon_manager.py"
   },
   "checksums": {
-    "installer": "795d149920941fbd064e80d8a09c126757353c07eafbfb706c8dff187417f2d2",
-    "config": "db16c1f06c8c8c516d888a66ff82baca6a247b5a4d5bd3f4ad1bba695801f4d6",
+    "installer": "f44a6d098a608d50f1ddedee7cfc4b17d361a516167dea9fe0b9038d2a60bd4e",
+    "config": "50e80eba8b1eec1a2488453e4bf2612f22ef8741540e3ed9eb0db935cb2a7986",
     "utils": "aef9149d5272532592807964cb071658daf9a9629a425e7af0da02ddb48037af",
-    "plex_cli": "281ced81fd8eda02654ed2f105b194203cba216b8fad600f146c12957d0f15a1",
-    "telemetry_client": "5c60706649c918edf49feb986c6ee3f8be47bbc721e98e02eaeec7373c200302"
+    "plex_cli": "9f5a254f6867200eb6dfbab8bf30801c887daf0b1515c56cc36c8c9308dd01cb",
+    "telemetry_client": "5c60706649c918edf49feb986c6ee3f8be47bbc721e98e02eaeec7373c200302",
+    "addon_manager": "d0426eb154927a85cdc9eb8aa203d3eb1834b505f695ece1834c967effa50e1b"
   }
 }

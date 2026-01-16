@@ -15,6 +15,7 @@ class ProductConfig:
     default_port: int
     requires_mongodb: bool = False
     has_dashboard_option: bool = False
+    supports_addons: bool = False
     description: str = ""
 
 class Config:
@@ -40,12 +41,14 @@ class Config:
             default_port=3000,
             requires_mongodb=True,
             has_dashboard_option=True,
+            supports_addons=True,
             description="Ticket management system with optional dashboard"
         ),
         "plexstaff": ProductConfig(
             name="plexstaff",
             default_port=3001,
             requires_mongodb=True,
+            supports_addons=True,
             description="Staff management system"
         ),
         "plexstatus": ProductConfig(

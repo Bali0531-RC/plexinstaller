@@ -29,10 +29,11 @@ from utils import (
     ColorPrinter, SystemDetector, DNSChecker, FirewallManager,
     NginxManager, SSLManager, SystemdManager, ArchiveExtractor
 )
+from addon_manager import AddonManager
 from telemetry_client import TelemetryClient
 
 # Current installer version
-INSTALLER_VERSION = "3.1.11"
+INSTALLER_VERSION = "3.1.12"
 VERSION_CHECK_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/version.json"
 LOCK_FILE = "/var/run/plexinstaller.lock"
 
@@ -81,6 +82,7 @@ class PlexInstaller:
         self.ssl = SSLManager()
         self.systemd = SystemdManager()
         self.extractor = ArchiveExtractor()
+        self.addon_manager = AddonManager()
         self.telemetry_enabled = self._initialize_telemetry_preference()
         self.telemetry = TelemetryClient(
             endpoint=self.config.TELEMETRY_ENDPOINT,
@@ -392,8 +394,9 @@ class PlexInstaller:
             print("----------------------------------------")
             print("9) Manage Installations")
             print("10) Manage Backups")
-            print("11) SSL Certificate Management")
-            print("12) System Health Check")
+            print("11) Manage Addons (PlexTickets/PlexStaff)")
+            print("12) SSL Certificate Management")
+            print("13) System Health Check")
             print("----------------------------------------")
             print("0) Exit")
             
@@ -423,8 +426,10 @@ class PlexInstaller:
             elif choice == "10":
                 self._manage_backups()
             elif choice == "11":
-                self._ssl_management_menu()
+                self._manage_addons_menu()
             elif choice == "12":
+                self._ssl_management_menu()
+            elif choice == "13":
                 self._system_health_check()
             else:
                 self.printer.error("Invalid choice")
@@ -2301,6 +2306,404 @@ gpgkey=https://www.mongodb.org/static/pgp/server-7.0.asc
                 self.printer.error("Invalid backup ID")
         except ValueError:
             self.printer.error("Invalid input")
+    
+    # ========== ADDON MANAGEMENT ==========
+    
+    def _manage_addons_menu(self):
+        """Main addon management menu"""
+        while True:
+            os.system('clear' if os.name != 'nt' else 'cls')
+            self.printer.header("Addon Management")
+            print("Manage addons for PlexTickets and PlexStaff installations\n")
+            
+            # Find products that support addons
+            addon_products = self._get_addon_supported_products()
+            
+            if not addon_products:
+                self.printer.warning("No PlexTickets or PlexStaff installations found.")
+                self.printer.step("Install PlexTickets or PlexStaff first to manage addons.")
+                return
+            
+            print("Select a product to manage addons:")
+            for i, (name, path) in enumerate(addon_products, 1):
+                addons = self.addon_manager.list_addons(path)
+                addon_count = len(addons)
+                status = self.systemd.get_status(f"plex-{name}")
+                print(f"{i}) {name} - {addon_count} addon(s) installed - Service: {status}")
+            print("0) Back to Main Menu")
+            
+            choice = input("\nEnter your choice: ").strip()
+            
+            if choice == "0":
+                break
+            
+            try:
+                idx = int(choice) - 1
+                if 0 <= idx < len(addon_products):
+                    product_name, product_path = addon_products[idx]
+                    self._manage_product_addons(product_name, product_path)
+            except ValueError:
+                self.printer.error("Invalid choice")
+            
+            if choice != "0":
+                input("\nPress Enter to continue...")
+    
+    def _get_addon_supported_products(self) -> List[Tuple[str, Path]]:
+        """Get list of installed products that support addons"""
+        products = []
+        
+        if not self.config.install_dir.exists():
+            return products
+        
+        for product_dir in self.config.install_dir.iterdir():
+            if product_dir.is_dir() and product_dir.name != "backups":
+                # Check if this product type supports addons
+                base_product = product_dir.name.split('-')[0]  # Handle multi-instance names
+                product_config = self.config.get_product(base_product)
+                
+                if product_config and getattr(product_config, 'supports_addons', False):
+                    products.append((product_dir.name, product_dir))
+        
+        return sorted(products)
+    
+    def _manage_product_addons(self, product_name: str, product_path: Path):
+        """Manage addons for a specific product"""
+        while True:
+            os.system('clear' if os.name != 'nt' else 'cls')
+            self.printer.header(f"Addons for {product_name}")
+            
+            addons = self.addon_manager.list_addons(product_path)
+            
+            if addons:
+                print("\nInstalled Addons:")
+                print(f"{'#':<4} {'Name':<25} {'Config':<15}")
+                print("-" * 50)
+                for i, addon in enumerate(addons, 1):
+                    config_status = addon['config_path'].name if addon['has_config'] else "No config"
+                    print(f"{i:<4} {addon['name']:<25} {config_status:<15}")
+            else:
+                print("\nNo addons installed yet.")
+            
+            print("\n" + "-" * 50)
+            print("1) Install new addon")
+            print("2) Remove addon")
+            print("3) Configure addon")
+            print("4) View addon backups")
+            print("0) Back")
+            
+            choice = input("\nEnter your choice: ").strip()
+            
+            if choice == "0":
+                break
+            elif choice == "1":
+                self._install_addon(product_name, product_path)
+            elif choice == "2":
+                self._remove_addon(product_name, product_path, addons)
+            elif choice == "3":
+                self._configure_addon(product_name, product_path, addons)
+            elif choice == "4":
+                self._view_addon_backups(product_name, product_path)
+            else:
+                self.printer.error("Invalid choice")
+            
+            if choice != "0":
+                input("\nPress Enter to continue...")
+    
+    def _install_addon(self, product_name: str, product_path: Path):
+        """Install an addon for a product"""
+        self.printer.header(f"Install Addon for {product_name}")
+        
+        # Search for addon archives
+        self.printer.step("Searching for addon archives...")
+        archives = self.addon_manager.find_addon_archive()
+        
+        if not archives:
+            self.printer.warning("No addon archives (.zip/.rar) found automatically")
+            path = input("Enter full path to addon archive: ").strip()
+            if not path:
+                return
+            archive_path = Path(path)
+            if not archive_path.exists():
+                self.printer.error(f"File not found: {path}")
+                return
+        else:
+            # Filter to show reasonable number of results
+            print("\nFound archives:")
+            display_archives = archives[:20]  # Limit display
+            for i, archive in enumerate(display_archives, 1):
+                size = archive.stat().st_size / (1024 * 1024)
+                print(f"{i}) {archive.name} ({size:.1f} MB) - {archive.parent}")
+            
+            if len(archives) > 20:
+                print(f"... and {len(archives) - 20} more")
+            print("0) Enter custom path")
+            
+            choice = input("\nSelect archive: ").strip()
+            
+            if choice == "0":
+                path = input("Enter full path: ").strip()
+                if not path:
+                    return
+                archive_path = Path(path)
+                if not archive_path.exists():
+                    self.printer.error(f"File not found: {path}")
+                    return
+            else:
+                try:
+                    idx = int(choice) - 1
+                    if 0 <= idx < len(display_archives):
+                        archive_path = display_archives[idx]
+                    else:
+                        self.printer.error("Invalid choice")
+                        return
+                except ValueError:
+                    self.printer.error("Invalid choice")
+                    return
+        
+        # Check what the addon name would be (for collision check)
+        potential_name = archive_path.stem
+        for suffix in ['-main', '-master', '-addon', '-v1', '-v2']:
+            if potential_name.lower().endswith(suffix):
+                potential_name = potential_name[:-len(suffix)]
+        
+        if self.addon_manager.addon_exists(potential_name, product_path):
+            self.printer.error(f"An addon named '{potential_name}' already exists.")
+            self.printer.step("Remove the existing addon first if you want to reinstall.")
+            return
+        
+        # Install the addon
+        success, message, addon_name = self.addon_manager.install_addon(archive_path, product_path)
+        
+        if success:
+            self.printer.success(message)
+            
+            # Prompt for service restart
+            service_name = f"plex-{product_name}"
+            status = self.systemd.get_status(service_name)
+            
+            if "active" in status.lower():
+                restart = input("\nRestart service now to apply addon? (y/n): ").strip().lower()
+                if restart == 'y':
+                    self.systemd.restart(service_name)
+                    self.printer.success(f"Service {service_name} restarted")
+                else:
+                    self.printer.step(f"Remember to restart the service: sudo systemctl restart {service_name}")
+        else:
+            self.printer.error(message)
+    
+    def _remove_addon(self, product_name: str, product_path: Path, addons: List[Dict]):
+        """Remove an addon from a product"""
+        if not addons:
+            self.printer.warning("No addons installed to remove")
+            return
+        
+        self.printer.header(f"Remove Addon from {product_name}")
+        
+        print("\nSelect addon to remove:")
+        for i, addon in enumerate(addons, 1):
+            print(f"{i}) {addon['name']}")
+        print("0) Cancel")
+        
+        choice = input("\nEnter your choice: ").strip()
+        
+        if choice == "0":
+            return
+        
+        try:
+            idx = int(choice) - 1
+            if 0 <= idx < len(addons):
+                addon = addons[idx]
+                addon_name = addon['name']
+                
+                self.printer.warning(f"You are about to remove addon: {addon_name}")
+                
+                # Ask about backup
+                backup_choice = input("Create backup before removal? (Y/n): ").strip().lower()
+                backup_first = backup_choice != 'n'
+                
+                confirm = input(f"Confirm removal of '{addon_name}'? (y/n): ").strip().lower()
+                
+                if confirm == 'y':
+                    success, message = self.addon_manager.remove_addon(
+                        addon_name, product_path, backup_first=backup_first
+                    )
+                    
+                    if success:
+                        self.printer.success(message)
+                        
+                        # Prompt for service restart
+                        service_name = f"plex-{product_name}"
+                        status = self.systemd.get_status(service_name)
+                        
+                        if "active" in status.lower():
+                            restart = input("\nRestart service now? (y/n): ").strip().lower()
+                            if restart == 'y':
+                                self.systemd.restart(service_name)
+                                self.printer.success(f"Service {service_name} restarted")
+                    else:
+                        self.printer.error(message)
+                else:
+                    self.printer.step("Removal cancelled")
+            else:
+                self.printer.error("Invalid choice")
+        except ValueError:
+            self.printer.error("Invalid input")
+    
+    def _configure_addon(self, product_name: str, product_path: Path, addons: List[Dict]):
+        """Configure an addon's config.yml/yaml file"""
+        # Filter to addons with config files
+        configurable_addons = [a for a in addons if a['has_config']]
+        
+        if not configurable_addons:
+            self.printer.warning("No addons with configuration files found")
+            return
+        
+        self.printer.header(f"Configure Addon for {product_name}")
+        
+        print("\nSelect addon to configure:")
+        for i, addon in enumerate(configurable_addons, 1):
+            print(f"{i}) {addon['name']} ({addon['config_path'].name})")
+        print("0) Cancel")
+        
+        choice = input("\nEnter your choice: ").strip()
+        
+        if choice == "0":
+            return
+        
+        try:
+            idx = int(choice) - 1
+            if 0 <= idx < len(configurable_addons):
+                addon = configurable_addons[idx]
+                config_path = addon['config_path']
+                
+                self.printer.step(f"Opening {config_path.name} for editing...")
+                self.printer.warning("Save and exit the editor when done (Ctrl+X in nano)")
+                
+                # Open in nano
+                import subprocess
+                subprocess.run(["nano", str(config_path)])
+                
+                # Validate YAML after editing
+                is_valid, error = self.addon_manager.validate_yaml(config_path)
+                
+                if is_valid:
+                    self.printer.success("Configuration file is valid YAML")
+                else:
+                    self.printer.error(f"YAML syntax error: {error}")
+                    self.printer.warning("The configuration may not work correctly until fixed")
+                    
+                    fix_choice = input("Open editor again to fix? (y/n): ").strip().lower()
+                    if fix_choice == 'y':
+                        subprocess.run(["nano", str(config_path)])
+                        is_valid, error = self.addon_manager.validate_yaml(config_path)
+                        if is_valid:
+                            self.printer.success("Configuration file is now valid YAML")
+                        else:
+                            self.printer.error(f"Still invalid: {error}")
+                
+                # Prompt for service restart
+                service_name = f"plex-{product_name}"
+                status = self.systemd.get_status(service_name)
+                
+                if "active" in status.lower():
+                    restart = input("\nRestart service to apply changes? (y/n): ").strip().lower()
+                    if restart == 'y':
+                        self.systemd.restart(service_name)
+                        self.printer.success(f"Service {service_name} restarted")
+                    else:
+                        self.printer.step(f"Remember to restart: sudo systemctl restart {service_name}")
+            else:
+                self.printer.error("Invalid choice")
+        except ValueError:
+            self.printer.error("Invalid input")
+    
+    def _view_addon_backups(self, product_name: str, product_path: Path):
+        """View and optionally restore addon backups"""
+        self.printer.header(f"Addon Backups for {product_name}")
+        
+        backups = self.addon_manager.list_addon_backups(product_path)
+        
+        if not backups:
+            self.printer.warning("No addon backups found")
+            return
+        
+        print("\nAvailable Addon Backups:")
+        print(f"{'#':<4} {'Addon':<20} {'Date':<20} {'Size':<10}")
+        print("-" * 60)
+        
+        for i, backup in enumerate(backups, 1):
+            date_str = backup['timestamp'].strftime("%Y-%m-%d %H:%M:%S")
+            print(f"{i:<4} {backup['addon_name']:<20} {date_str:<20} {backup['size_mb']:>8.2f} MB")
+        
+        print("\nOptions:")
+        print("Enter backup number to restore, or 0 to go back")
+        
+        choice = input("\nEnter your choice: ").strip()
+        
+        if choice == "0":
+            return
+        
+        try:
+            idx = int(choice) - 1
+            if 0 <= idx < len(backups):
+                backup = backups[idx]
+                
+                self.printer.warning(f"This will restore addon '{backup['addon_name']}' from backup")
+                
+                # Check if addon currently exists
+                if self.addon_manager.addon_exists(backup['addon_name'], product_path):
+                    self.printer.warning("Current addon will be replaced!")
+                
+                confirm = input("Continue with restore? (y/n): ").strip().lower()
+                
+                if confirm == 'y':
+                    self._restore_addon_backup(product_name, product_path, backup)
+            else:
+                self.printer.error("Invalid choice")
+        except ValueError:
+            self.printer.error("Invalid input")
+    
+    def _restore_addon_backup(self, product_name: str, product_path: Path, backup: Dict):
+        """Restore an addon from backup"""
+        import tarfile
+        
+        addon_name = backup['addon_name']
+        backup_path = backup['path']
+        addons_path = self.addon_manager.get_addons_path(product_path)
+        addon_path = addons_path / addon_name
+        
+        try:
+            # Remove existing addon if present
+            if addon_path.exists():
+                self.printer.step(f"Removing existing addon '{addon_name}'...")
+                shutil.rmtree(addon_path)
+            
+            # Extract backup
+            self.printer.step(f"Restoring from backup...")
+            addons_path.mkdir(parents=True, exist_ok=True)
+            
+            with tarfile.open(backup_path, "r:gz") as tar:
+                tar.extractall(addons_path)
+            
+            # Set permissions
+            self.addon_manager._set_permissions(addon_path)
+            
+            self.printer.success(f"Addon '{addon_name}' restored successfully")
+            
+            # Prompt for service restart
+            service_name = f"plex-{product_name}"
+            status = self.systemd.get_status(service_name)
+            
+            if "active" in status.lower():
+                restart = input("\nRestart service now? (y/n): ").strip().lower()
+                if restart == 'y':
+                    self.systemd.restart(service_name)
+                    self.printer.success(f"Service {service_name} restarted")
+                    
+        except Exception as e:
+            self.printer.error(f"Restore failed: {e}")
+    
+    # ========== END ADDON MANAGEMENT ==========
     
     def _ssl_management(self):
         """SSL certificate management"""

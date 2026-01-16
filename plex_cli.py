@@ -21,6 +21,11 @@ except Exception:  # pragma: no cover
     Config = None
 
 try:
+    from addon_manager import AddonManager
+except Exception:  # pragma: no cover
+    AddonManager = None
+
+try:
     import requests
 except Exception:  # pragma: no cover
     requests = None
@@ -76,6 +81,12 @@ def show_help():
     print(f"  {GREEN}plex disable <app>{NC}     - Disable application from starting on boot")
     print(f"  {GREEN}plex debug <app>{NC}       - Upload redacted config + logs for support")
     print()
+    print(f"{YELLOW}Addon Management (PlexTickets/PlexStaff):{NC}")
+    print(f"  {GREEN}plex addon list <app>{NC}           - List installed addons")
+    print(f"  {GREEN}plex addon install <app> <path>{NC} - Install addon from archive")
+    print(f"  {GREEN}plex addon remove <app> <addon>{NC} - Remove an addon (creates backup)")
+    print(f"  {GREEN}plex addon config <app> <addon>{NC} - Edit addon configuration")
+    print()
     print(f"{YELLOW}Examples:{NC}")
     print("  plex list")
     print("  plex start plextickets")
@@ -83,6 +94,10 @@ def show_help():
     print("  plex logs plextickets")
     print("  plex config plexstore")
     print("  plex debug plextickets")
+    print("  plex addon list plextickets")
+    print("  plex addon install plextickets /tmp/MyAddon.zip")
+    print("  plex addon remove plextickets MyAddon")
+    print("  plex addon config plextickets MyAddon")
 
 
 def _is_newer_version(remote: str, local: str) -> bool:
@@ -654,6 +669,259 @@ def debug_app(app: str) -> int:
         print_error(f"Failed to upload debug bundle: {exc}")
         return 1
 
+
+# ========== ADDON MANAGEMENT CLI ==========
+
+def _get_addon_manager():
+    """Get AddonManager instance if available"""
+    if AddonManager is None:
+        print_error("Addon manager module not available")
+        return None
+    return AddonManager()
+
+
+def _supports_addons(app: str) -> bool:
+    """Check if an app supports addons"""
+    base_product = app.split('-')[0]
+    return base_product.lower() in ['plextickets', 'plexstaff']
+
+
+def addon_list(app: str) -> int:
+    """List installed addons for an application"""
+    instance = resolve_app_instance(app)
+    if not instance:
+        print_error(f"Application '{app}' not found. Use 'plex list' to see installed apps.")
+        return 1
+    
+    if not _supports_addons(instance):
+        print_error(f"Application '{instance}' does not support addons.")
+        print_info("Addons are only supported for PlexTickets and PlexStaff.")
+        return 1
+    
+    addon_mgr = _get_addon_manager()
+    if not addon_mgr:
+        return 1
+    
+    app_dir = INSTALL_DIR / instance
+    addons = addon_mgr.list_addons(app_dir)
+    
+    if not addons:
+        print_info(f"No addons installed for {instance}")
+        print(f"Install addons with: plex addon install {instance} /path/to/addon.zip")
+        return 0
+    
+    print(f"{BOLD}{CYAN}Installed Addons for {instance}:{NC}")
+    print()
+    print(f"{'Name':<25} {'Config File':<20}")
+    print("-" * 50)
+    
+    for addon in addons:
+        config_status = addon['config_path'].name if addon['has_config'] else "No config"
+        print(f"{addon['name']:<25} {config_status:<20}")
+    
+    print()
+    print(f"Total: {len(addons)} addon(s)")
+    return 0
+
+
+def addon_install(app: str, archive_path: str) -> int:
+    """Install an addon from an archive file"""
+    instance = resolve_app_instance(app)
+    if not instance:
+        print_error(f"Application '{app}' not found. Use 'plex list' to see installed apps.")
+        return 1
+    
+    if not _supports_addons(instance):
+        print_error(f"Application '{instance}' does not support addons.")
+        print_info("Addons are only supported for PlexTickets and PlexStaff.")
+        return 1
+    
+    addon_mgr = _get_addon_manager()
+    if not addon_mgr:
+        return 1
+    
+    archive = Path(archive_path)
+    if not archive.exists():
+        print_error(f"Archive not found: {archive_path}")
+        return 1
+    
+    if archive.suffix.lower() not in ['.zip', '.rar']:
+        print_error(f"Unsupported archive format: {archive.suffix}")
+        print_info("Supported formats: .zip, .rar")
+        return 1
+    
+    app_dir = INSTALL_DIR / instance
+    
+    # Check for collision
+    potential_name = archive.stem
+    for suffix in ['-main', '-master', '-addon', '-v1', '-v2']:
+        if potential_name.lower().endswith(suffix):
+            potential_name = potential_name[:-len(suffix)]
+    
+    if addon_mgr.addon_exists(potential_name, app_dir):
+        print_error(f"Addon '{potential_name}' already exists.")
+        print_info("Remove the existing addon first: plex addon remove {instance} {potential_name}")
+        return 1
+    
+    print_info(f"Installing addon from {archive.name}...")
+    
+    success, message, addon_name = addon_mgr.install_addon(archive, app_dir)
+    
+    if success:
+        print_success(message)
+        print()
+        print(f"{YELLOW}Remember to restart the service to apply changes:{NC}")
+        print(f"  plex restart {instance}")
+        return 0
+    else:
+        print_error(message)
+        return 1
+
+
+def addon_remove(app: str, addon_name: str) -> int:
+    """Remove an addon from an application"""
+    instance = resolve_app_instance(app)
+    if not instance:
+        print_error(f"Application '{app}' not found. Use 'plex list' to see installed apps.")
+        return 1
+    
+    if not _supports_addons(instance):
+        print_error(f"Application '{instance}' does not support addons.")
+        return 1
+    
+    addon_mgr = _get_addon_manager()
+    if not addon_mgr:
+        return 1
+    
+    app_dir = INSTALL_DIR / instance
+    
+    if not addon_mgr.addon_exists(addon_name, app_dir):
+        print_error(f"Addon '{addon_name}' not found in {instance}")
+        print_info(f"Use 'plex addon list {instance}' to see installed addons")
+        return 1
+    
+    print_info(f"Removing addon '{addon_name}' from {instance}...")
+    print_info("Creating backup before removal...")
+    
+    success, message = addon_mgr.remove_addon(addon_name, app_dir, backup_first=True)
+    
+    if success:
+        print_success(message)
+        print()
+        print(f"{YELLOW}Remember to restart the service to apply changes:{NC}")
+        print(f"  plex restart {instance}")
+        return 0
+    else:
+        print_error(message)
+        return 1
+
+
+def addon_config(app: str, addon_name: str) -> int:
+    """Edit an addon's configuration file"""
+    instance = resolve_app_instance(app)
+    if not instance:
+        print_error(f"Application '{app}' not found. Use 'plex list' to see installed apps.")
+        return 1
+    
+    if not _supports_addons(instance):
+        print_error(f"Application '{instance}' does not support addons.")
+        return 1
+    
+    addon_mgr = _get_addon_manager()
+    if not addon_mgr:
+        return 1
+    
+    app_dir = INSTALL_DIR / instance
+    
+    config_path = addon_mgr.get_addon_config_path(addon_name, app_dir)
+    
+    if not config_path:
+        print_error(f"No configuration file found for addon '{addon_name}'")
+        
+        # Check if addon exists at all
+        if not addon_mgr.addon_exists(addon_name, app_dir):
+            print_info(f"Addon '{addon_name}' is not installed")
+            print_info(f"Use 'plex addon list {instance}' to see installed addons")
+        else:
+            print_info("This addon does not have a config.yml or config.yaml file")
+        return 1
+    
+    print_info(f"Opening {config_path.name} for editing...")
+    print_info("Remember to restart the application after making changes!")
+    print()
+    
+    # Use nano as default editor
+    editor = os.environ.get('EDITOR', 'nano')
+    if not subprocess.run(['which', editor], capture_output=True).returncode == 0:
+        editor = 'nano' if subprocess.run(['which', 'nano'], capture_output=True).returncode == 0 else 'vi'
+    
+    try:
+        subprocess.run([editor, str(config_path)])
+        
+        # Validate YAML after editing
+        is_valid, error = addon_mgr.validate_yaml(config_path)
+        
+        if is_valid:
+            print_success("Configuration file is valid YAML")
+        else:
+            print_error(f"YAML syntax error: {error}")
+            print_warning("The configuration may not work correctly until fixed")
+        
+        print()
+        print(f"{YELLOW}Restart the application to apply changes:{NC}")
+        print(f"  plex restart {instance}")
+        return 0
+    except subprocess.CalledProcessError:
+        print_error("Failed to open editor")
+        return 1
+
+
+def handle_addon_command(args: List[str]) -> int:
+    """Handle addon subcommands"""
+    if len(args) < 2:
+        print_error("Usage: plex addon <subcommand> <app> [options]")
+        print()
+        print(f"{YELLOW}Subcommands:{NC}")
+        print(f"  {GREEN}list <app>{NC}             - List installed addons")
+        print(f"  {GREEN}install <app> <path>{NC}  - Install addon from archive")
+        print(f"  {GREEN}remove <app> <addon>{NC}  - Remove an addon")
+        print(f"  {GREEN}config <app> <addon>{NC}  - Edit addon configuration")
+        return 1
+    
+    subcommand = args[0].lower()
+    
+    if subcommand == 'list':
+        if len(args) < 2:
+            print_error("Usage: plex addon list <app>")
+            return 1
+        return addon_list(args[1])
+    
+    elif subcommand == 'install':
+        if len(args) < 3:
+            print_error("Usage: plex addon install <app> <archive_path>")
+            return 1
+        return addon_install(args[1], args[2])
+    
+    elif subcommand == 'remove':
+        if len(args) < 3:
+            print_error("Usage: plex addon remove <app> <addon_name>")
+            return 1
+        return addon_remove(args[1], args[2])
+    
+    elif subcommand in ['config', 'configure']:
+        if len(args) < 3:
+            print_error("Usage: plex addon config <app> <addon_name>")
+            return 1
+        return addon_config(args[1], args[2])
+    
+    else:
+        print_error(f"Unknown addon subcommand: {subcommand}")
+        print_info("Use 'plex addon' for usage information")
+        return 1
+
+
+# ========== END ADDON MANAGEMENT CLI ==========
+
 def main():
     """Main entry point"""
     _maybe_auto_update()
@@ -729,6 +997,9 @@ def main():
             print("Use 'plex list' to see available applications")
             return 1
         return debug_app(sys.argv[2])
+    
+    elif command == 'addon':
+        return handle_addon_command(sys.argv[2:])
     
     elif command in ['help', '-h', '--help']:
         show_help()
