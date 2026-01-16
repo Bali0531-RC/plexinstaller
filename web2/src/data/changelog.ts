@@ -6,6 +6,19 @@ export type ReleaseNote = {
 
 export const releases: ReleaseNote[] = [
   {
+    version: "3.1.12",
+    date: "2026-01-16",
+    highlights: [
+      "Added Addon Management for PlexTickets and PlexStaff products.",
+      "Addons can be installed from .zip/.rar archives with smart extraction handling.",
+      "Smart extraction handles both correctly packaged (single folder) and incorrectly packaged (loose files) addons.",
+      "Addon configuration editing with YAML syntax validation.",
+      "Automatic backup creation before addon removal.",
+      "New TUI menu: 'Manage Addons' for interactive addon management.",
+      "New CLI commands: plex addon list|install|remove|config."
+    ]
+  },
+  {
     version: "3.1.11",
     date: "2025-12-17",
     highlights: [
