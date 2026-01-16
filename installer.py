@@ -29,7 +29,10 @@ from utils import (
     ColorPrinter, SystemDetector, DNSChecker, FirewallManager,
     NginxManager, SSLManager, SystemdManager, ArchiveExtractor
 )
-from addon_manager import AddonManager
+try:
+    from addon_manager import AddonManager
+except ImportError:
+    AddonManager = None  # Will be available after next update
 from telemetry_client import TelemetryClient
 
 # Current installer version
@@ -82,7 +85,7 @@ class PlexInstaller:
         self.ssl = SSLManager()
         self.systemd = SystemdManager()
         self.extractor = ArchiveExtractor()
-        self.addon_manager = AddonManager()
+        self.addon_manager = AddonManager() if AddonManager else None
         self.telemetry_enabled = self._initialize_telemetry_preference()
         self.telemetry = TelemetryClient(
             endpoint=self.config.TELEMETRY_ENDPOINT,
@@ -290,7 +293,7 @@ class PlexInstaller:
         """Download and install new installer version with checksum verification"""
         install_dir: Path = Path("/opt/plexinstaller")
         backup_dir: Path = install_dir / "backup"
-        current_files = ['installer.py', 'config.py', 'utils.py', 'plex_cli.py', 'telemetry_client.py']
+        current_files = ['installer.py', 'config.py', 'utils.py', 'plex_cli.py', 'telemetry_client.py', 'addon_manager.py']
 
         try:
             self.printer.step("Downloading updated installer files...")
@@ -313,7 +316,8 @@ class PlexInstaller:
                 'config': 'config.py',
                 'utils': 'utils.py',
                 'plex_cli': 'plex_cli.py',
-                'telemetry_client': 'telemetry_client.py'
+                'telemetry_client': 'telemetry_client.py',
+                'addon_manager': 'addon_manager.py'
             }
             
             for key, filename in files_to_update.items():
@@ -2311,6 +2315,14 @@ gpgkey=https://www.mongodb.org/static/pgp/server-7.0.asc
     
     def _manage_addons_menu(self):
         """Main addon management menu"""
+        # Check if addon manager is available
+        if not self.addon_manager:
+            self.printer.header("Addon Management")
+            self.printer.warning("Addon manager module not available.")
+            self.printer.step("This can happen after an update from an older version.")
+            self.printer.step("Please restart the installer to complete the update.")
+            return
+        
         while True:
             os.system('clear' if os.name != 'nt' else 'cls')
             self.printer.header("Addon Management")

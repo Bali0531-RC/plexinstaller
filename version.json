@@ -22,10 +22,10 @@
     "addon_manager": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/addon_manager.py"
   },
   "checksums": {
-    "installer": "f44a6d098a608d50f1ddedee7cfc4b17d361a516167dea9fe0b9038d2a60bd4e",
+    "installer": "3182f158c96d6c1c66c003d6517c70ebc00dc1fb59c277492fafa16ebc1d42b9",
     "config": "50e80eba8b1eec1a2488453e4bf2612f22ef8741540e3ed9eb0db935cb2a7986",
     "utils": "aef9149d5272532592807964cb071658daf9a9629a425e7af0da02ddb48037af",
-    "plex_cli": "9f5a254f6867200eb6dfbab8bf30801c887daf0b1515c56cc36c8c9308dd01cb",
+    "plex_cli": "0516ff2338f806691acc7b6a6adf34e2c396c1223d1b4687aea80ea74784cb62",
     "telemetry_client": "5c60706649c918edf49feb986c6ee3f8be47bbc721e98e02eaeec7373c200302",
     "addon_manager": "d0426eb154927a85cdc9eb8aa203d3eb1834b505f695ece1834c967effa50e1b"
   }

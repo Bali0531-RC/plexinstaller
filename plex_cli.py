@@ -178,7 +178,7 @@ def _perform_update(version_data: Dict):
 
     install_dir = INSTALLER_DIR
     backup_dir = install_dir / "backup"
-    current_files = ['installer.py', 'config.py', 'utils.py', 'plex_cli.py', 'telemetry_client.py']
+    current_files = ['installer.py', 'config.py', 'utils.py', 'plex_cli.py', 'telemetry_client.py', 'addon_manager.py']
 
     backup_dir.mkdir(parents=True, exist_ok=True)
 
@@ -189,7 +189,8 @@ def _perform_update(version_data: Dict):
         'config': 'config.py',
         'utils': 'utils.py',
         'plex_cli': 'plex_cli.py',
-        'telemetry_client': 'telemetry_client.py'
+        'telemetry_client': 'telemetry_client.py',
+        'addon_manager': 'addon_manager.py'
     }
 
     for filename in current_files:
