@@ -12,7 +12,7 @@ PlexInstaller is the unified Python-based installer and management tool for the 
 ## Quick Start
 1. **Bootstrap** the installer on a fresh host:
    ```sh
-   curl -fsSL https://plexdev.live/setup.sh | sudo bash
+   curl -fsSL https://plexdev.xyz/setup.sh | sudo bash
    ```
 2. **Run** the installer:
    ```sh
@@ -23,17 +23,17 @@ PlexInstaller is the unified Python-based installer and management tool for the 
 > **Telemetry & privacy:** On first launch the installer asks whether you want to share anonymous diagnostics (step names, success/failure state, and the sanitized log). Your choice is stored in `/etc/plex/telemetry_pref` and can be toggled manually at any time.
 
 ## Telemetry Snapshot
-These badges hit `https://plexdev.live/tel/stats` live, so the README always reflects fresh telemetry without manual edits:
+These badges hit `https://plexdev.xyz/tel/stats` live, so the README always reflects fresh telemetry without manual edits:
 
-![Total installs](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fplexdev.live%2Ftel%2Fstats&query=%24.total&label=Install%20attempts&style=for-the-badge)
-![Successes](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fplexdev.live%2Ftel%2Fstats&query=%24.success&label=Successful&color=4caf50&style=for-the-badge)
-![Failures](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fplexdev.live%2Ftel%2Fstats&query=%24.failure&label=Failed&color=ef5350&style=for-the-badge)
-![Success rate](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fplexdev.live%2Ftel%2Fstats&query=%24.success_rate&suffix=%25&label=Success%20rate&color=2196f3&style=for-the-badge)
+![Total installs](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fplexdev.xyz%2Ftel%2Fstats&query=%24.total&label=Install%20attempts&style=for-the-badge)
+![Successes](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fplexdev.xyz%2Ftel%2Fstats&query=%24.success&label=Successful&color=4caf50&style=for-the-badge)
+![Failures](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fplexdev.xyz%2Ftel%2Fstats&query=%24.failure&label=Failed&color=ef5350&style=for-the-badge)
+![Success rate](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fplexdev.xyz%2Ftel%2Fstats&query=%24.success_rate&suffix=%25&label=Success%20rate&color=2196f3&style=for-the-badge)
 
 Need to dig deeper? Grab the structured stats and recent sessions straight from the API:
 ```sh
-curl -s https://plexdev.live/tel/stats | jq
-curl -s https://plexdev.live/tel/events | jq '.[-5:]'
+curl -s https://plexdev.xyz/tel/stats | jq
+curl -s https://plexdev.xyz/tel/events | jq '.[-5:]'
 ```
 
 The FastAPI telemetry service stores raw events in `telemetry/data/events.jsonl`, aggregates counts into `telemetry/data/stats.json`, and exposes logs via `/tel/logs/{session_id}`. nginx proxies `/tel/` to this service in production.
@@ -45,7 +45,7 @@ The FastAPI telemetry service stores raw events in `telemetry/data/events.jsonl`
 | `config.py` | Shared configuration (paths, telemetry endpoints, product metadata). |
 | `telemetry_client.py` | Client that logs steps locally and POSTs payloads to the telemetry API (respects opt-out). |
 | `telemetry/server.py` | FastAPI telemetry collector, JSONL archival, stats aggregation, and log retrieval endpoints. |
-| `web2/` | Vite/React marketing + docs site for plexdev.live (including changelog, docs, guide, and setup script). |
+| `web2/` | Vite/React marketing + docs site for plexdev.xyz (including changelog, docs, guide, and setup script). |
 | `web2/public/setup.sh` | Distribution script that installs Python dependencies, pulls the installer files, and ensures telemetry client parity. |
 | `utils.py` | Helper classes for colorized output, archive extraction, nginx/systemd management, DNS checks, and firewall operations. |
 

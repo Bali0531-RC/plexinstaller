@@ -26,9 +26,9 @@ class Config:
     NGINX_AVAILABLE = Path("/etc/nginx/sites-available")
     NGINX_ENABLED = Path("/etc/nginx/sites-enabled")
     PLEX_SETUP_FILE = Path("/etc/plex/setup")
-    TELEMETRY_ENDPOINT = os.environ.get("PLEX_TELEMETRY_URL", "https://plexdev.live/tel")
+    TELEMETRY_ENDPOINT = os.environ.get("PLEX_TELEMETRY_URL", "https://plexdev.xyz/tel")
     TELEMETRY_LOG_DIR = Path(os.environ.get("PLEX_TELEMETRY_LOG_DIR", "/opt/plexinstaller/telemetry/logs"))
-    PASTE_ENDPOINT = os.environ.get("PLEX_INSTALLER_PASTE_URL", "https://paste.plexdev.live/documents")
+    PASTE_ENDPOINT = os.environ.get("PLEX_INSTALLER_PASTE_URL", "https://paste.plexdev.xyz/documents")
     TELEMETRY_PREF_FILE = Path(os.environ.get("PLEX_TELEMETRY_PREF_FILE", "/etc/plex/telemetry_pref"))
     
     # Node.js

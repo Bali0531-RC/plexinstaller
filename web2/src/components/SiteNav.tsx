@@ -12,7 +12,7 @@ const links = [
 export const SiteNav = ({ sticky = false }: { sticky?: boolean }) => (
   <nav className={`site-nav${sticky ? " sticky" : ""}`}>
     <a className="logo" href="/">
-      plexdev.live
+      plexdev.xyz
     </a>
     <div className="nav-links">
       {links.map((link) => (
@@ -20,7 +20,7 @@ export const SiteNav = ({ sticky = false }: { sticky?: boolean }) => (
           {link.label}
         </a>
       ))}
-      <a href="https://addons.plexdev.live" className="nav-addons" target="_blank" rel="noreferrer">
+      <a href="https://addons.plexdev.xyz" className="nav-addons" target="_blank" rel="noreferrer">
         🧩 Addons
       </a>
     </div>

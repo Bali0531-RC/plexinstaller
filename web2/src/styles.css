@@ -20,6 +20,25 @@
   background-color: var(--bg);
 }
 
+/* Migration Banner */
+.migration-banner {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #000;
+  padding: 12px 20px;
+  text-align: center;
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: var(--radius-m);
+  margin-bottom: 16px;
+}
+
+.migration-banner strong {
+  font-weight: 600;
+}
+
 * {
   box-sizing: border-box;
 }

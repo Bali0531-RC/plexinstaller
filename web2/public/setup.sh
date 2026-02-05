@@ -1,8 +1,8 @@
 #!/bin/bash
 # PlexDevelopment Installer Setup Script
 # Downloads and installs the Python-based installer from GitHub
-# Usage: curl -sSL https://plexdev.live/setup.sh | sudo bash
-# Or with beta flag: curl -sSL https://plexdev.live/setup.sh | sudo bash -s -- -b
+# Usage: curl -sSL https://plexdev.xyz/setup.sh | sudo bash
+# Or with beta flag: curl -sSL https://plexdev.xyz/setup.sh | sudo bash -s -- -b
 
 set -euo pipefail
 

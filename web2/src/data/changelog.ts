@@ -77,7 +77,7 @@ export const releases: ReleaseNote[] = [
     date: "2025-11-23",
     highlights: [
       "Guide, FAQ, terms, and privacy pages now share the same React/Vite design and nav as the homepage.",
-      "Updated support flows (mailto + GitHub issues) and release timeline details on plexdev.live.",
+      "Updated support flows (mailto + GitHub issues) and release timeline details on plexdev.xyz.",
       "Installer archive discovery is now case-insensitive so files like PlexStaff-Unobf.zip are detected automatically."
     ]
   },

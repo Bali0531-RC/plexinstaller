@@ -631,7 +631,7 @@ def debug_app(app: str) -> int:
     if redact_sensitive_yaml:
         bundle = redact_sensitive_yaml(bundle)
 
-    paste_endpoint = "https://paste.plexdev.live/documents"
+    paste_endpoint = "https://paste.plexdev.xyz/documents"
     if Config is not None:
         try:
             paste_endpoint = Config.PASTE_ENDPOINT

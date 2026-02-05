@@ -16,7 +16,7 @@ export const DocsLayout = ({ title, description, sections }: DocsLayoutProps) =>
   <div className="page docs-page">
     <SiteNav />
     <header className="hero docs-hero">
-      <p className="eyebrow">plexdev.live</p>
+      <p className="eyebrow">plexdev.xyz</p>
       <h1>{title}</h1>
       <p>{description}</p>
     </header>

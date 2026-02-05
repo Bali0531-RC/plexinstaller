@@ -17,13 +17,20 @@ export const App = () => {
 
   return (
     <div className="page">
+      <div className="migration-banner">
+        <span>🔄</span>
+        <span>
+          <strong>Domain Migration:</strong> We've moved from plexdev.live to plexdev.xyz! 
+          Update your bookmarks. The old domain will redirect here until it expires (~60 days).
+        </span>
+      </div>
       <SiteNav />
       <main>
         <header className="hero">
         <p className="eyebrow">PlexDev Installer · v3.1.6</p>
         <h1>Unofficial PlexDevelopment installer for Linux hosts</h1>
         <p>
-          plexdev.live is the home of the community-maintained installer. Bring your own PlexDevelopment product files and this script will handle MongoDB 8.x, systemd units, firewall rules, and health checks for you.
+          plexdev.xyz is the home of the community-maintained installer. Bring your own PlexDevelopment product files and this script will handle MongoDB 8.x, systemd units, firewall rules, and health checks for you.
         </p>
         <div className="actions">
           <a className="primary" href="/setup.sh" download>
@@ -119,10 +126,10 @@ export const App = () => {
             Version checking, automatic updates, and a growing library of extensions.
           </p>
           <div className="actions">
-            <a className="primary" href="https://addons.plexdev.live" target="_blank" rel="noreferrer">
+            <a className="primary" href="https://addons.plexdev.xyz" target="_blank" rel="noreferrer">
               Explore Addons
             </a>
-            <a className="ghost" href="https://addons.plexdev.live/docs" target="_blank" rel="noreferrer">
+            <a className="ghost" href="https://addons.plexdev.xyz/docs" target="_blank" rel="noreferrer">
               Developer Docs
             </a>
           </div>
@@ -150,7 +157,7 @@ export const App = () => {
           SSH access or logs ready? Email the maintainer or open a GitHub issue and we will get your environment unblocked.
         </p>
         <div className="actions">
-          <a className="primary" href="mailto:bali0531@plexdev.live">Email support</a>
+          <a className="primary" href="mailto:bali0531@plexdev.xyz">Email support</a>
           <a className="ghost" href="https://github.com/Bali0531-RC/plexinstaller/issues" target="_blank" rel="noreferrer">
             GitHub issues
           </a>

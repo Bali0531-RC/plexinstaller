@@ -6,6 +6,6 @@ import "../styles.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <DocsLayout title="Privacy" description="How plexdev.live handles telemetry, analytics, and data removal requests." sections={privacySections} />
+    <DocsLayout title="Privacy" description="How plexdev.xyz handles telemetry, analytics, and data removal requests." sections={privacySections} />
   </React.StrictMode>
 );

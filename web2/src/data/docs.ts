@@ -16,7 +16,7 @@ export const guideSections: DocsSection[] = [
   {
     title: "One-line quick install",
     paragraphs: [
-      "Run curl -sSL https://plexdev.live/setup.sh | sudo bash and follow the prompts. The script fetches the latest Python installer, prepares MongoDB 8.x, and creates systemd units.",
+      "Run curl -sSL https://plexdev.xyz/setup.sh | sudo bash and follow the prompts. The script fetches the latest Python installer, prepares MongoDB 8.x, and creates systemd units.",
       "When the script finishes, run plexinstaller to choose which PlexDevelopment products to configure." 
     ],
     bullets: [
@@ -99,7 +99,7 @@ export const privacySections: DocsSection[] = [
   },
   {
     title: "Contact",
-    paragraphs: ["Need data removed? Email privacy@plexdev.live and include timestamps plus any relevant metadata."],
+    paragraphs: ["Need data removed? Email privacy@plexdev.xyz and include timestamps plus any relevant metadata."],
     bullets: ["We respond within 7 days."]
   }
 ];

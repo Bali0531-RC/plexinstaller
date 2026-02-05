@@ -12,9 +12,9 @@ export const installerContent: Record<InstallerTab, InstallerContent> = {
   quick: {
     title: "Quick Install",
     description: "Best for clean Ubuntu 22.04+ hosts. Fetches the latest unofficial PlexDevelopment installer bundled with MongoDB 8.x helpers and hardening defaults.",
-    command: "curl -sSL https://plexdev.live/setup.sh | sudo bash",
+    command: "curl -sSL https://plexdev.xyz/setup.sh | sudo bash",
     notes: [
-      "Append -b to opt into the beta channel: curl -sSL https://plexdev.live/setup.sh | sudo bash -s -- -b",
+      "Append -b to opt into the beta channel: curl -sSL https://plexdev.xyz/setup.sh | sudo bash -s -- -b",
       "Script only prepares the tooling; you must upload PlexDevelopment product files yourself."
     ]
   },
@@ -38,7 +38,7 @@ export const installerContent: Record<InstallerTab, InstallerContent> = {
     description: "The installer self-updates against GitHub every time you launch it, so just run 'plexinstaller' locally when you need to make changes—no more rerunning curl.",
     notes: [
       "Backups of config files land in /opt/plexinstaller/backups before any change.",
-      "Need to force refresh manually? curl -sSL https://plexdev.live/setup.sh | sudo bash simply re-downloads the launcher."
+      "Need to force refresh manually? curl -sSL https://plexdev.xyz/setup.sh | sudo bash simply re-downloads the launcher."
     ]
   }
 };
