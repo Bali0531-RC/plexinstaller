@@ -27,7 +27,7 @@ export const App = () => {
       <SiteNav />
       <main>
         <header className="hero">
-        <p className="eyebrow">PlexDev Installer · v3.1.6</p>
+        <p className="eyebrow">PlexDev Installer · v3.1.13</p>
         <h1>Unofficial PlexDevelopment installer for Linux hosts</h1>
         <p>
           plexdev.xyz is the home of the community-maintained installer. Bring your own PlexDevelopment product files and this script will handle MongoDB 8.x, systemd units, firewall rules, and health checks for you.

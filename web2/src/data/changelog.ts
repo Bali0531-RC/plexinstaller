@@ -6,6 +6,16 @@ export type ReleaseNote = {
 
 export const releases: ReleaseNote[] = [
   {
+    version: "3.1.13",
+    date: "2026-02-05",
+    highlights: [
+      "Domain migration from plexdev.live to plexdev.xyz.",
+      "Updated all URLs, endpoints, and references to use new domain.",
+      "Added migration notice banner on website.",
+      "Old domain (plexdev.live) now permanently redirects to plexdev.xyz."
+    ]
+  },
+  {
     version: "3.1.12",
     date: "2026-01-16",
     highlights: [
