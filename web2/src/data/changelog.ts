@@ -16,6 +16,16 @@ export const releases: ReleaseNote[] = [
     ]
   },
   {
+    version: "3.1.15",
+    date: "2026-02-06",
+    highlights: [
+      "Added GPG signature verification for update integrity.",
+      "Version.json now includes detached GPG signature for all checksums.",
+      "Added automated release script for hash calculation, GPG signing, and publishing.",
+      "Updated all file checksums to current SHA256 values.",
+    ]
+  },
+  {
     version: "3.1.14",
     date: "2026-02-06",
     highlights: [

@@ -210,7 +210,8 @@ class PlexInstaller:
             
             # Fetch version info
             with urllib.request.urlopen(VERSION_CHECK_URL, timeout=5) as response:
-                version_data = json.loads(response.read().decode())
+                version_json_bytes = response.read()
+            version_data = json.loads(version_json_bytes.decode())
             
             remote_version = version_data.get('version', '0.0.0')
             
@@ -224,7 +225,7 @@ class PlexInstaller:
                 choice = input(f"\n{ColorPrinter.YELLOW}Auto-update to latest version? (y/n): {ColorPrinter.NC}").strip().lower()
                 
                 if choice == 'y':
-                    self._perform_update(version_data)
+                    self._perform_update(version_data, version_json_bytes)
                 else:
                     self.printer.step("Continuing with current version...")
             else:
@@ -289,24 +290,43 @@ class PlexInstaller:
         except Exception:
             return False
     
-    def _verify_gpg_signature(self, version_data: Dict) -> bool:
-        """Verify GPG signature of checksums if present."""
-        signature = version_data.get('gpg_signature', '')
-        if not signature:
-            self.printer.warning("No GPG signature found in version data — skipping signature verification")
-            return True  # Allow updates without signature for backwards compatibility
+    def _verify_gpg_signature(self, version_json_bytes: bytes) -> bool:
+        """Download version.json.sig and verify version.json against it.
 
-        checksums = version_data.get('checksums', {})
-        checksums_text = json.dumps(checksums, sort_keys=True, separators=(',', ':'))
+        The public key (release-key.gpg) is imported automatically from the repo
+        if not already in the local keyring.
+        """
+        SIG_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/version.json.sig"
+        KEY_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/release-key.gpg"
 
         try:
-            # Write signature to temp file
-            sig_file = Path(tempfile.mktemp(suffix='.sig'))
-            data_file = Path(tempfile.mktemp(suffix='.dat'))
+            # Download the detached signature
+            self.printer.step("Downloading GPG signature...")
+            with urllib.request.urlopen(SIG_URL, timeout=10) as resp:
+                sig_bytes = resp.read()
+        except Exception:
+            self.printer.warning("Could not download version.json.sig — skipping GPG verification")
+            return True  # Backwards compatible: allow if no sig hosted yet
 
-            import base64
-            sig_file.write_bytes(base64.b64decode(signature))
-            data_file.write_text(checksums_text)
+        try:
+            # Import the release public key (idempotent)
+            with urllib.request.urlopen(KEY_URL, timeout=10) as resp:
+                key_bytes = resp.read()
+            subprocess.run(
+                ['gpg', '--batch', '--yes', '--import'],
+                input=key_bytes,
+                capture_output=True,
+                timeout=15
+            )
+        except Exception:
+            pass  # Key may already be imported
+
+        try:
+            sig_file = Path(tempfile.mktemp(suffix='.sig'))
+            data_file = Path(tempfile.mktemp(suffix='.json'))
+
+            sig_file.write_bytes(sig_bytes)
+            data_file.write_bytes(version_json_bytes)
 
             result = subprocess.run(
                 ['gpg', '--verify', str(sig_file), str(data_file)],
@@ -319,7 +339,7 @@ class PlexInstaller:
             data_file.unlink(missing_ok=True)
 
             if result.returncode == 0:
-                self.printer.success("GPG signature verified successfully")
+                self.printer.success("GPG signature verified")
                 return True
             else:
                 self.printer.error(f"GPG signature verification failed: {result.stderr.strip()}")
@@ -331,7 +351,7 @@ class PlexInstaller:
             self.printer.warning(f"GPG verification error: {e} — skipping")
             return True
 
-    def _perform_update(self, version_data: Dict):
+    def _perform_update(self, version_data: Dict, version_json_bytes: bytes = b''):
         """Download and install new installer version with checksum verification"""
         install_dir: Path = Path("/opt/plexinstaller")
         backup_dir: Path = install_dir / "backup"
@@ -339,7 +359,7 @@ class PlexInstaller:
 
         try:
             # Verify GPG signature before proceeding
-            if not self._verify_gpg_signature(version_data):
+            if not self._verify_gpg_signature(version_json_bytes):
                 self.printer.error("Update aborted: GPG signature verification failed")
                 return
 

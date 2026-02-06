@@ -19,10 +19,9 @@
   "checksums": {
     "addon_manager": "d0426eb154927a85cdc9eb8aa203d3eb1834b505f695ece1834c967effa50e1b",
     "config": "ab23aeaea04cf4a9df770f143e4338d7f5dd2ebf89f895dd32db5b316a5041c8",
-    "installer": "980cf716b42b6af9eb40eadd157cfa1150ba4cc21e3940b4e4dcad586ad19055",
-    "plex_cli": "1467c5decc4f5608159b65ee0dd3b6bc243d4468146c82d73c342a04f298ce86",
+    "installer": "cd010a75996056b32efd40afe8f2ec7e366e2ad3a1da8670fbb5fe84abd526c3",
+    "plex_cli": "581826d171fffcfcea0797e67d1e328849bf946df3843af6fde9c8353852d030",
     "telemetry_client": "e42440fd4aef42c961a7863e033722005ba7fd30bff67875e41f819534057f41",
     "utils": "aef9149d5272532592807964cb071658daf9a9629a425e7af0da02ddb48037af"
-  },
-  "gpg_signature": "LS0tLS1CRUdJTiBQR1AgU0lHTkFUVVJFLS0tLS0KCmlIVUVBQllLQUIwV0lRUzlCSXVpc1VKS2dIV05OTnZpaUswc21HMllUQVVDYVlZWXB3QUtDUkRpaUswc21HMlkKVE5RbEFQMFlabm5HWjVaWnlUbDRRdG8xYUhwS2Z2Q1NCNUdENXFjdUFvMWxjT2dzMlFFQXFlV3owMVVjVitwOApOQ0kzRzlPOWhQUk1PcXlvbEw0NHhvb3dYdENsQmdJPQo9dkNzWQotLS0tLUVORCBQR1AgU0lHTkFUVVJFLS0tLS0K"
+  }
 }

@@ -170,25 +170,43 @@ def _ensure_cli_entrypoints():
         return
 
 
-def _verify_gpg_signature(version_data: dict) -> bool:
-    """Verify GPG signature of checksums if present."""
-    signature = version_data.get('gpg_signature', '')
-    if not signature:
-        print_warning("No GPG signature found in version data — skipping signature verification")
-        return True
+def _verify_gpg_signature(version_json_bytes: bytes) -> bool:
+    """Download version.json.sig and verify version.json against it.
 
-    checksums = version_data.get('checksums', {})
-    checksums_text = json.dumps(checksums, sort_keys=True, separators=(',', ':'))
+    The public key (release-key.gpg) is imported automatically from the repo
+    if not already in the local keyring.
+    """
+    import tempfile as _tempfile
+
+    SIG_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/version.json.sig"
+    KEY_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/release-key.gpg"
 
     try:
-        import tempfile
-        import base64
+        print_info("Downloading GPG signature...")
+        with urllib.request.urlopen(SIG_URL, timeout=10) as resp:
+            sig_bytes = resp.read()
+    except Exception:
+        print_warning("Could not download version.json.sig — skipping GPG verification")
+        return True
 
-        sig_file = Path(tempfile.mktemp(suffix='.sig'))
-        data_file = Path(tempfile.mktemp(suffix='.dat'))
+    try:
+        with urllib.request.urlopen(KEY_URL, timeout=10) as resp:
+            key_bytes = resp.read()
+        subprocess.run(
+            ['gpg', '--batch', '--yes', '--import'],
+            input=key_bytes,
+            capture_output=True,
+            timeout=15
+        )
+    except Exception:
+        pass
 
-        sig_file.write_bytes(base64.b64decode(signature))
-        data_file.write_text(checksums_text)
+    try:
+        sig_file = Path(_tempfile.mktemp(suffix='.sig'))
+        data_file = Path(_tempfile.mktemp(suffix='.json'))
+
+        sig_file.write_bytes(sig_bytes)
+        data_file.write_bytes(version_json_bytes)
 
         result = subprocess.run(
             ['gpg', '--verify', str(sig_file), str(data_file)],
@@ -201,7 +219,7 @@ def _verify_gpg_signature(version_data: dict) -> bool:
         data_file.unlink(missing_ok=True)
 
         if result.returncode == 0:
-            print_success("GPG signature verified successfully")
+            print_success("GPG signature verified")
             return True
         else:
             print_error(f"GPG signature verification failed: {result.stderr.strip()}")
@@ -214,14 +232,14 @@ def _verify_gpg_signature(version_data: dict) -> bool:
         return True
 
 
-def _perform_update(version_data: Dict):
+def _perform_update(version_data: Dict, version_json_bytes: bytes = b''):
     """Download and install new installer version with checksum verification."""
     if os.geteuid() != 0:
         print_warning("Auto-update requires root. Re-run the command with sudo.")
         return
 
     # Verify GPG signature before proceeding
-    if not _verify_gpg_signature(version_data):
+    if not _verify_gpg_signature(version_json_bytes):
         print_error("Update aborted: GPG signature verification failed")
         return
 
@@ -285,7 +303,8 @@ def _maybe_auto_update():
 
     try:
         with urllib.request.urlopen(VERSION_CHECK_URL, timeout=5) as response:
-            version_data = json.loads(response.read().decode())
+            version_json_bytes = response.read()
+        version_data = json.loads(version_json_bytes.decode())
         remote_version = version_data.get('version', '0.0.0')
         local_version = _read_local_installer_version()
 
@@ -298,7 +317,7 @@ def _maybe_auto_update():
                     print(f"  • {item}")
             choice = input(f"\n{YELLOW}Auto-update to latest version? (y/n): {NC}").strip().lower()
             if choice == 'y':
-                _perform_update(version_data)
+                _perform_update(version_data, version_json_bytes)
     except KeyboardInterrupt:
         return
     except Exception:

@@ -135,6 +135,10 @@ FILES_TO_DOWNLOAD=(
     "utils.py"
     "plex_cli.py"
     "telemetry_client.py"
+    "addon_manager.py"
+    "version.json"
+    "version.json.sig"
+    "release-key.gpg"
 )
 
 print_step "Downloading from GitHub repository: $GITHUB_REPO (branch: $GITHUB_BRANCH)"
@@ -155,6 +159,89 @@ for file in "${FILES_TO_DOWNLOAD[@]}"; do
     fi
 done
 
+# Verify GPG signature of version.json
+print_header "Verifying GPG Signature"
+
+GPG_VERIFIED=false
+if command -v gpg &> /dev/null; then
+    if [ -f "$INSTALL_DIR/release-key.gpg" ] && [ -f "$INSTALL_DIR/version.json.sig" ]; then
+        print_step "Importing release signing key..."
+        gpg --batch --yes --import "$INSTALL_DIR/release-key.gpg" 2>/dev/null || true
+
+        print_step "Verifying version.json signature..."
+        if gpg --verify "$INSTALL_DIR/version.json.sig" "$INSTALL_DIR/version.json" 2>/dev/null; then
+            print_success "GPG signature verified — files are authentic"
+            GPG_VERIFIED=true
+        else
+            print_error "GPG signature verification FAILED"
+            print_error "The downloaded files may have been tampered with!"
+            read -p "Continue anyway? (y/n): " continue_anyway
+            if [ "$continue_anyway" != "y" ] && [ "$continue_anyway" != "Y" ]; then
+                print_error "Installation aborted."
+                exit 1
+            fi
+            print_warning "Continuing without verified signature..."
+        fi
+    else
+        print_warning "Signature files not found — skipping GPG verification"
+    fi
+else
+    print_warning "gpg not installed — skipping signature verification"
+    print_step "Install gnupg for signature verification: sudo apt install gnupg"
+fi
+
+# Verify SHA256 checksums from version.json
+print_header "Verifying File Checksums"
+
+if [ -f "$INSTALL_DIR/version.json" ]; then
+    CHECKSUM_FAILED=false
+    for key in installer config utils plex_cli telemetry_client addon_manager; do
+        expected=$(jq -r ".checksums.${key} // empty" "$INSTALL_DIR/version.json" 2>/dev/null)
+        if [ -z "$expected" ]; then
+            continue
+        fi
+
+        # Map JSON key to filename
+        case "$key" in
+            installer)        fname="installer.py" ;;
+            config)           fname="config.py" ;;
+            utils)            fname="utils.py" ;;
+            plex_cli)         fname="plex_cli.py" ;;
+            telemetry_client) fname="telemetry_client.py" ;;
+            addon_manager)    fname="addon_manager.py" ;;
+            *)                continue ;;
+        esac
+
+        filepath="$INSTALL_DIR/$fname"
+        if [ ! -f "$filepath" ]; then
+            print_warning "File not found for checksum: $fname"
+            continue
+        fi
+
+        actual=$(sha256sum "$filepath" | awk '{print $1}')
+        if [ "$actual" = "$expected" ]; then
+            print_success "Checksum OK: $fname"
+        else
+            print_error "Checksum MISMATCH: $fname"
+            print_error "  Expected: $expected"
+            print_error "  Got:      $actual"
+            CHECKSUM_FAILED=true
+        fi
+    done
+
+    if [ "$CHECKSUM_FAILED" = true ]; then
+        print_error "One or more checksums failed verification!"
+        read -p "Continue anyway? (y/n): " continue_checksum
+        if [ "$continue_checksum" != "y" ] && [ "$continue_checksum" != "Y" ]; then
+            print_error "Installation aborted."
+            exit 1
+        fi
+        print_warning "Continuing with mismatched checksums..."
+    fi
+else
+    print_warning "version.json not found — skipping checksum verification"
+fi
+
 # Install Python dependencies for telemetry client
 print_step "Installing Python dependencies..."
 if command -v pip3 &> /dev/null; then
@@ -170,6 +257,10 @@ chmod +x "${INSTALL_DIR}/plex_cli.py"
 chmod 644 "${INSTALL_DIR}/config.py"
 chmod 644 "${INSTALL_DIR}/utils.py"
 chmod 644 "${INSTALL_DIR}/telemetry_client.py"
+chmod 644 "${INSTALL_DIR}/addon_manager.py"
+chmod 644 "${INSTALL_DIR}/version.json"
+chmod 644 "${INSTALL_DIR}/version.json.sig" 2>/dev/null || true
+chmod 644 "${INSTALL_DIR}/release-key.gpg" 2>/dev/null || true
 
 # Create symbolic link for the main installer
 print_step "Creating installer command..."
@@ -194,6 +285,11 @@ print_header "Installation Complete!"
 echo -e "${GREEN}✓ Installer Version:${NC} $VERSION"
 echo -e "${GREEN}✓ Installation Path:${NC} $INSTALL_DIR"
 echo -e "${GREEN}✓ Python Version:${NC} $PYTHON_VERSION"
+if [ "$GPG_VERIFIED" = true ]; then
+    echo -e "${GREEN}✓ GPG Signature:${NC} Verified"
+else
+    echo -e "${YELLOW}○ GPG Signature:${NC} Not verified"
+fi
 echo ""
 
 print_header "Available Commands"
