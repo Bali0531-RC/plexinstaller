@@ -170,10 +170,59 @@ def _ensure_cli_entrypoints():
         return
 
 
+def _verify_gpg_signature(version_data: dict) -> bool:
+    """Verify GPG signature of checksums if present."""
+    signature = version_data.get('gpg_signature', '')
+    if not signature:
+        print_warning("No GPG signature found in version data — skipping signature verification")
+        return True
+
+    checksums = version_data.get('checksums', {})
+    checksums_text = json.dumps(checksums, sort_keys=True, separators=(',', ':'))
+
+    try:
+        import tempfile
+        import base64
+
+        sig_file = Path(tempfile.mktemp(suffix='.sig'))
+        data_file = Path(tempfile.mktemp(suffix='.dat'))
+
+        sig_file.write_bytes(base64.b64decode(signature))
+        data_file.write_text(checksums_text)
+
+        result = subprocess.run(
+            ['gpg', '--verify', str(sig_file), str(data_file)],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+
+        sig_file.unlink(missing_ok=True)
+        data_file.unlink(missing_ok=True)
+
+        if result.returncode == 0:
+            print_success("GPG signature verified successfully")
+            return True
+        else:
+            print_error(f"GPG signature verification failed: {result.stderr.strip()}")
+            return False
+    except FileNotFoundError:
+        print_warning("gpg not installed — skipping signature verification")
+        return True
+    except Exception as e:
+        print_warning(f"GPG verification error: {e} — skipping")
+        return True
+
+
 def _perform_update(version_data: Dict):
     """Download and install new installer version with checksum verification."""
     if os.geteuid() != 0:
         print_warning("Auto-update requires root. Re-run the command with sudo.")
+        return
+
+    # Verify GPG signature before proceeding
+    if not _verify_gpg_signature(version_data):
+        print_error("Update aborted: GPG signature verification failed")
         return
 
     install_dir = INSTALLER_DIR
@@ -215,6 +264,10 @@ def _perform_update(version_data: Dict):
                 raise ValueError(
                     f"Checksum mismatch for {filename}: expected {expected_hash}, got {actual_hash}"
                 )
+        else:
+            raise ValueError(
+                f"No checksum provided for {filename}. Aborting update for security."
+            )
 
         target.write_bytes(content)
         os.chmod(target, 0o755 if filename.endswith('.py') else 0o644)

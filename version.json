@@ -1,11 +1,11 @@
 {
-  "version": "3.1.13",
-  "release_date": "2026-02-05",
+  "version": "3.1.15",
+  "release_date": "2026-02-06",
   "changelog": [
-    "Domain migration from plexdev.live to plexdev.xyz.",
-    "Updated all URLs, endpoints, and references to use new domain.",
-    "Added migration notice banner on website.",
-    "Old domain (plexdev.live) now permanently redirects to plexdev.xyz."
+    "Added GPG signature verification for update integrity.",
+    "Version.json now includes detached GPG signature for all checksums.",
+    "Added automated release script for hash calculation, GPG signing, and publishing.",
+    "Updated all file checksums to current SHA256 values."
   ],
   "download_urls": {
     "installer": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/installer.py",
@@ -17,11 +17,12 @@
     "addon_manager": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/addon_manager.py"
   },
   "checksums": {
-    "installer": "206f342f76d4055a502d742c597fe19cad7c312be2ff75f0e29bd5e77c8d5cb5",
-    "config": "c54a2e661a77cc1c0d4df7fbb3dc43bb975b21420cdbeb1171905341b32515b8",
-    "utils": "aef9149d5272532592807964cb071658daf9a9629a425e7af0da02ddb48037af",
-    "plex_cli": "1e5929f8c60e71fc5dd9e8fed8221d7c2682c424c3c391e9dab0dd9b17765465",
-    "telemetry_client": "5c60706649c918edf49feb986c6ee3f8be47bbc721e98e02eaeec7373c200302",
-    "addon_manager": "d0426eb154927a85cdc9eb8aa203d3eb1834b505f695ece1834c967effa50e1b"
-  }
+    "addon_manager": "d0426eb154927a85cdc9eb8aa203d3eb1834b505f695ece1834c967effa50e1b",
+    "config": "ab23aeaea04cf4a9df770f143e4338d7f5dd2ebf89f895dd32db5b316a5041c8",
+    "installer": "980cf716b42b6af9eb40eadd157cfa1150ba4cc21e3940b4e4dcad586ad19055",
+    "plex_cli": "1467c5decc4f5608159b65ee0dd3b6bc243d4468146c82d73c342a04f298ce86",
+    "telemetry_client": "e42440fd4aef42c961a7863e033722005ba7fd30bff67875e41f819534057f41",
+    "utils": "aef9149d5272532592807964cb071658daf9a9629a425e7af0da02ddb48037af"
+  },
+  "gpg_signature": "LS0tLS1CRUdJTiBQR1AgU0lHTkFUVVJFLS0tLS0KCmlIVUVBQllLQUIwV0lRUzlCSXVpc1VKS2dIV05OTnZpaUswc21HMllUQVVDYVlZWXB3QUtDUkRpaUswc21HMlkKVE5RbEFQMFlabm5HWjVaWnlUbDRRdG8xYUhwS2Z2Q1NCNUdENXFjdUFvMWxjT2dzMlFFQXFlV3owMVVjVitwOApOQ0kzRzlPOWhQUk1PcXlvbEw0NHhvb3dYdENsQmdJPQo9dkNzWQotLS0tLUVORCBQR1AgU0lHTkFUVVJFLS0tLS0K"
 }

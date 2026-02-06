@@ -32,11 +32,11 @@ from utils import (
 try:
     from addon_manager import AddonManager
 except ImportError:
-    AddonManager = None  # Will be available after next update
+    AddonManager = None
 from telemetry_client import TelemetryClient
 
 # Current installer version
-INSTALLER_VERSION = "3.1.13"
+INSTALLER_VERSION = "3.1.15"
 VERSION_CHECK_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/version.json"
 LOCK_FILE = "/var/run/plexinstaller.lock"
 
@@ -289,6 +289,48 @@ class PlexInstaller:
         except Exception:
             return False
     
+    def _verify_gpg_signature(self, version_data: Dict) -> bool:
+        """Verify GPG signature of checksums if present."""
+        signature = version_data.get('gpg_signature', '')
+        if not signature:
+            self.printer.warning("No GPG signature found in version data — skipping signature verification")
+            return True  # Allow updates without signature for backwards compatibility
+
+        checksums = version_data.get('checksums', {})
+        checksums_text = json.dumps(checksums, sort_keys=True, separators=(',', ':'))
+
+        try:
+            # Write signature to temp file
+            sig_file = Path(tempfile.mktemp(suffix='.sig'))
+            data_file = Path(tempfile.mktemp(suffix='.dat'))
+
+            import base64
+            sig_file.write_bytes(base64.b64decode(signature))
+            data_file.write_text(checksums_text)
+
+            result = subprocess.run(
+                ['gpg', '--verify', str(sig_file), str(data_file)],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+
+            sig_file.unlink(missing_ok=True)
+            data_file.unlink(missing_ok=True)
+
+            if result.returncode == 0:
+                self.printer.success("GPG signature verified successfully")
+                return True
+            else:
+                self.printer.error(f"GPG signature verification failed: {result.stderr.strip()}")
+                return False
+        except FileNotFoundError:
+            self.printer.warning("gpg not installed — skipping signature verification")
+            return True
+        except Exception as e:
+            self.printer.warning(f"GPG verification error: {e} — skipping")
+            return True
+
     def _perform_update(self, version_data: Dict):
         """Download and install new installer version with checksum verification"""
         install_dir: Path = Path("/opt/plexinstaller")
@@ -296,6 +338,11 @@ class PlexInstaller:
         current_files = ['installer.py', 'config.py', 'utils.py', 'plex_cli.py', 'telemetry_client.py', 'addon_manager.py']
 
         try:
+            # Verify GPG signature before proceeding
+            if not self._verify_gpg_signature(version_data):
+                self.printer.error("Update aborted: GPG signature verification failed")
+                return
+
             self.printer.step("Downloading updated installer files...")
 
             backup_dir.mkdir(parents=True, exist_ok=True)
@@ -329,7 +376,7 @@ class PlexInstaller:
                     with urllib.request.urlopen(url, timeout=30) as response:
                         content = response.read()
                     
-                    # Verify checksum if provided
+                    # Verify checksum (required)
                     if key in checksums:
                         expected_hash = checksums[key]
                         actual_hash = hashlib.sha256(content).hexdigest()
@@ -337,7 +384,7 @@ class PlexInstaller:
                             raise ValueError(f"Checksum mismatch for {filename}: expected {expected_hash}, got {actual_hash}")
                         self.printer.success(f"Checksum verified for {filename}")
                     else:
-                        self.printer.warning(f"No checksum available for {filename}, skipping verification")
+                        raise ValueError(f"No checksum provided for {filename}. Aborting update for security.")
                     
                     target.write_bytes(content)
                     os.chmod(target, 0o755 if filename.endswith('.py') else 0o644)
@@ -471,7 +518,7 @@ class PlexInstaller:
                     if match:
                         port = match.group(1)
                         break
-                except:
+                except Exception:
                     pass
             
             status_display = status
@@ -953,44 +1000,45 @@ class PlexInstaller:
                          check=True, capture_output=True, timeout=120)
             
             # Import MongoDB GPG key (using pipe method as per MongoDB docs)
+            mongo_ver = self.config.MONGODB_VERSION
+            mongo_ver_bookworm = self.config.MONGODB_REPO_VERSION_BOOKWORM
             self.printer.step("Adding MongoDB repository...")
             curl_process = subprocess.Popen(
-                ['curl', '-fsSL', 'https://www.mongodb.org/static/pgp/server-8.0.asc'],
+                ['curl', '-fsSL', f'https://www.mongodb.org/static/pgp/server-{mongo_ver}.asc'],
                 stdout=subprocess.PIPE
             )
             subprocess.run(
-                ['gpg', '-o', '/usr/share/keyrings/mongodb-server-8.0.gpg', '--dearmor'],
+                ['gpg', '-o', f'/usr/share/keyrings/mongodb-server-{mongo_ver}.gpg', '--dearmor'],
                 stdin=curl_process.stdout,
                 check=True,
                 timeout=30
             )
             curl_process.wait()
-            
+
             # Detect distro and codename
             distro = (self.system.distribution or "").lower()
             distro_codename = subprocess.run(
                 ['lsb_release', '-cs'],
                 capture_output=True, text=True, check=True, timeout=10
             ).stdout.strip()
-            
+
             # Determine correct repository URL
             if 'ubuntu' in distro:
-                # MongoDB 8.0 Ubuntu repository
-                repo_line = f"deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] http://repo.mongodb.org/apt/ubuntu {distro_codename}/mongodb-org/8.0 multiverse\n"
+                repo_line = f"deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-{mongo_ver}.gpg ] http://repo.mongodb.org/apt/ubuntu {distro_codename}/mongodb-org/{mongo_ver} multiverse\n"
             elif 'debian' in distro:
-                # MongoDB 8.0 Debian repository (using 8.2 as per official docs)
+                # Bookworm uses a different repo version per MongoDB official docs
                 if distro_codename == 'bookworm':
-                    repo_line = "deb [ signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] http://repo.mongodb.org/apt/debian bookworm/mongodb-org/8.2 main\n"
+                    repo_line = f"deb [ signed-by=/usr/share/keyrings/mongodb-server-{mongo_ver}.gpg ] http://repo.mongodb.org/apt/debian bookworm/mongodb-org/{mongo_ver_bookworm} main\n"
                 elif distro_codename == 'bullseye':
-                    repo_line = "deb [ signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] http://repo.mongodb.org/apt/debian bullseye/mongodb-org/8.0 main\n"
+                    repo_line = f"deb [ signed-by=/usr/share/keyrings/mongodb-server-{mongo_ver}.gpg ] http://repo.mongodb.org/apt/debian bullseye/mongodb-org/{mongo_ver} main\n"
                 else:
                     # Fallback to bullseye for older versions
-                    repo_line = "deb [ signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] http://repo.mongodb.org/apt/debian bullseye/mongodb-org/8.0 main\n"
+                    repo_line = f"deb [ signed-by=/usr/share/keyrings/mongodb-server-{mongo_ver}.gpg ] http://repo.mongodb.org/apt/debian bullseye/mongodb-org/{mongo_ver} main\n"
             else:
                 # Fallback to Ubuntu focal
-                repo_line = "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] http://repo.mongodb.org/apt/ubuntu focal/mongodb-org/8.0 multiverse\n"
-            
-            with open('/etc/apt/sources.list.d/mongodb-org-8.0.list', 'w') as f:
+                repo_line = f"deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-{mongo_ver}.gpg ] http://repo.mongodb.org/apt/ubuntu focal/mongodb-org/{mongo_ver} multiverse\n"
+
+            with open(f'/etc/apt/sources.list.d/mongodb-org-{mongo_ver}.list', 'w') as f:
                 f.write(repo_line)
             
             # Update and install
@@ -1016,14 +1064,15 @@ class PlexInstaller:
         """Install MongoDB on RHEL/CentOS/Fedora"""
         try:
             # Create repo file
-            repo_content = """[mongodb-org-7.0]
+            mongo_ver = self.config.MONGODB_VERSION
+            repo_content = f"""[mongodb-org-{mongo_ver}]
 name=MongoDB Repository
-baseurl=https://repo.mongodb.org/yum/redhat/$releasever/mongodb-org/7.0/x86_64/
+baseurl=https://repo.mongodb.org/yum/redhat/$releasever/mongodb-org/{mongo_ver}/x86_64/
 gpgcheck=1
 enabled=1
-gpgkey=https://www.mongodb.org/static/pgp/server-7.0.asc
+gpgkey=https://www.mongodb.org/static/pgp/server-{mongo_ver}.asc
 """
-            with open('/etc/yum.repos.d/mongodb-org-7.0.repo', 'w') as f:
+            with open(f'/etc/yum.repos.d/mongodb-org-{mongo_ver}.repo', 'w') as f:
                 f.write(repo_content)
             
             # Install
@@ -1104,14 +1153,17 @@ gpgkey=https://www.mongodb.org/static/pgp/server-7.0.asc
     
     def _create_mongodb_user(self, instance_name: str) -> Optional[Dict]:
         """Create MongoDB database and user for instance"""
-        import random
+        import secrets
         import string
-        
+
         # Generate random database name and password
-        random_suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=5))
+        # Use secrets module for cryptographically secure generation
+        # Only alphanumeric chars for MongoDB password compatibility
+        alphabet = string.ascii_letters + string.digits
+        random_suffix = ''.join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(5))
         db_name = f"{instance_name}_{random_suffix}"
         username = f"{instance_name}_user"
-        password = ''.join(random.choices(string.ascii_letters + string.digits, k=24))
+        password = ''.join(secrets.choice(alphabet) for _ in range(24))
         
         self.printer.step(f"Creating MongoDB database: {db_name}")
         
@@ -1902,7 +1954,7 @@ gpgkey=https://www.mongodb.org/static/pgp/server-7.0.asc
                 self.printer.success("✓ Nginx is running")
             else:
                 self.printer.error("✗ Nginx is not running")
-        except:
+        except Exception:
             self.printer.warning("⚠ Could not check Nginx status")
         
         # Check MongoDB status (if installed)
@@ -1914,7 +1966,7 @@ gpgkey=https://www.mongodb.org/static/pgp/server-7.0.asc
                 self.printer.success("✓ MongoDB is running")
             else:
                 self.printer.warning("○ MongoDB is not running")
-        except:
+        except Exception:
             self.printer.step("ℹ MongoDB not installed or not using systemd")
         
         # Check SSL certificates
@@ -1931,7 +1983,7 @@ gpgkey=https://www.mongodb.org/static/pgp/server-7.0.asc
                     # Count certificates
                     cert_count = result.stdout.count('Certificate Name:')
                     self.printer.success(f"✓ Found {cert_count} SSL certificate(s)")
-            except:
+            except Exception:
                 self.printer.warning("⚠ Could not check SSL certificates")
         else:
             self.printer.step("ℹ Certbot not installed")
@@ -1956,7 +2008,7 @@ gpgkey=https://www.mongodb.org/static/pgp/server-7.0.asc
                     self.printer.warning("⚠ Memory usage above 80%")
                 else:
                     self.printer.success("✓ Memory usage healthy")
-        except:
+        except Exception:
             self.printer.warning("⚠ Could not check memory usage")
         
         # Check system load
@@ -1975,7 +2027,7 @@ gpgkey=https://www.mongodb.org/static/pgp/server-7.0.asc
                 self.printer.warning("⚠ System load is elevated")
             else:
                 self.printer.success("✓ System load normal")
-        except:
+        except Exception:
             self.printer.warning("⚠ Could not check system load")
     
     def _ssl_management_menu(self):

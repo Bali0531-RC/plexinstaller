@@ -3,12 +3,31 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import requests
+
+# Patterns to redact from log output
+_REDACT_PATTERNS = [
+    # MongoDB connection strings with credentials
+    re.compile(r"mongodb(?:\+srv)?://[^:]+:[^@]+@", re.IGNORECASE),
+    # Generic password/token/secret key-value patterns
+    re.compile(r"(password|passwd|token|secret|api_key|apikey|auth)\s*[=:]\s*\S+", re.IGNORECASE),
+    # Bearer tokens
+    re.compile(r"Bearer\s+\S+", re.IGNORECASE),
+]
+
+
+def _redact(text: str) -> str:
+    """Redact sensitive information from text before logging."""
+    result = text
+    for pattern in _REDACT_PATTERNS:
+        result = pattern.sub("[REDACTED]", result)
+    return result
 
 
 @dataclass
@@ -72,11 +91,11 @@ class TelemetryClient:
             "timestamp": datetime.utcnow().isoformat(),
             "step": step,
             "status": status,
-            "detail": detail or "",
+            "detail": _redact(detail) if detail else "",
         }
         self._events.append(entry)
 
-        detail_str = f" — {detail}" if detail else ""
+        detail_str = f" — {_redact(detail)}" if detail else ""
         self._write_line(f"[{entry['timestamp']}] {step}: {status.upper()}{detail_str}")
 
     def finish_session(
@@ -99,7 +118,7 @@ class TelemetryClient:
         )
 
         if error:
-            self._write_line(f"Session error: {error}")
+            self._write_line(f"Session error: {_redact(error)}")
         self._write_line(f"Session completed with status: {status.upper()}")
 
         payload: Dict[str, Any] = {

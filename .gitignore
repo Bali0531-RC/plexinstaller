@@ -59,3 +59,6 @@ web2/outputs
 web/ads.txt
 web/archive_search_log.txt
 web/.well-known/
+
+# Release script (contains local GPG key references)
+release.sh

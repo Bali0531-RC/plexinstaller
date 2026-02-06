@@ -125,7 +125,8 @@ class Config:
     }
     
     # MongoDB installation
-    MONGODB_VERSION = "8.2"
+    MONGODB_VERSION = "8.0"
+    MONGODB_REPO_VERSION_BOOKWORM = "8.2"  # Bookworm uses 8.2 repo per MongoDB official docs
     
     def __init__(self):
         """Initialize configuration"""
