@@ -90,7 +90,7 @@ print_success "Running with root privileges"
 print_step "Checking system requirements..."
 
 MISSING_CMDS=()
-for cmd in curl wget git python3; do
+for cmd in curl wget git python3 jq; do
     if ! command -v $cmd &> /dev/null; then
         MISSING_CMDS+=($cmd)
     fi
@@ -101,15 +101,15 @@ if [ ${#MISSING_CMDS[@]} -gt 0 ]; then
     print_step "Installing missing dependencies..."
     
     if command -v apt &> /dev/null; then
-        apt update && apt install -y curl wget git python3 python3-pip
+        apt update && apt install -y curl wget git python3 python3-pip jq
     elif command -v dnf &> /dev/null; then
-        dnf install -y curl wget git python3 python3-pip
+        dnf install -y curl wget git python3 python3-pip jq
     elif command -v yum &> /dev/null; then
-        yum install -y curl wget git python3 python3-pip
+        yum install -y curl wget git python3 python3-pip jq
     elif command -v pacman &> /dev/null; then
-        pacman -S --noconfirm curl wget git python python-pip
+        pacman -S --noconfirm curl wget git python python-pip jq
     elif command -v zypper &> /dev/null; then
-        zypper install -y curl wget git python3 python3-pip
+        zypper install -y curl wget git python3 python3-pip jq
     else
         print_error "Cannot automatically install dependencies. Please install manually: ${MISSING_CMDS[*]}"
         exit 1
@@ -193,10 +193,22 @@ fi
 # Verify SHA256 checksums from version.json
 print_header "Verifying File Checksums"
 
+# Helper: read a JSON checksum value (prefer jq, fall back to python3)
+read_checksum() {
+    local key="$1" file="$2"
+    if command -v jq &> /dev/null; then
+        jq -r ".checksums.${key} // empty" "$file" 2>/dev/null || true
+    elif command -v python3 &> /dev/null; then
+        python3 -c "import json,sys; d=json.load(open('$file')); print(d.get('checksums',{}).get('$key',''))" 2>/dev/null || true
+    else
+        echo ""
+    fi
+}
+
 if [ -f "$INSTALL_DIR/version.json" ]; then
     CHECKSUM_FAILED=false
     for key in installer config utils plex_cli telemetry_client addon_manager; do
-        expected=$(jq -r ".checksums.${key} // empty" "$INSTALL_DIR/version.json" 2>/dev/null)
+        expected=$(read_checksum "$key" "$INSTALL_DIR/version.json")
         if [ -z "$expected" ]; then
             continue
         fi
