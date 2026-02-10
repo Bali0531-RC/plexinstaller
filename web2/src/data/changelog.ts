@@ -6,6 +6,13 @@ export type ReleaseNote = {
 
 export const releases: ReleaseNote[] = [
   {
+    version: "3.1.16",
+    date: "2026-02-10",
+    highlights: [
+      "Fixed an issue with the installer.",
+    ]
+  },
+  {
     version: "3.1.15",
     date: "2026-02-06",
     highlights: [

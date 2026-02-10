@@ -1,11 +1,8 @@
 {
-  "version": "3.1.15",
-  "release_date": "2026-02-06",
+  "version": "3.1.16",
+  "release_date": "2026-02-10",
   "changelog": [
-    "Added GPG signature verification for update integrity.",
-    "Version.json now includes detached GPG signature for all checksums.",
-    "Added automated release script for hash calculation, GPG signing, and publishing.",
-    "Updated all file checksums to current SHA256 values."
+    "Fixed an issue with the installer."
   ],
   "download_urls": {
     "installer": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/installer.py",
@@ -19,7 +16,7 @@
   "checksums": {
     "addon_manager": "d0426eb154927a85cdc9eb8aa203d3eb1834b505f695ece1834c967effa50e1b",
     "config": "ab23aeaea04cf4a9df770f143e4338d7f5dd2ebf89f895dd32db5b316a5041c8",
-    "installer": "cd010a75996056b32efd40afe8f2ec7e366e2ad3a1da8670fbb5fe84abd526c3",
+    "installer": "1a952d0e68b72ecb329c5e59374c02381670835bdf0c8f2254e4fc3d676e7653",
     "plex_cli": "581826d171fffcfcea0797e67d1e328849bf946df3843af6fde9c8353852d030",
     "telemetry_client": "e42440fd4aef42c961a7863e033722005ba7fd30bff67875e41f819534057f41",
     "utils": "aef9149d5272532592807964cb071658daf9a9629a425e7af0da02ddb48037af"
