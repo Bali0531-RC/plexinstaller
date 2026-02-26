@@ -81,6 +81,9 @@ def show_help():
     print(f"  {GREEN}plex disable <app>{NC}     - Disable application from starting on boot")
     print(f"  {GREEN}plex debug <app>{NC}       - Upload redacted config + logs for support")
     print()
+    print(f"{YELLOW}Tools:{NC}")
+    print(f"  {GREEN}plex tool setupdomain <app>{NC} - Set up domain, reverse proxy & SSL for an instance")
+    print()
     print(f"{YELLOW}Addon Management (PlexTickets/PlexStaff):{NC}")
     print(f"  {GREEN}plex addon list <app>{NC}           - List installed addons")
     print(f"  {GREEN}plex addon install <app> <path>{NC} - Install addon from archive")
@@ -995,6 +998,166 @@ def handle_addon_command(args: List[str]) -> int:
 
 # ========== END ADDON MANAGEMENT CLI ==========
 
+
+# ========== TOOL COMMANDS ==========
+
+def tool_setupdomain(app: str) -> int:
+    """Set up domain, nginx reverse proxy, and SSL for an existing instance."""
+    instance = resolve_app_instance(app)
+    if not instance:
+        print_error(f"Application '{app}' not found. Use 'plex list' to see installed apps.")
+        return 1
+
+    if os.geteuid() != 0:
+        print_error("This command must be run as root (use sudo).")
+        return 1
+
+    app_dir = INSTALL_DIR / instance
+
+    # Detect current port from config
+    port = None
+    for config_name in ['config.yml', 'config.yaml', 'config.json']:
+        config_file = app_dir / config_name
+        if config_file.exists():
+            try:
+                content = config_file.read_text()
+                match = re.search(r'port[:\s]+(\d+)', content, re.IGNORECASE)
+                if match:
+                    port = int(match.group(1))
+                    break
+            except Exception:
+                pass
+
+    if port is None:
+        while True:
+            port_input = input("Could not detect port from config. Enter port: ").strip()
+            if port_input.isdigit():
+                port = int(port_input)
+                if 1 <= port <= 65535:
+                    break
+                else:
+                    print_error("Port must be between 1 and 65535.")
+            else:
+                print_error("Port must be a number.")
+    else:
+        print_info(f"Detected port: {port}")
+        port_input = input(f"Use this port? (Y/n, or enter a different port): ").strip()
+        if port_input and port_input.lower() != 'y':
+            if port_input.isdigit() and 1 <= int(port_input) <= 65535:
+                port = int(port_input)
+            else:
+                print_error("Invalid port, using detected port.")
+
+    # Get domain
+    domain_pattern = re.compile(
+        r'^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?'
+        r'(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$'
+    )
+    domain = ""
+    while not domain:
+        domain = input(f"Enter domain (e.g., {instance}.example.com): ").strip()
+        if not domain:
+            print_error("Domain cannot be empty")
+        elif not domain_pattern.match(domain):
+            print_error("Invalid domain format. Please enter a valid domain.")
+            domain = ""
+
+    # Get email for SSL
+    email_pattern = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+    email = ""
+    while not email:
+        email = input("Enter email for SSL certificates: ").strip()
+        if not email:
+            print_error("Email cannot be empty")
+        elif not email_pattern.match(email):
+            print_error("Invalid email format. Please enter a valid email.")
+            email = ""
+
+    # Import utility classes
+    try:
+        from utils import DNSChecker, NginxManager, SSLManager, FirewallManager
+    except ImportError:
+        # Try from the installer directory
+        import importlib.util
+        utils_path = INSTALLER_DIR / "utils.py"
+        if utils_path.exists():
+            spec = importlib.util.spec_from_file_location("utils", utils_path)
+            utils_mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(utils_mod)
+            DNSChecker = utils_mod.DNSChecker
+            NginxManager = utils_mod.NginxManager
+            SSLManager = utils_mod.SSLManager
+            FirewallManager = utils_mod.FirewallManager
+        else:
+            print_error("Cannot import utility modules. Is the installer properly installed?")
+            return 1
+
+    dns_checker = DNSChecker()
+    firewall = FirewallManager()
+    nginx = NginxManager()
+    ssl_mgr = SSLManager()
+
+    # Open firewall port (80/443 for web)
+    firewall.open_port(port, instance)
+
+    # Check DNS
+    if not dns_checker.check(domain):
+        proceed = input("DNS check failed. Proceed anyway? (y/n): ").strip().lower()
+        if proceed != 'y':
+            print_error("Setup aborted due to DNS issues.")
+            return 1
+
+    # Setup nginx
+    print_info(f"Configuring Nginx reverse proxy for {domain} -> localhost:{port}...")
+    try:
+        nginx.setup(domain, port, instance, app_dir)
+        print_success("Nginx configured successfully")
+    except Exception as e:
+        print_error(f"Nginx setup failed: {e}")
+        return 1
+
+    # Setup SSL
+    print_info(f"Setting up SSL certificate for {domain}...")
+    try:
+        ssl_mgr.setup(domain, email)
+        print_success("SSL certificate obtained successfully")
+    except Exception as e:
+        print_error(f"SSL setup failed: {e}")
+        print_warning("Nginx is configured but without SSL. You can retry SSL with: sudo certbot --nginx -d " + domain)
+        return 1
+
+    print()
+    print_success(f"Domain setup complete! Access your instance at: https://{domain}")
+    print_info(f"Restart the service to apply any changes: plex restart {instance}")
+    return 0
+
+
+def handle_tool_command(args: list) -> int:
+    """Handle tool subcommands."""
+    if len(args) < 1:
+        print_error("Usage: plex tool <subcommand> [options]")
+        print()
+        print(f"{YELLOW}Available tools:{NC}")
+        print(f"  {GREEN}setupdomain <app>{NC}  - Set up domain, reverse proxy & SSL for an instance")
+        return 1
+
+    subcommand = args[0].lower()
+
+    if subcommand == 'setupdomain':
+        if len(args) < 2:
+            print_error("Usage: plex tool setupdomain <app>")
+            print("Use 'plex list' to see installed applications")
+            return 1
+        return tool_setupdomain(args[1])
+    else:
+        print_error(f"Unknown tool subcommand: {subcommand}")
+        print_info("Use 'plex tool' for usage information")
+        return 1
+
+
+# ========== END TOOL COMMANDS ==========
+
+
 def main():
     """Main entry point"""
     _maybe_auto_update()
@@ -1073,6 +1236,9 @@ def main():
     
     elif command == 'addon':
         return handle_addon_command(sys.argv[2:])
+    
+    elif command == 'tool':
+        return handle_tool_command(sys.argv[2:])
     
     elif command in ['help', '-h', '--help']:
         show_help()

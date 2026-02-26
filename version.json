@@ -1,8 +1,9 @@
 {
-  "version": "3.1.16",
-  "release_date": "2026-02-10",
+  "version": "3.1.17",
+  "release_date": "2026-02-26",
   "changelog": [
-    "Fixed an issue with the installer."
+    "Domain/reverse proxy/SSL setup is now optional during installation",
+    "Added `plex tool setupdomain <app>` command to configure domain afterwards"
   ],
   "download_urls": {
     "installer": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/installer.py",
