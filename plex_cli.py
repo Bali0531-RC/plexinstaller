@@ -1041,7 +1041,7 @@ def tool_setupdomain(app: str) -> int:
                 print_error("Port must be a number.")
     else:
         print_info(f"Detected port: {port}")
-        port_input = input(f"Use this port? (Y/n, or enter a different port): ").strip()
+        port_input = input("Use this port? (Y/n, or enter a different port): ").strip()
         if port_input and port_input.lower() != 'y':
             if port_input.isdigit() and 1 <= int(port_input) <= 65535:
                 port = int(port_input)
