@@ -5,14 +5,7 @@ export type ReleaseNote = {
 };
 
 export const releases: ReleaseNote[] = [
-  {
-    version: "3.1.17",
-    date: "2026-02-26",
-    highlights: [
-      "Domain/reverse proxy/SSL setup is now optional during installation",
-      "Added `plex tool setupdomain <app>` command to configure domain afterwards",
-    ]
-  },
+export const releases: ReleaseNote[] = [
   {
     version: "3.1.17",
     date: "2026-02-26",
@@ -22,6 +15,7 @@ export const releases: ReleaseNote[] = [
       "Added `plex tool setupdomain <app>` CLI command to set up domain, nginx, and SSL for an existing instance.",
     ]
   },
+  {
   {
     version: "3.1.16",
     date: "2026-02-10",
