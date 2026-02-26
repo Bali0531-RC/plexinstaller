@@ -2,8 +2,9 @@
   "version": "3.1.17",
   "release_date": "2026-02-26",
   "changelog": [
-    "Domain/reverse proxy/SSL setup is now optional during installation",
-    "Added `plex tool setupdomain <app>` command to configure domain afterwards"
+    "Domain, reverse proxy, and SSL setup is now optional during installation.",
+    "Users without a domain can skip the web setup and configure it later.",
+    "Added `plex tool setupdomain <app>` CLI command to set up domain, nginx, and SSL for an existing instance."
   ],
   "download_urls": {
     "installer": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/installer.py",
@@ -18,7 +19,7 @@
     "addon_manager": "d0426eb154927a85cdc9eb8aa203d3eb1834b505f695ece1834c967effa50e1b",
     "config": "ab23aeaea04cf4a9df770f143e4338d7f5dd2ebf89f895dd32db5b316a5041c8",
     "installer": "80efda34c6b6fa68998fae377be93677b22072f4259f01e9ce40e5c0ff66b412",
-    "plex_cli": "ed1d4e8f60188b991b09f2a3573b9e92b2727c1dd78b67f9d1067eb76df8d6c3",
+    "plex_cli": "863c7dd4b0b009ea03af4fc603b43327ad124bae02ad83966a3b13873c48627f",
     "telemetry_client": "e42440fd4aef42c961a7863e033722005ba7fd30bff67875e41f819534057f41",
     "utils": "aef9149d5272532592807964cb071658daf9a9629a425e7af0da02ddb48037af"
   }
