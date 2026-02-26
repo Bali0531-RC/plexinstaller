@@ -1097,7 +1097,7 @@ def tool_setupdomain(app: str) -> int:
     nginx = NginxManager()
     ssl_mgr = SSLManager()
 
-    # Open firewall port (80/443 for web)
+    # Open firewall port for the application
     firewall.open_port(port, instance)
 
     # Check DNS
