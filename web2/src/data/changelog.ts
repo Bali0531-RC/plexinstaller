@@ -9,6 +9,14 @@ export const releases: ReleaseNote[] = [
     version: "3.1.17",
     date: "2026-02-26",
     highlights: [
+      "Domain/reverse proxy/SSL setup is now optional during installation",
+      "Added `plex tool setupdomain <app>` command to configure domain afterwards",
+    ]
+  },
+  {
+    version: "3.1.17",
+    date: "2026-02-26",
+    highlights: [
       "Domain, reverse proxy, and SSL setup is now optional during installation.",
       "Users without a domain can skip the web setup and configure it later.",
       "Added `plex tool setupdomain <app>` CLI command to set up domain, nginx, and SSL for an existing instance.",
