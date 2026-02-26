@@ -36,7 +36,7 @@ except ImportError:
 from telemetry_client import TelemetryClient
 
 # Current installer version
-INSTALLER_VERSION = "3.1.16"
+INSTALLER_VERSION = "3.1.17"
 VERSION_CHECK_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/version.json"
 LOCK_FILE = "/var/run/plexinstaller.lock"
 
@@ -55,6 +55,7 @@ class InstallationContext:
     service_created: bool = False
     nginx_configured: bool = False
     ssl_configured: bool = False
+    domain_skipped: bool = False
     opened_port: Optional[int] = None
     telemetry_session: Optional[str] = None
     log_path: Optional[Path] = None
@@ -578,7 +579,17 @@ class PlexInstaller:
         has_dashboard: bool = False,
         needs_web: bool = True
     ):
-        """Install a product"""
+        """
+        Install the named product instance on the system.
+        
+        Performs an interactive installation workflow that may prompt the user, extract an archive, install dependencies, optionally configure web (domain, nginx, SSL) and dashboard components, set up MongoDB credentials if required, create a systemd service, run post-install self-tests, and record telemetry. On failure the installer attempts cleanup/rollback for the partially created instance.
+        
+        Parameters:
+            product (str): Product identifier to install (e.g., "plextickets").
+            default_port (int): Default TCP port suggested for the product's service.
+            has_dashboard (bool): If True, also install the product's optional dashboard component.
+            needs_web (bool): If True, offer and perform web-related setup (domain, nginx, SSL); if False, skip domain/SSL flow and only configure the service.
+        """
         instance_name = None
         context: Optional[InstallationContext] = None
         current_step = "initializing"
@@ -645,11 +656,35 @@ class PlexInstaller:
             port = default_port
             if needs_web:
                 current_step = "web_setup"
-                domain, port, email = self._setup_web(instance_name, default_port, extracted_path, context)
-                context.domain = domain
-                context.email = email
-                context.port = port
-                self.telemetry.log_step(current_step, "success", f"{domain}:{port}")
+                has_domain = input("Do you have a domain name for this instance? (y/n): ").strip().lower()
+                if has_domain == 'y':
+                    domain, port, email = self._setup_web(instance_name, default_port, extracted_path, context)
+                    context.domain = domain
+                    context.email = email
+                    context.port = port
+                    self.telemetry.log_step(current_step, "success", f"{domain}:{port}")
+                else:
+                    # Let user pick a port but skip domain/nginx/SSL
+                    while True:
+                        port_input = input(f"Enter port (default: {default_port}): ").strip()
+                        if not port_input:
+                            port = default_port
+                            break
+                        if port_input.isdigit():
+                            port = int(port_input)
+                            if 1 <= port <= 65535:
+                                break
+                            else:
+                                self.printer.error("Port must be between 1 and 65535. Please try again.")
+                        else:
+                            self.printer.error("Port must be a number. Please try again.")
+                    context.port = port
+                    context.domain_skipped = True
+                    self.firewall.open_port(port, instance_name)
+                    context.opened_port = port
+                    self.printer.warning("Domain setup skipped. You can set it up later with:")
+                    self.printer.step(f"  plex tool setupdomain {instance_name}")
+                    self.telemetry.log_step(current_step, "success", f"domain_skipped, port:{port}")
 
             # Dashboard setup for PlexTickets
             if has_dashboard:
@@ -1735,7 +1770,17 @@ gpgkey=https://www.mongodb.org/static/pgp/server-{mongo_ver}.asc
             return False
     
     def _post_install(self, instance_name: str, install_path: Path, domain: Optional[str], needs_web: bool):
-        """Post-installation tasks"""
+        """
+        Perform post-installation tasks and display configuration and management instructions for the installed instance.
+        
+        Finds an application config file under the installation path and offers to open it for editing. Shows the access URL when a domain is configured, or prints a warning and guidance when no domain is configured but a web interface is expected. Finally, prints recommended systemctl and journalctl commands for managing and viewing logs for the instance.
+        
+        Parameters:
+        	instance_name (str): The unique instance/service name used for systemd service and CLI guidance.
+        	install_path (Path): Filesystem path of the installed product used to locate configuration files.
+        	domain (Optional[str]): The configured domain for web access; if None, no domain-based URL will be shown.
+        	needs_web (bool): Whether the product exposes a web interface; controls whether web-access instructions are shown.
+        """
         # Find config file
         config_files = list(install_path.glob("config.y*ml")) + list(install_path.glob("config.json"))
         
@@ -1751,6 +1796,9 @@ gpgkey=https://www.mongodb.org/static/pgp/server-{mongo_ver}.asc
         # Display access information
         if needs_web and domain:
             self.printer.success(f"Access at: https://{domain}")
+        elif needs_web and not domain:
+            self.printer.warning("No domain configured. The app is accessible on its port directly.")
+            self.printer.step(f"Set up a domain later with: plex tool setupdomain {instance_name}")
         
         print(f"\nManage service: sudo systemctl [start|stop|restart|status] plex-{instance_name}")
         print(f"View logs: sudo journalctl -u plex-{instance_name} -f")
