@@ -1,8 +1,9 @@
 {
-  "version": "3.1.16",
-  "release_date": "2026-02-10",
+  "version": "3.1.17",
+  "release_date": "2026-02-26",
   "changelog": [
-    "Fixed an issue with the installer."
+    "Domain/reverse proxy/SSL setup is now optional during installation",
+    "Added `plex tool setupdomain <app>` command to configure domain afterwards"
   ],
   "download_urls": {
     "installer": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/installer.py",
@@ -16,8 +17,8 @@
   "checksums": {
     "addon_manager": "d0426eb154927a85cdc9eb8aa203d3eb1834b505f695ece1834c967effa50e1b",
     "config": "ab23aeaea04cf4a9df770f143e4338d7f5dd2ebf89f895dd32db5b316a5041c8",
-    "installer": "1a952d0e68b72ecb329c5e59374c02381670835bdf0c8f2254e4fc3d676e7653",
-    "plex_cli": "581826d171fffcfcea0797e67d1e328849bf946df3843af6fde9c8353852d030",
+    "installer": "80efda34c6b6fa68998fae377be93677b22072f4259f01e9ce40e5c0ff66b412",
+    "plex_cli": "ed1d4e8f60188b991b09f2a3573b9e92b2727c1dd78b67f9d1067eb76df8d6c3",
     "telemetry_client": "e42440fd4aef42c961a7863e033722005ba7fd30bff67875e41f819534057f41",
     "utils": "aef9149d5272532592807964cb071658daf9a9629a425e7af0da02ddb48037af"
   }
