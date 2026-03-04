@@ -7,7 +7,7 @@ name = "plexinstaller"
 version = "3.1.17"
 description = "Unofficial CLI installer and management tool for PlexDevelopment products"
 readme = "README.md"
-license = { text = "GPL-3.0-only" }
+license = "GPL-3.0-only"
 requires-python = ">=3.10"
 dependencies = [
     "requests>=2.31.0",
@@ -30,6 +30,20 @@ dev = [
     "pytest-cov>=4.1",
     "ruff>=0.4",
     "mypy>=1.10",
+]
+
+[tool.setuptools]
+py-modules = [
+    "installer",
+    "plex_cli",
+    "config",
+    "utils",
+    "shared",
+    "telemetry_client",
+    "addon_manager",
+    "health_checker",
+    "mongodb_manager",
+    "backup_manager",
 ]
 
 [tool.ruff]
