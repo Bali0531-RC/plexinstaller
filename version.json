@@ -1,10 +1,21 @@
 {
-  "version": "3.1.17",
-  "release_date": "2026-02-26",
+  "version": "3.2.0",
+  "release_date": "2026-03-04",
   "changelog": [
-    "Domain, reverse proxy, and SSL setup is now optional during installation.",
-    "Users without a domain can skip the web setup and configure it later.",
-    "Added `plex tool setupdomain <app>` CLI command to set up domain, nginx, and SSL for an existing instance."
+    "Extracted shared update/GPG/version logic into shared.py — eliminates duplication between installer.py and plex_cli.py.",
+    "Decomposed the installer god-class into MongoDBManager, BackupManager, and HealthChecker modules.",
+    "Migrated terminal colors from raw ANSI codes to colorama throughout the codebase.",
+    "Added Python logging module with dual output (TUI + structured log file).",
+    "Added 84 automated tests covering utils, config, shared, telemetry, and health_checker.",
+    "Added GitHub Actions CI pipeline with linting (ruff), type checking (mypy), and tests.",
+    "Web frontend converted to single-page app with react-router-dom client-side routing.",
+    "Hero version now derived from changelog data instead of being hardcoded.",
+    "Fixed duplicate changelog entries in the web frontend.",
+    "Adopted pyproject.toml for modern Python packaging with explicit module discovery.",
+    "setup.sh now downloads all managed files (shared.py, health_checker.py, mongodb_manager.py, backup_manager.py) and installs dependencies from requirements.txt.",
+    "Installer auto-detects and downloads missing files on startup for seamless upgrades from older versions.",
+    "Dev/beta branch GPG verification failures no longer block installation.",
+    "Fixed datetime.utcnow() deprecation warnings for Python 3.12+."
   ],
   "download_urls": {
     "installer": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/installer.py",
@@ -24,7 +35,7 @@
     "backup_manager": "df99a7da29f6baa86bffd668a8432e5be24561f81f0c11856cd5db5b7566285d",
     "config": "ab23aeaea04cf4a9df770f143e4338d7f5dd2ebf89f895dd32db5b316a5041c8",
     "health_checker": "e51c831a50886058eb6dc501c41936046dc921ad2e8ee2e90396c1571c9a1000",
-    "installer": "f7c73f9d6bfc5c121d522ce1cdc5065b4e37db138c09262ea5d1a971bc0bf6aa",
+    "installer": "a76dc190482d5ec3bcc3b6accb89f5f10b8e5f06fa2208bc5a0263492787fe22",
     "mongodb_manager": "ae8ce740ca227de589460d7e9b8cf1d515da285bca948d9581c612e7e6fe1f3b",
     "plex_cli": "9221ab29dc7043d45715e0bef3f9287a65d7d809b69f9ae44f7db9a6d1564ebf",
     "shared": "2f1f89ee8fa3a804f6fc2103ae05123fcf8402cda747efc202027f07c2cd40d3",

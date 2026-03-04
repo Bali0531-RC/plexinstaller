@@ -6,6 +6,26 @@ export type ReleaseNote = {
 
 export const releases: ReleaseNote[] = [
   {
+    version: "3.2.0",
+    date: "2026-03-04",
+    highlights: [
+      "Extracted shared update/GPG/version logic into shared.py — eliminates duplication between installer.py and plex_cli.py.",
+      "Decomposed the installer god-class into MongoDBManager, BackupManager, and HealthChecker modules.",
+      "Migrated terminal colors from raw ANSI codes to colorama throughout the codebase.",
+      "Added Python logging module with dual output (TUI + structured log file).",
+      "Added 84 automated tests covering utils, config, shared, telemetry, and health_checker.",
+      "Added GitHub Actions CI pipeline with linting (ruff), type checking (mypy), and tests.",
+      "Web frontend converted to single-page app with react-router-dom client-side routing.",
+      "Hero version now derived from changelog data instead of being hardcoded.",
+      "Fixed duplicate changelog entries in the web frontend.",
+      "Adopted pyproject.toml for modern Python packaging with explicit module discovery.",
+      "setup.sh now downloads all managed files (shared.py, health_checker.py, mongodb_manager.py, backup_manager.py) and installs dependencies from requirements.txt.",
+      "Installer auto-detects and downloads missing files on startup for seamless upgrades from older versions.",
+      "Dev/beta branch GPG verification failures no longer block installation.",
+      "Fixed datetime.utcnow() deprecation warnings for Python 3.12+.",
+    ]
+  },
+  {
     version: "3.1.17",
     date: "2026-02-26",
     highlights: [

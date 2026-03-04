@@ -75,7 +75,7 @@ except ImportError:
 from utils import setup_logging
 
 # Current installer version
-INSTALLER_VERSION = "3.1.17"
+INSTALLER_VERSION = "3.2.0"
 VERSION_CHECK_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/version.json"
 LOCK_FILE = "/var/run/plexinstaller.lock"
 
