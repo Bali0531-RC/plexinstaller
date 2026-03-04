@@ -16,7 +16,6 @@ import urllib.request
 import time
 import socket
 import ssl
-import http.client
 import fcntl
 import hashlib
 import atexit
@@ -34,15 +33,46 @@ try:
 except ImportError:
     AddonManager = None
 from telemetry_client import TelemetryClient
-from shared import (
-    is_newer_version as _shared_is_newer,
-    verify_gpg_signature as _shared_verify_gpg,
-    perform_update as _shared_perform_update,
-    ensure_cli_entrypoints as _shared_ensure_cli,
-)
-from mongodb_manager import MongoDBManager
-from backup_manager import BackupManager
-from health_checker import HealthChecker, SelfTestResult
+try:
+    from shared import (
+        is_newer_version as _shared_is_newer,
+        verify_gpg_signature as _shared_verify_gpg,
+        perform_update as _shared_perform_update,
+        ensure_cli_entrypoints as _shared_ensure_cli,
+        download_missing_files as _shared_download_missing,
+        INSTALLER_DIR,
+        UPDATE_FILE_MAP,
+    )
+except ImportError:
+    _shared_is_newer = None
+    _shared_verify_gpg = None
+    _shared_perform_update = None
+    _shared_ensure_cli = None
+    _shared_download_missing = None
+    INSTALLER_DIR = Path("/opt/plexinstaller")
+    UPDATE_FILE_MAP = {
+        'installer': 'installer.py', 'config': 'config.py',
+        'utils': 'utils.py', 'plex_cli': 'plex_cli.py',
+        'telemetry_client': 'telemetry_client.py',
+        'addon_manager': 'addon_manager.py', 'shared': 'shared.py',
+        'health_checker': 'health_checker.py',
+        'mongodb_manager': 'mongodb_manager.py',
+        'backup_manager': 'backup_manager.py',
+    }
+try:
+    from mongodb_manager import MongoDBManager
+except ImportError:
+    MongoDBManager = None
+try:
+    from backup_manager import BackupManager
+except ImportError:
+    BackupManager = None
+try:
+    from health_checker import HealthChecker, SelfTestResult
+except ImportError:
+    HealthChecker = None
+    SelfTestResult = None
+from utils import setup_logging
 
 # Current installer version
 INSTALLER_VERSION = "3.1.17"
@@ -101,12 +131,12 @@ class PlexInstaller:
             system=self.system,
             mongodb_version=self.config.MONGODB_VERSION,
             mongodb_repo_version_bookworm=self.config.MONGODB_REPO_VERSION_BOOKWORM,
-        )
+        ) if MongoDBManager else None
         self.backup_mgr = BackupManager(
             printer=self.printer,
             systemd=self.systemd,
             install_dir=self.config.install_dir,
-        )
+        ) if BackupManager else None
         self.health = HealthChecker(
             printer=self.printer,
             systemd=self.systemd,
@@ -114,7 +144,7 @@ class PlexInstaller:
             node_min_version=self.config.NODE_MIN_VERSION,
             nginx_available=self.config.nginx_available,
             nginx_enabled=self.config.nginx_enabled,
-        )
+        ) if HealthChecker else None
         self.telemetry_enabled = self._initialize_telemetry_preference()
         self.telemetry = TelemetryClient(
             endpoint=self.config.TELEMETRY_ENDPOINT,
@@ -190,13 +220,6 @@ class PlexInstaller:
         print(f"{ColorPrinter.BOLD}{ColorPrinter.PURPLE} UNOFFICIAL Installation Script for PlexDevelopment Products{ColorPrinter.NC}")
         print(f"{ColorPrinter.CYAN}{self.version.upper()} Version - Python-Based Installer{ColorPrinter.NC}\n")
     
-    def _check_root(self) -> bool:
-        """Check if running as root"""
-        if os.geteuid() != 0:
-            self.printer.error("This installer must be run as root (use sudo)")
-            return False
-        return True
-
     def _initialize_telemetry_preference(self) -> bool:
         """Load or prompt for the user's telemetry preference."""
         pref_file = self.config.telemetry_pref_file
@@ -260,6 +283,9 @@ class PlexInstaller:
             else:
                 self.printer.success(f"Installer is up to date (v{INSTALLER_VERSION})")
 
+            # Download any managed files that are missing on disk
+            self._download_missing_files(version_data)
+
             # Ensure CLI entrypoints are wired correctly (older installs used a copied plex CLI).
             self._ensure_cli_entrypoints()
             
@@ -270,16 +296,77 @@ class PlexInstaller:
             self.printer.step("Continuing with current version...")
             print()
 
+    def _download_missing_files(self, version_data: Dict) -> None:
+        """Download any managed files that are missing from the install directory.
+
+        Uses version_data already fetched during the update check so no extra
+        network round-trip is needed.  Falls back to a self-contained
+        implementation when shared.py itself is unavailable (first upgrade
+        from an older installer that predates shared.py).
+        """
+        if _shared_download_missing is not None:
+            _shared_download_missing(
+                print_info=self.printer.step,
+                print_success=self.printer.success,
+                print_warning=self.printer.warning,
+                print_error=self.printer.error,
+            )
+            return
+
+        # Inline fallback — shared.py is missing, download everything we need
+        install_dir = INSTALLER_DIR
+        urls = version_data.get('download_urls', {})
+        checksums = version_data.get('checksums', {})
+
+        for key, filename in UPDATE_FILE_MAP.items():
+            target = install_dir / filename
+            if target.exists():
+                continue
+            if key not in urls or key not in checksums:
+                continue
+
+            try:
+                self.printer.step(f"Downloading missing file {filename}...")
+                with urllib.request.urlopen(urls[key], timeout=30) as resp:
+                    content = resp.read()
+
+                actual = hashlib.sha256(content).hexdigest()
+                if actual != checksums[key]:
+                    self.printer.error(
+                        f"Checksum mismatch for {filename}: "
+                        f"expected {checksums[key]}, got {actual}"
+                    )
+                    continue
+
+                target.write_bytes(content)
+                os.chmod(target, 0o755 if filename.endswith('.py') else 0o644)
+                self.printer.success(f"Installed missing file {filename}")
+            except Exception as e:
+                self.printer.error(f"Failed to download {filename}: {e}")
+
     def _ensure_cli_entrypoints(self):
         """Ensure `plexinstaller` and `plex` commands point at the current installer bundle."""
-        _shared_ensure_cli()
+        if _shared_ensure_cli is not None:
+            _shared_ensure_cli()
 
     def _is_newer_version(self, remote: str, local: str) -> bool:
         """Compare version strings (semantic versioning)"""
-        return _shared_is_newer(remote, local)
+        if _shared_is_newer is not None:
+            return _shared_is_newer(remote, local)
+        try:
+            r = [int(x) for x in remote.split('.')]
+            l = [int(x) for x in local.split('.')]
+            while len(r) < len(l): r.append(0)
+            while len(l) < len(r): l.append(0)
+            return r > l
+        except Exception:
+            return False
     
     def _verify_gpg_signature(self, version_json_bytes: bytes) -> bool:
         """Download version.json.sig and verify version.json against it."""
+        if _shared_verify_gpg is None:
+            self.printer.warning("shared.py not available — skipping GPG verification")
+            return True
         return _shared_verify_gpg(
             version_json_bytes,
             print_info=self.printer.step,
@@ -290,6 +377,9 @@ class PlexInstaller:
 
     def _perform_update(self, version_data: Dict, version_json_bytes: bytes = b''):
         """Download and install new installer version with checksum verification"""
+        if _shared_perform_update is None:
+            self.printer.warning("shared.py not available — cannot auto-update")
+            return
         _shared_perform_update(
             version_data,
             version_json_bytes,
@@ -777,364 +867,6 @@ class PlexInstaller:
         os.chmod(error_page, 0o644)
         self.printer.success("Created 502 error page")
 
-    def _setup_web(
-        self,
-        instance_name: str,
-        default_port: int,
-        install_path: Path,
-        context: InstallationContext
-    ) -> Tuple[str, int, str]:
-        """Setup web server (nginx, SSL) with validation and context tracking."""
-
-        # Get port with validation (including range check)
-        while True:
-            port_input = input(f"Enter port (default: {default_port}): ").strip()
-            if not port_input:
-        try:
-            # Clean up old MongoDB repository files
-            self.printer.step("Cleaning up old MongoDB repositories...")
-            old_repo_files = [
-                '/etc/apt/sources.list.d/mongodb-org-7.0.list',
-                '/etc/apt/sources.list.d/mongodb-org-6.0.list',
-                '/etc/apt/sources.list.d/mongodb-org-5.0.list',
-                '/etc/apt/sources.list.d/mongodb-org-4.4.list',
-            ]
-            old_gpg_keys = [
-                '/usr/share/keyrings/mongodb-server-7.0.gpg',
-                '/usr/share/keyrings/mongodb-server-6.0.gpg',
-                '/usr/share/keyrings/mongodb-server-5.0.gpg',
-                '/usr/share/keyrings/mongodb-server-4.4.gpg',
-            ]
-            
-            for repo_file in old_repo_files:
-                if Path(repo_file).exists():
-                    Path(repo_file).unlink()
-            
-            for gpg_key in old_gpg_keys:
-                if Path(gpg_key).exists():
-                    Path(gpg_key).unlink()
-            
-            # Ensure prerequisites are installed
-            self.printer.step("Installing prerequisites (gnupg, curl)...")
-            subprocess.run(['apt-get', 'install', '-y', 'gnupg', 'curl'], 
-                         check=True, capture_output=True, timeout=120)
-            
-            # Import MongoDB GPG key (using pipe method as per MongoDB docs)
-            mongo_ver = self.config.MONGODB_VERSION
-            mongo_ver_bookworm = self.config.MONGODB_REPO_VERSION_BOOKWORM
-            self.printer.step("Adding MongoDB repository...")
-            curl_process = subprocess.Popen(
-                ['curl', '-fsSL', f'https://www.mongodb.org/static/pgp/server-{mongo_ver}.asc'],
-                stdout=subprocess.PIPE
-            )
-            subprocess.run(
-                ['gpg', '-o', f'/usr/share/keyrings/mongodb-server-{mongo_ver}.gpg', '--dearmor'],
-                stdin=curl_process.stdout,
-                check=True,
-                timeout=30
-            )
-            curl_process.wait()
-
-            # Detect distro and codename
-            distro = (self.system.distribution or "").lower()
-            distro_codename = subprocess.run(
-                ['lsb_release', '-cs'],
-                capture_output=True, text=True, check=True, timeout=10
-            ).stdout.strip()
-
-            # Determine correct repository URL
-            if 'ubuntu' in distro:
-                repo_line = f"deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-{mongo_ver}.gpg ] http://repo.mongodb.org/apt/ubuntu {distro_codename}/mongodb-org/{mongo_ver} multiverse\n"
-            elif 'debian' in distro:
-                # Bookworm uses a different repo version per MongoDB official docs
-                if distro_codename == 'bookworm':
-                    repo_line = f"deb [ signed-by=/usr/share/keyrings/mongodb-server-{mongo_ver}.gpg ] http://repo.mongodb.org/apt/debian bookworm/mongodb-org/{mongo_ver_bookworm} main\n"
-                elif distro_codename == 'bullseye':
-                    repo_line = f"deb [ signed-by=/usr/share/keyrings/mongodb-server-{mongo_ver}.gpg ] http://repo.mongodb.org/apt/debian bullseye/mongodb-org/{mongo_ver} main\n"
-                else:
-                    # Fallback to bullseye for older versions
-                    repo_line = f"deb [ signed-by=/usr/share/keyrings/mongodb-server-{mongo_ver}.gpg ] http://repo.mongodb.org/apt/debian bullseye/mongodb-org/{mongo_ver} main\n"
-            else:
-                # Fallback to Ubuntu focal
-                repo_line = f"deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-{mongo_ver}.gpg ] http://repo.mongodb.org/apt/ubuntu focal/mongodb-org/{mongo_ver} multiverse\n"
-
-            with open(f'/etc/apt/sources.list.d/mongodb-org-{mongo_ver}.list', 'w') as f:
-                f.write(repo_line)
-            
-            # Update and install
-            self.printer.step("Updating package database...")
-            subprocess.run(['apt-get', 'update'], check=True, timeout=120)
-            
-            self.printer.step("Installing MongoDB packages...")
-            subprocess.run(['apt-get', 'install', '-y', 'mongodb-org'], check=True, timeout=300)
-            
-            # Start and enable service
-            self.printer.step("Starting MongoDB service...")
-            subprocess.run(['systemctl', 'start', 'mongod'], check=True, timeout=60)
-            subprocess.run(['systemctl', 'enable', 'mongod'], check=True, timeout=30)
-            
-            self.printer.success("MongoDB installed successfully")
-            return True
-            
-        except Exception as e:
-            self.printer.error(f"Failed to install MongoDB: {e}")
-            return False
-    
-    def _run_post_install_self_tests(self, context: InstallationContext, mongo_creds: Optional[Dict]) -> List[_SelfTestResult]:
-        results: List[PlexInstaller._SelfTestResult] = []
-
-        # Node runtime
-        ok, detail = self._check_node_version()
-        results.append(self._SelfTestResult(
-            name="Node.js version",
-            status="pass" if ok else "fail",
-            detail=detail,
-            hint="Install/upgrade Node.js and re-run installer" if not ok else "",
-        ))
-
-        # Install integrity
-        package_json = context.install_path / "package.json"
-        results.append(self._SelfTestResult(
-            name="package.json present",
-            status="pass" if package_json.exists() else "fail",
-            detail=str(package_json) if package_json.exists() else "missing",
-            hint="Ensure the archive contains a Node app with package.json" if not package_json.exists() else "",
-        ))
-
-        node_modules = context.install_path / "node_modules"
-        results.append(self._SelfTestResult(
-            name="node_modules present",
-            status="pass" if node_modules.exists() else "warn",
-            detail=str(node_modules) if node_modules.exists() else "missing",
-            hint="If the app fails to start, re-run npm install in the install directory" if not node_modules.exists() else "",
-        ))
-
-        # Config file existence
-        config_files = list(context.install_path.glob("config.y*ml")) + list(context.install_path.glob("config.json"))
-        results.append(self._SelfTestResult(
-            name="Config file present",
-            status="pass" if bool(config_files) else "warn",
-            detail=config_files[0].name if config_files else "no config.yml/config.json found",
-            hint="You may need to create/configure the app config manually" if not config_files else "",
-        ))
-
-        service_name = f"plex-{context.instance_name}"
-        if context.service_created:
-            # Wait for service to become active
-            is_active = False
-            for _ in range(20):
-                status = self.systemd.get_status(service_name)
-                if status.strip() == "active":
-                    is_active = True
-                    break
-                time.sleep(1)
-
-            results.append(self._SelfTestResult(
-                name="systemd service active",
-                status="pass" if is_active else "fail",
-                detail=f"{service_name} is {self.systemd.get_status(service_name)}",
-                hint=f"Run: systemctl status {service_name} --no-pager" if not is_active else "",
-            ))
-        else:
-            results.append(self._SelfTestResult(
-                name="systemd auto-start",
-                status="warn",
-                detail="not configured",
-                hint=f"Enable it later with: systemctl enable --now {service_name}",
-            ))
-
-        # App port checks (only meaningful if service is running)
-        if context.service_created:
-            port_ready = self._wait_for_tcp_port("127.0.0.1", context.port, timeout_seconds=45)
-            results.append(self._SelfTestResult(
-                name="Local TCP port reachable",
-                status="pass" if port_ready else "fail",
-                detail=f"127.0.0.1:{context.port}",
-                hint=f"Check the service logs: journalctl -u {service_name} -n 200 --no-pager" if not port_ready else "",
-            ))
-
-            if port_ready:
-                http_ok, http_detail = self._probe_http("127.0.0.1", context.port)
-                results.append(self._SelfTestResult(
-                    name="Local HTTP responds",
-                    status="pass" if http_ok else "warn",
-                    detail=http_detail,
-                    hint="The app may not expose /; verify the configured bind/port" if not http_ok else "",
-                ))
-
-        # Mongo validation (only if we generated creds)
-        if mongo_creds and mongo_creds.get('uri'):
-            uri = mongo_creds['uri']
-            ok = self._validate_mongodb_uri(uri)
-            results.append(self._SelfTestResult(
-                name="MongoDB auth via generated URI",
-                status="pass" if ok else "fail",
-                detail="ping ok" if ok else "authentication/ping failed",
-                hint="Re-run MongoDB setup or create the DB/user manually and update the app config" if not ok else "",
-            ))
-
-            if ok:
-                # Optional write/read sanity check
-                script = (
-                    "(function() {\n"
-                    "  try {\n"
-                    "    const c = db.getCollection('__plexinstaller_selftest');\n"
-                    "    const doc = { ok: true, ts: new Date() };\n"
-                    "    c.insertOne(doc);\n"
-                    "    const found = c.findOne({ ok: true });\n"
-                    "    if (!found) throw new Error('readback failed');\n"
-                    "    print('__PLEXINSTALLER_OK__');\n"
-                    "  } catch (e) {\n"
-                    "    print('__PLEXINSTALLER_ERROR__ ' + e); quit(2);\n"
-                    "  }\n"
-                    "})();"
-                )
-                try:
-                    result = self._run_mongo_shell([uri, '--quiet', '--eval', script], timeout=20)
-                    combined = (result.stdout or "") + "\n" + (result.stderr or "")
-                    rw_ok = result.returncode == 0 and "__PLEXINSTALLER_OK__" in combined
-                except Exception:
-                    rw_ok = False
-                results.append(self._SelfTestResult(
-                    name="MongoDB read/write",
-                    status="pass" if rw_ok else "warn",
-                    detail="ok" if rw_ok else "could not verify insert/read",
-                    hint="Check MongoDB logs and permissions" if not rw_ok else "",
-                ))
-        else:
-            # Only warn if the product requires MongoDB
-            product_cfg = self.config.get_product(context.product) if hasattr(self.config, "get_product") else None
-            requires = bool(getattr(product_cfg, "requires_mongodb", False))
-            if requires:
-                results.append(self._SelfTestResult(
-                    name="MongoDB configured",
-                    status="warn",
-                    detail="no MongoDB credentials generated",
-                    hint="This product requires MongoDB; set mongoURI in the config and restart the service",
-                ))
-
-        # Nginx + SSL checks
-        if context.domain:
-            try:
-                nginx_active = subprocess.run(['systemctl', 'is-active', 'nginx'], capture_output=True, text=True, timeout=10)
-                results.append(self._SelfTestResult(
-                    name="nginx service active",
-                    status="pass" if nginx_active.stdout.strip() == 'active' else "fail",
-                    detail=nginx_active.stdout.strip() or nginx_active.stderr.strip(),
-                    hint="Run: systemctl status nginx --no-pager" if nginx_active.stdout.strip() != 'active' else "",
-                ))
-            except Exception as exc:
-                results.append(self._SelfTestResult(
-                    name="nginx service active",
-                    status="warn",
-                    detail=str(exc),
-                    hint="Ensure nginx is installed and running",
-                ))
-
-            config_file = self.config.nginx_available / f"{context.domain}.conf"
-            enabled_link = self.config.nginx_enabled / f"{context.domain}.conf"
-            results.append(self._SelfTestResult(
-                name="nginx site config present",
-                status="pass" if config_file.exists() else "fail",
-                detail=str(config_file) if config_file.exists() else "missing",
-                hint="Re-run web setup or recreate the nginx config",
-            ))
-            results.append(self._SelfTestResult(
-                name="nginx site enabled",
-                status="pass" if (enabled_link.exists() or enabled_link.is_symlink()) else "fail",
-                detail=str(enabled_link) if (enabled_link.exists() or enabled_link.is_symlink()) else "missing",
-                hint="Create symlink in sites-enabled and reload nginx",
-            ))
-
-            try:
-                t = subprocess.run(['nginx', '-t'], capture_output=True, text=True, timeout=15)
-                results.append(self._SelfTestResult(
-                    name="nginx config test",
-                    status="pass" if t.returncode == 0 else "fail",
-                    detail=(t.stdout or t.stderr or "").strip()[-200:],
-                    hint="Fix nginx errors then reload: systemctl reload nginx" if t.returncode != 0 else "",
-                ))
-            except Exception as exc:
-                results.append(self._SelfTestResult(
-                    name="nginx config test",
-                    status="warn",
-                    detail=str(exc),
-                    hint="Install nginx and run nginx -t",
-                ))
-
-            # Cert presence (warning only)
-            cert_path = Path(f"/etc/letsencrypt/live/{context.domain}/fullchain.pem")
-            results.append(self._SelfTestResult(
-                name="SSL certificate present",
-                status="pass" if cert_path.exists() else "warn",
-                detail=str(cert_path) if cert_path.exists() else "not found",
-                hint="Re-run SSL setup or run certbot manually" if not cert_path.exists() else "",
-            ))
-
-            # DNS/HTTPS reachability checks are warnings only
-            try:
-                resolved = socket.gethostbyname(context.domain)
-                results.append(self._SelfTestResult(
-                    name="DNS resolves",
-                    status="pass",
-                    detail=resolved,
-                ))
-            except Exception as exc:
-                results.append(self._SelfTestResult(
-                    name="DNS resolves",
-                    status="warn",
-                    detail=str(exc),
-                    hint="Ensure your A/AAAA records point to this server",
-                ))
-
-            try:
-                ctx = ssl.create_default_context()
-                with socket.create_connection((context.domain, 443), timeout=5) as sock:
-                    with ctx.wrap_socket(sock, server_hostname=context.domain) as ssock:
-                        ssock.getpeercert()
-                results.append(self._SelfTestResult(
-                    name="HTTPS handshake",
-                    status="pass",
-                    detail="ok",
-                ))
-            except Exception as exc:
-                results.append(self._SelfTestResult(
-                    name="HTTPS handshake",
-                    status="warn",
-                    detail=str(exc),
-                    hint="Public HTTPS may fail until DNS/ports 443 are correct",
-                ))
-
-        self._print_self_test_summary(results)
-        return results
-
-    def _print_self_test_summary(self, results: List[_SelfTestResult]):
-        self.printer.header("Post-Install Self-Tests")
-        failures = 0
-        warnings = 0
-
-        for r in results:
-            if r.status == "pass":
-                self.printer.success(f"{r.name}: {r.detail}".rstrip())
-            elif r.status == "warn":
-                warnings += 1
-                self.printer.warning(f"{r.name}: {r.detail}".rstrip())
-                if r.hint:
-                    self.printer.step(r.hint)
-            else:
-                failures += 1
-                self.printer.error(f"{r.name}: {r.detail}".rstrip())
-                if r.hint:
-                    self.printer.step(r.hint)
-
-        if failures:
-            self.printer.error(f"Self-tests completed with {failures} failure(s) and {warnings} warning(s)")
-        elif warnings:
-            self.printer.warning(f"Self-tests completed with {warnings} warning(s)")
-        else:
-            self.printer.success("All self-tests passed")
-
-    
     def _setup_web(
         self,
         instance_name: str,
@@ -1901,6 +1633,8 @@ class PlexInstaller:
 
 def main():
     """Entry point"""
+    setup_logging()
+
     # Determine version from command line or environment
     version = os.environ.get("PLEX_INSTALLER_VERSION", "stable")
     

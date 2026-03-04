@@ -24,6 +24,7 @@ VERSION_CHECK_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller
 MANAGED_FILES = [
     'installer.py', 'config.py', 'utils.py', 'plex_cli.py',
     'telemetry_client.py', 'addon_manager.py', 'shared.py',
+    'health_checker.py', 'mongodb_manager.py', 'backup_manager.py',
 ]
 
 # Mapping from version.json keys to filenames
@@ -35,7 +36,75 @@ UPDATE_FILE_MAP = {
     'telemetry_client': 'telemetry_client.py',
     'addon_manager': 'addon_manager.py',
     'shared': 'shared.py',
+    'health_checker': 'health_checker.py',
+    'mongodb_manager': 'mongodb_manager.py',
+    'backup_manager': 'backup_manager.py',
 }
+
+
+def download_missing_files(
+    *,
+    print_info: Callable[[str], None],
+    print_success: Callable[[str], None],
+    print_warning: Callable[[str], None],
+    print_error: Callable[[str], None],
+) -> None:
+    """Check for managed files missing from INSTALLER_DIR and download them.
+
+    Fetches version.json, iterates UPDATE_FILE_MAP, and downloads any file
+    that doesn't exist on disk with SHA-256 checksum verification.
+    """
+    install_dir = INSTALLER_DIR
+
+    # Determine which files are missing
+    missing: Dict[str, str] = {}
+    for key, filename in UPDATE_FILE_MAP.items():
+        if not (install_dir / filename).exists():
+            missing[key] = filename
+
+    if not missing:
+        return
+
+    print_info(f"Downloading {len(missing)} missing file(s)...")
+
+    # Fetch version.json for URLs and checksums
+    try:
+        with urllib.request.urlopen(VERSION_CHECK_URL, timeout=15) as resp:
+            version_data = json.loads(resp.read())
+    except Exception as e:
+        print_error(f"Could not fetch version manifest: {e}")
+        return
+
+    urls = version_data.get('download_urls', {})
+    checksums = version_data.get('checksums', {})
+
+    for key, filename in missing.items():
+        if key not in urls:
+            print_warning(f"No download URL for {filename} — skipping")
+            continue
+        if key not in checksums:
+            print_warning(f"No checksum for {filename} — skipping for security")
+            continue
+
+        try:
+            print_info(f"Downloading {filename}...")
+            with urllib.request.urlopen(urls[key], timeout=30) as response:
+                content = response.read()
+
+            actual_hash = hashlib.sha256(content).hexdigest()
+            if actual_hash != checksums[key]:
+                print_error(
+                    f"Checksum mismatch for {filename}: "
+                    f"expected {checksums[key]}, got {actual_hash}"
+                )
+                continue
+
+            target = install_dir / filename
+            target.write_bytes(content)
+            os.chmod(target, 0o755 if filename.endswith('.py') else 0o644)
+            print_success(f"Installed {filename}")
+        except Exception as e:
+            print_error(f"Failed to download {filename}: {e}")
 
 
 def is_newer_version(remote: str, local: str) -> bool:

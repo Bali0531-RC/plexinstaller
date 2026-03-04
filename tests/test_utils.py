@@ -1,5 +1,6 @@
-"""Tests for utils.py — ColorPrinter, DNSChecker, FirewallManager, ArchiveExtractor, redaction."""
+"""Tests for utils.py — ColorPrinter, DNSChecker, FirewallManager, ArchiveExtractor, redaction, logging."""
 
+import logging
 import os
 import subprocess
 import zipfile
@@ -13,7 +14,51 @@ from utils import (
     redact_mongo_uri_credentials,
     redact_sensitive_yaml,
     ArchiveExtractor,
+    setup_logging,
 )
+
+
+# ---------------------------------------------------------------------------
+# setup_logging
+# ---------------------------------------------------------------------------
+
+class TestSetupLogging:
+    def test_creates_console_handler(self):
+        logger = logging.getLogger("plexinstaller")
+        logger.handlers.clear()
+
+        setup_logging()
+        assert len(logger.handlers) >= 1
+        assert any(isinstance(h, logging.StreamHandler) for h in logger.handlers)
+
+        # Cleanup
+        logger.handlers.clear()
+
+    def test_creates_file_handler(self, tmp_path: Path):
+        logger = logging.getLogger("plexinstaller")
+        logger.handlers.clear()
+
+        log_file = str(tmp_path / "test.log")
+        setup_logging(log_file=log_file)
+        assert any(isinstance(h, logging.FileHandler) for h in logger.handlers)
+
+        # Cleanup — close file handlers before clearing to avoid ResourceWarning
+        for h in logger.handlers:
+            if isinstance(h, logging.FileHandler):
+                h.close()
+        logger.handlers.clear()
+
+    def test_no_duplicate_handlers_on_second_call(self):
+        logger = logging.getLogger("plexinstaller")
+        logger.handlers.clear()
+
+        setup_logging()
+        count = len(logger.handlers)
+        setup_logging()  # second call should not add more
+        assert len(logger.handlers) == count
+
+        # Cleanup
+        logger.handlers.clear()
 
 
 # ---------------------------------------------------------------------------

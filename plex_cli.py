@@ -62,6 +62,8 @@ from colorama import Fore, Style, init as colorama_init
 # Initialize colorama
 colorama_init(autoreset=False)
 
+import logging
+
 # ANSI Colors (via colorama)
 RED = Fore.RED
 GREEN = Fore.GREEN
@@ -71,21 +73,27 @@ CYAN = Fore.CYAN
 BOLD = Style.BRIGHT
 NC = Style.RESET_ALL
 
+_cli_logger = logging.getLogger("plexinstaller.cli")
+
 def print_error(message: str):
     """Print error message"""
     print(f"{RED}[✗] {message}{NC}", file=sys.stderr)
+    _cli_logger.error(message)
 
 def print_success(message: str):
     """Print success message"""
     print(f"{GREEN}[✓] {message}{NC}", file=sys.stderr)
+    _cli_logger.info(message)
 
 def print_info(message: str):
     """Print info message"""
     print(f"{BLUE}[i] {message}{NC}", file=sys.stderr)
+    _cli_logger.info(message)
 
 def print_warning(message: str):
     """Print warning message"""
     print(f"{YELLOW}[!] {message}{NC}", file=sys.stderr)
+    _cli_logger.warning(message)
 
 def show_help():
     """Display help information"""
@@ -1069,6 +1077,12 @@ def handle_tool_command(args: list) -> int:
 
 def main():
     """Main entry point"""
+    try:
+        from utils import setup_logging
+        setup_logging()
+    except Exception:  # pragma: no cover
+        pass
+
     _maybe_auto_update()
 
     if len(sys.argv) < 2:

@@ -8,7 +8,7 @@ from unittest import mock
 
 import pytest
 
-from shared import is_newer_version, verify_gpg_signature, _force_symlink
+from shared import is_newer_version, verify_gpg_signature, _force_symlink, download_missing_files
 
 
 # ---------------------------------------------------------------------------
@@ -153,3 +153,98 @@ class TestForceSymlink:
 
         _force_symlink(link, missing)
         assert not link.exists()
+
+
+# ---------------------------------------------------------------------------
+# download_missing_files
+# ---------------------------------------------------------------------------
+
+class TestDownloadMissingFiles:
+    def _make_version_data(self):
+        return {
+            "download_urls": {"utils": "https://example.com/utils.py"},
+            "checksums": {"utils": "abc123"},
+        }
+
+    def test_noop_when_all_files_present(self, tmp_path: Path):
+        """No downloads when every managed file already exists."""
+        for fn in ['installer.py', 'config.py', 'utils.py', 'plex_cli.py',
+                    'telemetry_client.py', 'addon_manager.py', 'shared.py',
+                    'health_checker.py', 'mongodb_manager.py', 'backup_manager.py']:
+            (tmp_path / fn).write_text("")
+
+        calls = []
+        with mock.patch("shared.INSTALLER_DIR", tmp_path):
+            with mock.patch("shared.urllib.request.urlopen") as m:
+                download_missing_files(**_PRINTER_KWARGS)
+                m.assert_not_called()
+
+    def test_downloads_missing_file(self, tmp_path: Path):
+        """Missing file is downloaded and written with checksum verification."""
+        import hashlib
+        content = b"# utils code"
+        checksum = hashlib.sha256(content).hexdigest()
+
+        # Create all files except utils.py
+        from shared import UPDATE_FILE_MAP
+        for fn in set(UPDATE_FILE_MAP.values()) - {"utils.py"}:
+            (tmp_path / fn).write_text("")
+
+        version_data = {
+            "download_urls": {"utils": "https://example.com/utils.py"},
+            "checksums": {"utils": checksum},
+        }
+
+        def fake_urlopen(url, **kw):
+            resp = mock.MagicMock()
+            resp.__enter__ = mock.MagicMock(return_value=resp)
+            resp.__exit__ = mock.MagicMock(return_value=False)
+            resp.read.return_value = (
+                json.dumps(version_data).encode()
+                if "version.json" in url else content
+            )
+            return resp
+
+        import json
+        with mock.patch("shared.INSTALLER_DIR", tmp_path):
+            with mock.patch("shared.urllib.request.urlopen", side_effect=fake_urlopen):
+                download_missing_files(**_PRINTER_KWARGS)
+
+        assert (tmp_path / "utils.py").exists()
+        assert (tmp_path / "utils.py").read_bytes() == content
+
+    def test_skips_on_checksum_mismatch(self, tmp_path: Path):
+        """File with bad checksum is not written."""
+        content = b"# bad content"
+
+        from shared import UPDATE_FILE_MAP
+        for fn in set(UPDATE_FILE_MAP.values()) - {"utils.py"}:
+            (tmp_path / fn).write_text("")
+
+        version_data = {
+            "download_urls": {"utils": "https://example.com/utils.py"},
+            "checksums": {"utils": "wrong_checksum"},
+        }
+
+        def fake_urlopen(url, **kw):
+            resp = mock.MagicMock()
+            resp.__enter__ = mock.MagicMock(return_value=resp)
+            resp.__exit__ = mock.MagicMock(return_value=False)
+            resp.read.return_value = (
+                json.dumps(version_data).encode()
+                if "version.json" in url else content
+            )
+            return resp
+
+        import json
+        with mock.patch("shared.INSTALLER_DIR", tmp_path):
+            with mock.patch("shared.urllib.request.urlopen", side_effect=fake_urlopen):
+                download_missing_files(**_PRINTER_KWARGS)
+
+        assert not (tmp_path / "utils.py").exists()
+
+    def test_handles_network_error(self, tmp_path: Path):
+        """Network failure when fetching version.json is handled gracefully."""
+        with mock.patch("shared.INSTALLER_DIR", tmp_path):
+            with mock.patch("shared.urllib.request.urlopen", side_effect=Exception("offline")):
+                download_missing_files(**_PRINTER_KWARGS)  # should not raise

@@ -5,6 +5,7 @@ Extracted from PlexInstaller to keep diagnostic logic isolated and testable.
 """
 
 import http.client
+import logging
 import os
 import socket
 import ssl
@@ -15,6 +16,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from utils import ColorPrinter, SystemdManager
+
+logger = logging.getLogger("plexinstaller.health")
 
 
 @dataclass
@@ -344,11 +347,11 @@ class HealthChecker:
         total_gb = (stat.f_blocks * stat.f_frsize) / (1024**3)
         used_percent = ((total_gb - free_gb) / total_gb) * 100
 
-        print("\n=== Disk Space ===")
-        print(f"Location: {self.install_dir}")
-        print(f"Total: {total_gb:.1f} GB")
-        print(f"Free: {free_gb:.1f} GB")
-        print(f"Used: {used_percent:.1f}%")
+        logger.info("=== Disk Space ===")
+        logger.info("Location: %s", self.install_dir)
+        logger.info("Total: %.1f GB", total_gb)
+        logger.info("Free: %.1f GB", free_gb)
+        logger.info("Used: %.1f%%", used_percent)
 
         if used_percent > 90:
             self.printer.error("⚠ WARNING: Disk usage above 90%!")
@@ -358,7 +361,7 @@ class HealthChecker:
             self.printer.success("✓ Disk space healthy")
 
         # Services
-        print("\n=== Services Status ===")
+        logger.info("=== Services Status ===")
         if self.install_dir.exists():
             all_running = True
             for product_dir in self.install_dir.iterdir():
@@ -367,21 +370,12 @@ class HealthChecker:
                     status = self.systemd.get_status(service_name)
 
                     if "active" in status.lower():
-                        print(
-                            f"  ✓ {product_dir.name}: "
-                            f"{ColorPrinter.GREEN}Running{ColorPrinter.NC}"
-                        )
+                        logger.info("  ✓ %s: Running", product_dir.name)
                     elif "inactive" in status.lower():
-                        print(
-                            f"  ○ {product_dir.name}: "
-                            f"{ColorPrinter.YELLOW}Stopped{ColorPrinter.NC}"
-                        )
+                        logger.warning("  ○ %s: Stopped", product_dir.name)
                         all_running = False
                     else:
-                        print(
-                            f"  ✗ {product_dir.name}: "
-                            f"{ColorPrinter.RED}Not Found{ColorPrinter.NC}"
-                        )
+                        logger.error("  ✗ %s: Not Found", product_dir.name)
                         all_running = False
 
             if all_running:
@@ -392,7 +386,7 @@ class HealthChecker:
             self.printer.warning("No installations found")
 
         # Nginx
-        print("\n=== Web Server Status ===")
+        logger.info("=== Web Server Status ===")
         try:
             result = subprocess.run(
                 ["systemctl", "is-active", "nginx"],
@@ -407,7 +401,7 @@ class HealthChecker:
             self.printer.warning("⚠ Could not check Nginx status")
 
         # MongoDB
-        print("\n=== Database Status ===")
+        logger.info("=== Database Status ===")
         try:
             result = subprocess.run(
                 ["systemctl", "is-active", "mongod"],
@@ -422,7 +416,7 @@ class HealthChecker:
             self.printer.step("ℹ MongoDB not installed or not using systemd")
 
         # SSL certificates
-        print("\n=== SSL Certificates ===")
+        logger.info("=== SSL Certificates ===")
         certbot_installed = (
             subprocess.run(["which", "certbot"], capture_output=True).returncode == 0
         )
@@ -442,7 +436,7 @@ class HealthChecker:
             self.printer.step("ℹ Certbot not installed")
 
         # Memory
-        print("\n=== Memory Usage ===")
+        logger.info("=== Memory Usage ===")
         try:
             with open("/proc/meminfo", "r") as f:
                 lines = f.readlines()
@@ -455,9 +449,9 @@ class HealthChecker:
                 mem_used = mem_total - mem_available
                 mem_percent = (mem_used / mem_total) * 100
 
-                print(f"Total: {mem_total:.0f} MB")
-                print(f"Used: {mem_used:.0f} MB ({mem_percent:.1f}%)")
-                print(f"Available: {mem_available:.0f} MB")
+                logger.info("Total: %.0f MB", mem_total)
+                logger.info("Used: %.0f MB (%.1f%%)", mem_used, mem_percent)
+                logger.info("Available: %.0f MB", mem_available)
 
                 if mem_percent > 90:
                     self.printer.error("⚠ WARNING: Memory usage above 90%!")
@@ -469,14 +463,14 @@ class HealthChecker:
             self.printer.warning("⚠ Could not check memory usage")
 
         # System load
-        print("\n=== System Load ===")
+        logger.info("=== System Load ===")
         try:
             load1, load5, load15 = os.getloadavg()
             cpu_count = os.cpu_count() or 1
-            print(f"1 min: {load1:.2f}")
-            print(f"5 min: {load5:.2f}")
-            print(f"15 min: {load15:.2f}")
-            print(f"CPU cores: {cpu_count}")
+            logger.info("1 min: %.2f", load1)
+            logger.info("5 min: %.2f", load5)
+            logger.info("15 min: %.2f", load15)
+            logger.info("CPU cores: %d", cpu_count)
 
             if load5 > cpu_count * 2:
                 self.printer.error("⚠ WARNING: High system load!")

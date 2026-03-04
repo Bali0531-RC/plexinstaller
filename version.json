@@ -13,14 +13,22 @@
     "plex_cli": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/plex_cli.py",
     "setup": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/setup.sh",
     "telemetry_client": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/telemetry_client.py",
-    "addon_manager": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/addon_manager.py"
+    "addon_manager": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/addon_manager.py",
+    "shared": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/shared.py",
+    "health_checker": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/health_checker.py",
+    "mongodb_manager": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/mongodb_manager.py",
+    "backup_manager": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/backup_manager.py"
   },
   "checksums": {
     "addon_manager": "d0426eb154927a85cdc9eb8aa203d3eb1834b505f695ece1834c967effa50e1b",
+    "backup_manager": "df99a7da29f6baa86bffd668a8432e5be24561f81f0c11856cd5db5b7566285d",
     "config": "ab23aeaea04cf4a9df770f143e4338d7f5dd2ebf89f895dd32db5b316a5041c8",
-    "installer": "80efda34c6b6fa68998fae377be93677b22072f4259f01e9ce40e5c0ff66b412",
-    "plex_cli": "863c7dd4b0b009ea03af4fc603b43327ad124bae02ad83966a3b13873c48627f",
-    "telemetry_client": "e42440fd4aef42c961a7863e033722005ba7fd30bff67875e41f819534057f41",
-    "utils": "aef9149d5272532592807964cb071658daf9a9629a425e7af0da02ddb48037af"
+    "health_checker": "e51c831a50886058eb6dc501c41936046dc921ad2e8ee2e90396c1571c9a1000",
+    "installer": "f7c73f9d6bfc5c121d522ce1cdc5065b4e37db138c09262ea5d1a971bc0bf6aa",
+    "mongodb_manager": "ae8ce740ca227de589460d7e9b8cf1d515da285bca948d9581c612e7e6fe1f3b",
+    "plex_cli": "9221ab29dc7043d45715e0bef3f9287a65d7d809b69f9ae44f7db9a6d1564ebf",
+    "shared": "2f1f89ee8fa3a804f6fc2103ae05123fcf8402cda747efc202027f07c2cd40d3",
+    "telemetry_client": "37d07470ed80b258860fdd7d4007f05459c3f67f0fd0136ad04f3bccdc743ecc",
+    "utils": "f51260adc8ae4e67050a9b355e3eaf5f0d8b8cd51421020ba20af10bc61c6ed1"
   }
 }

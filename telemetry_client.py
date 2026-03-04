@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -69,7 +69,7 @@ class TelemetryClient:
         if not self.enabled:
             return ""
 
-        timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
         self._session_id = f"{timestamp}-{product}-{instance}"
         self._product = product
         self._instance = instance
@@ -88,7 +88,7 @@ class TelemetryClient:
             return
 
         entry = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "step": step,
             "status": status,
             "detail": _redact(detail) if detail else "",
@@ -130,7 +130,7 @@ class TelemetryClient:
             "error": error,
             "events": self._events,
             "log": self._read_log_contents(),
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
         self._post_payload(payload)
@@ -179,6 +179,6 @@ class TelemetryClient:
     def _write_line(self, message: str):
         if not self.enabled or not self._current_log_path:
             return
-        timestamp = datetime.utcnow().isoformat()
+        timestamp = datetime.now(timezone.utc).isoformat()
         with self._current_log_path.open("a", encoding="utf-8") as handle:
             handle.write(f"{timestamp} :: {message}\n")

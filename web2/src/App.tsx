@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { CommandBlock } from "./components/CommandBlock";
 import { ProductGrid } from "./components/ProductGrid";
 import { ReleaseTimeline } from "./components/ReleaseTimeline";
@@ -39,12 +40,12 @@ export const App = () => {
           <a className="primary" href="/setup.sh" download>
             Download setup.sh
           </a>
-          <a className="ghost" href="/guide.html" target="_blank" rel="noreferrer">
-            Read the guide
-          </a>
           <a className="ghost" href="https://github.com/Bali0531-RC/plexinstaller" target="_blank" rel="noreferrer">
             View on GitHub
           </a>
+          <Link className="ghost" to="/guide">
+            Read the guide
+          </Link>
         </div>
       </header>
 

@@ -3,6 +3,7 @@
 Utility functions for PlexDevelopment Installer
 """
 
+import logging
 import os
 import sys
 import subprocess
@@ -21,6 +22,36 @@ from colorama import Fore, Style, init as colorama_init
 # Initialize colorama for cross-platform support
 colorama_init(autoreset=False)
 
+logger = logging.getLogger("plexinstaller")
+
+
+def setup_logging(level: int = logging.INFO, log_file: Optional[str] = None):
+    """Configure structured logging for the application.
+
+    Call once at startup from the main entry point.  A console handler
+    is always attached (INFO level).  If *log_file* is given, a file
+    handler is added at DEBUG level for richer diagnostics.
+    """
+    root = logging.getLogger("plexinstaller")
+    root.setLevel(logging.DEBUG)
+
+    if not root.handlers:
+        fmt = logging.Formatter(
+            "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+
+        console = logging.StreamHandler(sys.stderr)
+        console.setLevel(level)
+        console.setFormatter(fmt)
+        root.addHandler(console)
+
+        if log_file:
+            fh = logging.FileHandler(log_file)
+            fh.setLevel(logging.DEBUG)
+            fh.setFormatter(fmt)
+            root.addHandler(fh)
+
 class ColorPrinter:
     """Colored output printer"""
     
@@ -37,22 +68,27 @@ class ColorPrinter:
     def header(self, message: str):
         """Print header"""
         print(f"\n{self.BOLD}{self.PURPLE}#----- {message} -----#{self.NC}\n", file=sys.stderr)
-    
+        logger.info(message)
+
     def step(self, message: str):
         """Print step"""
         print(f"{self.BLUE}[+] {self.CYAN}{message}{self.NC}", file=sys.stderr)
-    
+        logger.info(message)
+
     def success(self, message: str):
         """Print success"""
         print(f"{self.GREEN}[✓] {message}{self.NC}", file=sys.stderr)
-    
+        logger.info(message)
+
     def error(self, message: str):
         """Print error"""
         print(f"{self.RED}[✗] {message}{self.NC}", file=sys.stderr)
-    
+        logger.error(message)
+
     def warning(self, message: str):
         """Print warning"""
         print(f"{self.YELLOW}[!] {message}{self.NC}", file=sys.stderr)
+        logger.warning(message)
 
 class SystemDetector:
     """System detection and package management"""
