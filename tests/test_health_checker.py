@@ -1,15 +1,11 @@
 """Tests for health_checker.py — SelfTestResult, probe_http, check_node_version."""
 
-import http.client
 import subprocess
 from pathlib import Path
 from unittest import mock
 
-import pytest
-
 from health_checker import HealthChecker, SelfTestResult
 from utils import ColorPrinter, SystemdManager
-
 
 # ---------------------------------------------------------------------------
 # SelfTestResult dataclass

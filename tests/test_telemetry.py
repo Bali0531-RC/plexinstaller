@@ -1,13 +1,9 @@
 """Tests for telemetry_client.py — redaction, session lifecycle, payload assembly."""
 
-import json
 from pathlib import Path
 from unittest import mock
 
-import pytest
-
-from telemetry_client import _redact, TelemetrySummary, TelemetryClient
-
+from telemetry_client import TelemetryClient, TelemetrySummary, _redact
 
 # ---------------------------------------------------------------------------
 # _redact

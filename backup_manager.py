@@ -10,7 +10,6 @@ import subprocess
 import tarfile
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
 
 from utils import ColorPrinter, SystemdManager
 
@@ -132,7 +131,7 @@ class BackupManager:
     # List
     # ------------------------------------------------------------------
 
-    def list_backups(self) -> List[Path]:
+    def list_backups(self) -> list[Path]:
         """List available backups and return the sorted list."""
         if not self.backup_dir.exists():
             self.printer.warning("No backups directory found")
@@ -212,7 +211,7 @@ class BackupManager:
         self.printer.step("Stopping service...")
         self.systemd.stop(service_name)
 
-        temp_backup: Optional[Path] = None
+        temp_backup: Path | None = None
         if install_path.exists():
             self.printer.step("Backing up current installation...")
             temp_backup = install_path.parent / f"{product}.backup.tmp"

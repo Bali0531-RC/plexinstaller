@@ -12,7 +12,6 @@ import string
 import subprocess
 import time
 from pathlib import Path
-from typing import Dict, List, Optional
 
 from utils import ColorPrinter, SystemDetector
 
@@ -42,7 +41,7 @@ class MongoDBManager:
         install_path: Path,
         required: bool = False,
         wait_for_tcp_port=None,
-    ) -> Optional[Dict]:
+    ) -> dict | None:
         """Interactive MongoDB setup: install -> start -> create user -> save -> update config -> validate.
 
         Parameters
@@ -196,7 +195,7 @@ class MongoDBManager:
     # ------------------------------------------------------------------
 
     def run_shell(
-        self, args: List[str], timeout: int = 30
+        self, args: list[str], timeout: int = 30
     ) -> subprocess.CompletedProcess:
         """Run mongosh/mongo with *args*; prefers mongosh."""
         try:
@@ -218,7 +217,7 @@ class MongoDBManager:
     # User / database provisioning
     # ------------------------------------------------------------------
 
-    def create_user(self, instance_name: str) -> Optional[Dict]:
+    def create_user(self, instance_name: str) -> dict | None:
         """Create a MongoDB database and user for *instance_name*."""
         alphabet = string.ascii_letters + string.digits
         random_suffix = "".join(
@@ -308,7 +307,7 @@ class MongoDBManager:
     # Credentials persistence
     # ------------------------------------------------------------------
 
-    def save_credentials(self, instance_name: str, creds: Dict):
+    def save_credentials(self, instance_name: str, creds: dict):
         """Append credentials to /etc/plex/mongodb_credentials."""
         creds_dir = Path("/etc/plex")
         creds_dir.mkdir(parents=True, exist_ok=True)
@@ -329,7 +328,7 @@ class MongoDBManager:
     # Config patching
     # ------------------------------------------------------------------
 
-    def update_config(self, install_path: Path, creds: Dict):
+    def update_config(self, install_path: Path, creds: dict):
         """Patch product config file with MongoDB connection string."""
         config_files = list(install_path.glob("config.y*ml")) + list(
             install_path.glob("config.json")

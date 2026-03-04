@@ -13,7 +13,6 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 from utils import ColorPrinter, SystemdManager
 
@@ -70,7 +69,7 @@ class HealthChecker:
     @staticmethod
     def probe_http(
         host: str, port: int, path: str = "/", timeout: int = 3
-    ) -> Tuple[bool, str]:
+    ) -> tuple[bool, str]:
         """Probe an HTTP endpoint; returns (ok, detail)."""
         try:
             conn = http.client.HTTPConnection(host, port, timeout=timeout)
@@ -81,7 +80,7 @@ class HealthChecker:
         except Exception as exc:
             return False, str(exc)
 
-    def check_node_version(self) -> Tuple[bool, str]:
+    def check_node_version(self) -> tuple[bool, str]:
         """Verify node is installed and meets the minimum version."""
         try:
             result = subprocess.run(
@@ -108,10 +107,10 @@ class HealthChecker:
     def run_post_install_self_tests(
         self,
         context,
-        mongo_creds: Optional[Dict],
+        mongo_creds: dict | None,
         config=None,
         mongo_manager=None,
-    ) -> List[SelfTestResult]:
+    ) -> list[SelfTestResult]:
         """Run a comprehensive self-test suite after product installation.
 
         Parameters
@@ -125,7 +124,7 @@ class HealthChecker:
         mongo_manager:
             A ``MongoDBManager`` instance for URI validation / shell calls.
         """
-        results: List[SelfTestResult] = []
+        results: list[SelfTestResult] = []
 
         # Node runtime
         ok, detail = self.check_node_version()
@@ -438,13 +437,13 @@ class HealthChecker:
         # Memory
         logger.info("=== Memory Usage ===")
         try:
-            with open("/proc/meminfo", "r") as f:
+            with open("/proc/meminfo") as f:
                 lines = f.readlines()
                 mem_total = (
-                    int([l for l in lines if "MemTotal" in l][0].split()[1]) / 1024
+                    int([line for line in lines if "MemTotal" in line][0].split()[1]) / 1024
                 )
                 mem_available = (
-                    int([l for l in lines if "MemAvailable" in l][0].split()[1]) / 1024
+                    int([line for line in lines if "MemAvailable" in line][0].split()[1]) / 1024
                 )
                 mem_used = mem_total - mem_available
                 mem_percent = (mem_used / mem_total) * 100
@@ -485,7 +484,7 @@ class HealthChecker:
     # Summary printer
     # ------------------------------------------------------------------
 
-    def print_summary(self, results: List[SelfTestResult]):
+    def print_summary(self, results: list[SelfTestResult]):
         """Pretty-print self-test results."""
         self.printer.header("Post-Install Self-Tests")
         failures = 0
@@ -520,7 +519,7 @@ class HealthChecker:
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _check_nginx_ssl(self, context, results: List[SelfTestResult]):
+    def _check_nginx_ssl(self, context, results: list[SelfTestResult]):
         """Append nginx/SSL/DNS/HTTPS self-test results."""
         try:
             nginx_active = subprocess.run(

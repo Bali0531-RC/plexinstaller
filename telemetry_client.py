@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import requests
 
@@ -36,10 +35,10 @@ class TelemetrySummary:
 
     session_id: str
     status: str
-    failure_step: Optional[str]
-    error: Optional[str]
-    log_path: Optional[Path]
-    events: List[Dict[str, Any]]
+    failure_step: str | None
+    error: str | None
+    log_path: Path | None
+    events: list[dict[str, Any]]
 
 
 class TelemetryClient:
@@ -54,14 +53,14 @@ class TelemetryClient:
         self.paste_endpoint = paste_endpoint
 
         self._active = False
-        self._session_id: Optional[str] = None
-        self._product: Optional[str] = None
-        self._instance: Optional[str] = None
-        self._current_log_path: Optional[Path] = None
-        self._events: List[Dict[str, Any]] = []
+        self._session_id: str | None = None
+        self._product: str | None = None
+        self._instance: str | None = None
+        self._current_log_path: Path | None = None
+        self._events: list[dict[str, Any]] = []
 
     @property
-    def log_path(self) -> Optional[Path]:
+    def log_path(self) -> Path | None:
         return self._current_log_path
 
     def start_session(self, product: str, instance: str) -> str:
@@ -82,7 +81,7 @@ class TelemetryClient:
         )
         return self._session_id
 
-    def log_step(self, step: str, status: str, detail: Optional[str] = None):
+    def log_step(self, step: str, status: str, detail: str | None = None):
         """Record a step result inside the session log."""
         if not self.enabled or not self._active or not self._session_id:
             return
@@ -101,9 +100,9 @@ class TelemetryClient:
     def finish_session(
         self,
         status: str,
-        failure_step: Optional[str] = None,
-        error: Optional[str] = None,
-    ) -> Optional[TelemetrySummary]:
+        failure_step: str | None = None,
+        error: str | None = None,
+    ) -> TelemetrySummary | None:
         """Finalize the session and push data to the telemetry API."""
         if not self.enabled or not self._active or not self._session_id:
             return None
@@ -121,7 +120,7 @@ class TelemetryClient:
             self._write_line(f"Session error: {_redact(error)}")
         self._write_line(f"Session completed with status: {status.upper()}")
 
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "session_id": summary.session_id,
             "product": self._product,
             "instance": self._instance,
@@ -139,7 +138,7 @@ class TelemetryClient:
         self._session_id = None
         return summary
 
-    def share_log(self) -> Optional[str]:
+    def share_log(self) -> str | None:
         """Upload the current log file to the configured paste service."""
         if (not self.enabled or not self.paste_endpoint or
             not self._current_log_path or not self._current_log_path.exists()):
@@ -164,7 +163,7 @@ class TelemetryClient:
             return self._current_log_path.read_text()
         return ""
 
-    def _post_payload(self, payload: Dict[str, Any]):
+    def _post_payload(self, payload: dict[str, Any]):
         if not self.enabled or not self.endpoint:
             return
         try:

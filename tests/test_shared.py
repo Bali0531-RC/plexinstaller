@@ -1,15 +1,10 @@
 """Tests for shared.py — version comparison, GPG verification helpers, symlink management."""
 
-import os
 import subprocess
-import tempfile
 from pathlib import Path
 from unittest import mock
 
-import pytest
-
-from shared import is_newer_version, verify_gpg_signature, _force_symlink, download_missing_files
-
+from shared import _force_symlink, download_missing_files, is_newer_version, verify_gpg_signature
 
 # ---------------------------------------------------------------------------
 # is_newer_version
@@ -173,7 +168,6 @@ class TestDownloadMissingFiles:
                     'health_checker.py', 'mongodb_manager.py', 'backup_manager.py']:
             (tmp_path / fn).write_text("")
 
-        calls = []
         with mock.patch("shared.INSTALLER_DIR", tmp_path):
             with mock.patch("shared.urllib.request.urlopen") as m:
                 download_missing_files(**_PRINTER_KWARGS)

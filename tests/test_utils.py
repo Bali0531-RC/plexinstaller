@@ -1,22 +1,18 @@
 """Tests for utils.py — ColorPrinter, DNSChecker, FirewallManager, ArchiveExtractor, redaction, logging."""
 
 import logging
-import os
-import subprocess
 import zipfile
 from pathlib import Path
-from unittest import mock
 
 import pytest
 
 from utils import (
+    ArchiveExtractor,
     ColorPrinter,
     redact_mongo_uri_credentials,
     redact_sensitive_yaml,
-    ArchiveExtractor,
     setup_logging,
 )
-
 
 # ---------------------------------------------------------------------------
 # setup_logging
@@ -174,7 +170,7 @@ class TestArchiveExtractor:
         target_dir = tmp_path / "myapp"
         target_dir.mkdir()
 
-        result = extractor.extract(archive_path, target_dir)
+        extractor.extract(archive_path, target_dir)
 
         assert (target_dir / "package.json").exists()
 

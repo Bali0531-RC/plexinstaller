@@ -1,6 +1,5 @@
 """Tests for config.py — product metadata and system package lists."""
 
-import pytest
 
 from config import Config, ProductConfig
 

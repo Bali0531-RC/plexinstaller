@@ -4,9 +4,9 @@ Configuration module for PlexDevelopment Installer
 """
 
 import os
-from pathlib import Path
 from dataclasses import dataclass
-from typing import Dict, List
+from pathlib import Path
+
 
 @dataclass
 class ProductConfig:
@@ -20,7 +20,7 @@ class ProductConfig:
 
 class Config:
     """Global configuration"""
-    
+
     # Installation paths
     INSTALL_DIR = Path("/var/www/plex")
     NGINX_AVAILABLE = Path("/etc/nginx/sites-available")
@@ -30,12 +30,12 @@ class Config:
     TELEMETRY_LOG_DIR = Path(os.environ.get("PLEX_TELEMETRY_LOG_DIR", "/opt/plexinstaller/telemetry/logs"))
     PASTE_ENDPOINT = os.environ.get("PLEX_INSTALLER_PASTE_URL", "https://paste.plexdev.xyz/documents")
     TELEMETRY_PREF_FILE = Path(os.environ.get("PLEX_TELEMETRY_PREF_FILE", "/etc/plex/telemetry_pref"))
-    
+
     # Node.js
     NODE_MIN_VERSION = 20
-    
+
     # Products configuration (from beta.sh)
-    PRODUCTS: Dict[str, ProductConfig] = {
+    PRODUCTS: dict[str, ProductConfig] = {
         "plextickets": ProductConfig(
             name="plextickets",
             default_port=3000,
@@ -88,7 +88,7 @@ class Config:
             description="Bug and Suggestion tracker"
         )
     }
-    
+
     # System packages by package manager
     SYSTEM_PACKAGES = {
         "apt": [
@@ -123,11 +123,11 @@ class Config:
             "python3-pip"
         ]
     }
-    
+
     # MongoDB installation
     MONGODB_VERSION = "8.0"
     MONGODB_REPO_VERSION_BOOKWORM = "8.2"  # Bookworm uses 8.2 repo per MongoDB official docs
-    
+
     def __init__(self):
         """Initialize configuration"""
         self.install_dir = self.INSTALL_DIR
@@ -135,12 +135,12 @@ class Config:
         self.nginx_enabled = self.NGINX_ENABLED
         self.plex_setup_file = self.PLEX_SETUP_FILE
         self.telemetry_pref_file = self.TELEMETRY_PREF_FILE
-    
+
     def get_product(self, name: str) -> ProductConfig:
         """Get product configuration"""
         return self.PRODUCTS.get(name.lower())
-    
+
     @property
-    def product_list(self) -> List[str]:
+    def product_list(self) -> list[str]:
         """Get list of available products"""
         return list(self.PRODUCTS.keys())

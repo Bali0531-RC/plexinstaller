@@ -14,8 +14,8 @@ import subprocess
 import sys
 import tempfile
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Dict, Optional
 
 INSTALLER_DIR = Path("/opt/plexinstaller")
 VERSION_CHECK_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/version.json"
@@ -57,7 +57,7 @@ def download_missing_files(
     install_dir = INSTALLER_DIR
 
     # Determine which files are missing
-    missing: Dict[str, str] = {}
+    missing: dict[str, str] = {}
     for key, filename in UPDATE_FILE_MAP.items():
         if not (install_dir / filename).exists():
             missing[key] = filename
@@ -239,7 +239,7 @@ def _force_symlink(link_path: Path, target: Path) -> None:
 
 
 def perform_update(
-    version_data: Dict,
+    version_data: dict,
     version_json_bytes: bytes,
     *,
     print_info: Callable[[str], None],
