@@ -28,9 +28,10 @@ logger = logging.getLogger("plexinstaller")
 def setup_logging(level: int = logging.INFO, log_file: Optional[str] = None):
     """Configure structured logging for the application.
 
-    Call once at startup from the main entry point.  A console handler
-    is always attached (INFO level).  If *log_file* is given, a file
-    handler is added at DEBUG level for richer diagnostics.
+    Call once at startup from the main entry point.  If *log_file* is
+    given, a file handler is added at DEBUG level for richer diagnostics.
+    Console output is handled by ColorPrinter — the logger only writes
+    to the log file to avoid duplicate/noisy terminal output.
     """
     root = logging.getLogger("plexinstaller")
     root.setLevel(logging.DEBUG)
@@ -41,16 +42,14 @@ def setup_logging(level: int = logging.INFO, log_file: Optional[str] = None):
             datefmt="%Y-%m-%d %H:%M:%S",
         )
 
-        console = logging.StreamHandler(sys.stderr)
-        console.setLevel(level)
-        console.setFormatter(fmt)
-        root.addHandler(console)
-
         if log_file:
             fh = logging.FileHandler(log_file)
             fh.setLevel(logging.DEBUG)
             fh.setFormatter(fmt)
             root.addHandler(fh)
+        else:
+            # No log file — add a NullHandler to suppress "No handlers" warning
+            root.addHandler(logging.NullHandler())
 
 class ColorPrinter:
     """Colored output printer"""

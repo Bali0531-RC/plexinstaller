@@ -23,13 +23,13 @@ from utils import (
 # ---------------------------------------------------------------------------
 
 class TestSetupLogging:
-    def test_creates_console_handler(self):
+    def test_adds_null_handler_without_log_file(self):
         logger = logging.getLogger("plexinstaller")
         logger.handlers.clear()
 
         setup_logging()
-        assert len(logger.handlers) >= 1
-        assert any(isinstance(h, logging.StreamHandler) for h in logger.handlers)
+        assert len(logger.handlers) == 1
+        assert isinstance(logger.handlers[0], logging.NullHandler)
 
         # Cleanup
         logger.handlers.clear()
