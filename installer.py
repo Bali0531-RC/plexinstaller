@@ -40,6 +40,9 @@ from shared import (
     perform_update as _shared_perform_update,
     ensure_cli_entrypoints as _shared_ensure_cli,
 )
+from mongodb_manager import MongoDBManager
+from backup_manager import BackupManager
+from health_checker import HealthChecker, SelfTestResult
 
 # Current installer version
 INSTALLER_VERSION = "3.1.17"
@@ -93,6 +96,25 @@ class PlexInstaller:
         self.systemd = SystemdManager()
         self.extractor = ArchiveExtractor()
         self.addon_manager = AddonManager() if AddonManager else None
+        self.mongo_manager = MongoDBManager(
+            printer=self.printer,
+            system=self.system,
+            mongodb_version=self.config.MONGODB_VERSION,
+            mongodb_repo_version_bookworm=self.config.MONGODB_REPO_VERSION_BOOKWORM,
+        )
+        self.backup_mgr = BackupManager(
+            printer=self.printer,
+            systemd=self.systemd,
+            install_dir=self.config.install_dir,
+        )
+        self.health = HealthChecker(
+            printer=self.printer,
+            systemd=self.systemd,
+            install_dir=self.config.install_dir,
+            node_min_version=self.config.NODE_MIN_VERSION,
+            nginx_available=self.config.nginx_available,
+            nginx_enabled=self.config.nginx_enabled,
+        )
         self.telemetry_enabled = self._initialize_telemetry_preference()
         self.telemetry = TelemetryClient(
             endpoint=self.config.TELEMETRY_ENDPOINT,
@@ -330,13 +352,13 @@ class PlexInstaller:
             elif choice == "9":
                 self._manage_installations()
             elif choice == "10":
-                self._manage_backups()
+                self.backup_mgr.menu()
             elif choice == "11":
                 self._manage_addons_menu()
             elif choice == "12":
                 self._ssl_management_menu()
             elif choice == "13":
-                self._system_health_check()
+                self.health.system_health_check()
             else:
                 self.printer.error("Invalid choice")
             
@@ -471,7 +493,10 @@ class PlexInstaller:
             current_step = "mongodb"
             product_config = self.config.get_product(product) if hasattr(self.config, "get_product") else None
             requires_mongo = bool(getattr(product_config, "requires_mongodb", False))
-            mongo_creds = self._setup_mongodb(instance_name, extracted_path, required=requires_mongo)
+            mongo_creds = self.mongo_manager.setup(
+                instance_name, extracted_path, required=requires_mongo,
+                wait_for_tcp_port=self.health.wait_for_tcp_port,
+            )
             detail = "configured" if mongo_creds else "skipped"
             self.telemetry.log_step(current_step, "success", detail)
 
@@ -523,7 +548,10 @@ class PlexInstaller:
 
             # Post-install self-tests
             current_step = "self_tests"
-            results = self._run_post_install_self_tests(context, mongo_creds=mongo_creds)
+            results = self.health.run_post_install_self_tests(
+                context, mongo_creds=mongo_creds,
+                config=self.config, mongo_manager=self.mongo_manager,
+            )
             failed = [r for r in results if r.status == "fail"]
             warned = [r for r in results if r.status == "warn"]
             if failed:
@@ -748,107 +776,20 @@ class PlexInstaller:
         error_page.write_text(html_content)
         os.chmod(error_page, 0o644)
         self.printer.success("Created 502 error page")
-    
-    @dataclass
-    class _SelfTestResult:
-        name: str
-        status: str  # pass|fail|warn
-        detail: str = ""
-        hint: str = ""
 
-    def _setup_mongodb(self, instance_name: str, install_path: Path, required: bool = False) -> Optional[Dict]:
-        """Setup MongoDB for product"""
-        prompt = "Install and configure MongoDB locally? (Y/n): " if required else "Install and configure MongoDB locally? (y/n): "
-        choice = input(prompt).strip().lower()
+    def _setup_web(
+        self,
+        instance_name: str,
+        default_port: int,
+        install_path: Path,
+        context: InstallationContext
+    ) -> Tuple[str, int, str]:
+        """Setup web server (nginx, SSL) with validation and context tracking."""
 
-        if required and choice in {"", "y", "yes"}:
-            choice = "y"
-
-        if choice not in {'y', 'yes'}:
-            if required:
-                self.printer.warning("This product requires MongoDB.")
-                self.printer.step("If you are using a remote MongoDB, update your config with its URI.")
-            return None
-        
-        try:
-            # Check if MongoDB is already installed
-            if not self._check_mongodb_installed():
-                self.printer.step("MongoDB not found. Installing...")
-                if not self._install_mongodb():
-                    self.printer.error("MongoDB installation failed")
-                    return None
-            else:
-                self.printer.success("MongoDB already installed")
-            
-            # Ensure MongoDB service is running
-            service_name = self._ensure_mongodb_running()
-
-            # Wait for MongoDB to accept connections
-            if not self._wait_for_tcp_port("127.0.0.1", 27017, timeout_seconds=60):
-                raise RuntimeError(f"MongoDB service '{service_name}' did not become ready on 27017")
-            
-            # Create database and user for this instance
-            mongo_creds = self._create_mongodb_user(instance_name)
-            
-            if not mongo_creds:
-                raise RuntimeError("Failed to create MongoDB database/user")
-
-            # Save credentials for reuse
-            self._save_mongodb_credentials(instance_name, mongo_creds)
-
-            # Update config file with MongoDB connection string
-            self._update_config_mongodb(install_path, mongo_creds)
-
-            # Validate the generated URI works
-            if not self._validate_mongodb_uri(mongo_creds['uri']):
-                raise RuntimeError("MongoDB credentials were created but authentication failed when validating the generated URI")
-
-            return mongo_creds
-            
-        except Exception as e:
-            self.printer.error(f"MongoDB setup failed: {e}")
-            raise
-    
-    def _check_mongodb_installed(self) -> bool:
-        """Check if MongoDB is installed"""
-        try:
-            result = subprocess.run(['mongosh', '--version'], 
-                                  capture_output=True, text=True, timeout=10)
-            if result.returncode == 0:
-                return True
-            
-            # Try old mongo shell
-            result = subprocess.run(['mongo', '--version'], 
-                                  capture_output=True, text=True, timeout=10)
-            return result.returncode == 0
-        except FileNotFoundError:
-            return False
-        except subprocess.TimeoutExpired:
-            return False
-    
-    def _install_mongodb(self) -> bool:
-        """Install MongoDB"""
-        self.printer.step("Installing MongoDB...")
-        
-        distro = (self.system.distribution or "").lower()
-        
-        try:
-            if 'ubuntu' in distro or 'debian' in distro:
-                return self._install_mongodb_debian()
-            elif 'centos' in distro or 'rhel' in distro or 'fedora' in distro:
-                return self._install_mongodb_rhel()
-            elif 'arch' in distro:
-                return self._install_mongodb_arch()
-            else:
-                self.printer.error(f"Unsupported distribution for automatic MongoDB install: {distro}")
-                self.printer.step("Please install MongoDB manually: https://docs.mongodb.com/manual/installation/")
-                return False
-        except Exception as e:
-            self.printer.error(f"MongoDB installation failed: {e}")
-            return False
-    
-    def _install_mongodb_debian(self) -> bool:
-        """Install MongoDB on Debian/Ubuntu"""
+        # Get port with validation (including range check)
+        while True:
+            port_input = input(f"Enter port (default: {default_port}): ").strip()
+            if not port_input:
         try:
             # Clean up old MongoDB repository files
             self.printer.step("Cleaning up old MongoDB repositories...")
@@ -939,306 +880,6 @@ class PlexInstaller:
             self.printer.error(f"Failed to install MongoDB: {e}")
             return False
     
-    def _install_mongodb_rhel(self) -> bool:
-        """Install MongoDB on RHEL/CentOS/Fedora"""
-        try:
-            # Create repo file
-            mongo_ver = self.config.MONGODB_VERSION
-            repo_content = f"""[mongodb-org-{mongo_ver}]
-name=MongoDB Repository
-baseurl=https://repo.mongodb.org/yum/redhat/$releasever/mongodb-org/{mongo_ver}/x86_64/
-gpgcheck=1
-enabled=1
-gpgkey=https://www.mongodb.org/static/pgp/server-{mongo_ver}.asc
-"""
-            with open(f'/etc/yum.repos.d/mongodb-org-{mongo_ver}.repo', 'w') as f:
-                f.write(repo_content)
-            
-            # Install
-            if 'fedora' in (self.system.distribution or "").lower():
-                subprocess.run(['dnf', 'install', '-y', 'mongodb-org'], check=True, timeout=300)
-            else:
-                subprocess.run(['yum', 'install', '-y', 'mongodb-org'], check=True, timeout=300)
-            
-            # Start and enable
-            subprocess.run(['systemctl', 'start', 'mongod'], check=True, timeout=60)
-            subprocess.run(['systemctl', 'enable', 'mongod'], check=True, timeout=30)
-            
-            self.printer.success("MongoDB installed successfully")
-            return True
-            
-        except Exception as e:
-            self.printer.error(f"Failed to install MongoDB: {e}")
-            return False
-    
-    def _install_mongodb_arch(self) -> bool:
-        """Install MongoDB on Arch Linux"""
-        try:
-            subprocess.run(['pacman', '-S', '--noconfirm', 'mongodb-bin'], check=True, timeout=300)
-            subprocess.run(['systemctl', 'start', 'mongodb'], check=True, timeout=60)
-            subprocess.run(['systemctl', 'enable', 'mongodb'], check=True, timeout=30)
-            
-            self.printer.success("MongoDB installed successfully")
-            return True
-            
-        except Exception as e:
-            self.printer.error(f"Failed to install MongoDB: {e}")
-            return False
-    
-    def _ensure_mongodb_running(self) -> str:
-        """Ensure MongoDB service is running; returns the detected service name."""
-        for service in ("mongod", "mongodb"):
-            try:
-                result = subprocess.run(
-                    ['systemctl', 'is-active', service],
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                )
-                if result.stdout.strip() == 'active':
-                    return service
-
-                # If the service exists but is inactive, try starting it.
-                subprocess.run(['systemctl', 'start', service], check=True, timeout=60)
-                result2 = subprocess.run(
-                    ['systemctl', 'is-active', service],
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                )
-                if result2.stdout.strip() == 'active':
-                    return service
-            except Exception:
-                continue
-
-        raise RuntimeError("Could not start MongoDB service (tried 'mongod' and 'mongodb')")
-
-    def _run_mongo_shell(self, args: List[str], timeout: int = 30) -> subprocess.CompletedProcess:
-        """Run mongosh/mongo with args and return completed process; prefers mongosh."""
-        try:
-            return subprocess.run(
-                ['mongosh'] + args,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-            )
-        except FileNotFoundError:
-            return subprocess.run(
-                ['mongo'] + args,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-            )
-    
-    def _create_mongodb_user(self, instance_name: str) -> Optional[Dict]:
-        """Create MongoDB database and user for instance"""
-        import secrets
-        import string
-
-        # Generate random database name and password
-        # Use secrets module for cryptographically secure generation
-        # Only alphanumeric chars for MongoDB password compatibility
-        alphabet = string.ascii_letters + string.digits
-        random_suffix = ''.join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(5))
-        db_name = f"{instance_name}_{random_suffix}"
-        username = f"{instance_name}_user"
-        password = ''.join(secrets.choice(alphabet) for _ in range(24))
-        
-        self.printer.step(f"Creating MongoDB database: {db_name}")
-        
-        create_user_script = (
-            "(function() {\n"
-            f"  const dbName = {json.dumps(db_name)};\n"
-            f"  const username = {json.dumps(username)};\n"
-            f"  const password = {json.dumps(password)};\n"
-            "  const roles = [{ role: 'readWrite', db: dbName }];\n"
-            "  try {\n"
-            "    const target = db.getSiblingDB(dbName);\n"
-            "    const existing = target.getUser(username);\n"
-            "    if (existing) {\n"
-            "      target.updateUser(username, { pwd: password, roles: roles });\n"
-            "    } else {\n"
-            "      target.createUser({ user: username, pwd: password, roles: roles });\n"
-            "    }\n"
-            "    const ping = target.runCommand({ ping: 1 });\n"
-            "    if (!ping || ping.ok !== 1) { throw new Error('ping failed'); }\n"
-            "    print('__PLEXINSTALLER_OK__');\n"
-            "  } catch (e) {\n"
-            "    print('__PLEXINSTALLER_ERROR__ ' + e);\n"
-            "    quit(2);\n"
-            "  }\n"
-            "})();"
-        )
-
-        # Retry a few times in case mongod is still coming up.
-        last_error = ""
-        for attempt in range(1, 6):
-            try:
-                result = self._run_mongo_shell(['--quiet', '--eval', create_user_script], timeout=30)
-                combined = (result.stdout or "") + "\n" + (result.stderr or "")
-
-                if result.returncode == 0 and "__PLEXINSTALLER_OK__" in combined:
-                    self.printer.success(f"Database '{db_name}' ready with user '{username}'")
-                    return {
-                        'database': db_name,
-                        'username': username,
-                        'password': password,
-                        'host': 'localhost',
-                        'port': 27017,
-                        'uri': f"mongodb://{username}:{password}@localhost:27017/{db_name}?authSource={db_name}",
-                    }
-
-                last_error = combined.strip()[-800:]
-            except Exception as exc:
-                last_error = str(exc)
-
-            self.printer.warning(f"MongoDB user creation attempt {attempt}/5 failed; retrying...")
-            time.sleep(2)
-
-        if "not authorized" in last_error.lower() or "unauthorized" in last_error.lower():
-            self.printer.error("MongoDB appears to have authentication enabled already.")
-            self.printer.step("This installer can only auto-provision users on a local MongoDB without prior auth.")
-            self.printer.step("Workaround: temporarily disable auth or create the DB/user manually, then paste the URI into your app config.")
-
-        self.printer.error(f"Failed to create MongoDB user after retries. Last error: {last_error}")
-        return None
-    
-    def _save_mongodb_credentials(self, instance_name: str, creds: Dict):
-        """Save MongoDB credentials to file for reuse"""
-        creds_dir = Path("/etc/plex")
-        creds_dir.mkdir(parents=True, exist_ok=True)
-        
-        creds_file = creds_dir / "mongodb_credentials"
-        
-        # Append credentials
-        with open(creds_file, 'a') as f:
-            f.write(f"\n# {instance_name}\n")
-            f.write(f"DATABASE={creds['database']}\n")
-            f.write(f"USERNAME={creds['username']}\n")
-            f.write(f"PASSWORD={creds['password']}\n")
-            f.write(f"URI={creds['uri']}\n")
-        
-        # Set secure permissions
-        os.chmod(creds_file, 0o600)
-        
-        self.printer.success(f"Credentials saved to {creds_file}")
-    
-    def _update_config_mongodb(self, install_path: Path, creds: Dict):
-        """Update product config file with MongoDB connection string"""
-        # Look for config files
-        config_files = list(install_path.glob("config.y*ml")) + list(install_path.glob("config.json"))
-        
-        if not config_files:
-            self.printer.warning("No config file found to update with MongoDB settings")
-            self.printer.step(f"MongoDB URI: {creds['uri']}")
-            return
-        
-        config_file = config_files[0]
-        mongo_uri = creds["uri"]
-
-        if config_file.suffix.lower() == ".json":
-            try:
-                data = json.loads(config_file.read_text(encoding="utf-8", errors="replace"))
-                candidate_keys = ["mongoURI", "mongodb_uri", "database_url", "MongoURI", "MONGO_URI", "MONGODB_URI"]
-                set_key = None
-                for key in candidate_keys:
-                    if key in data:
-                        set_key = key
-                        break
-                if not set_key:
-                    set_key = "mongoURI"
-                data[set_key] = mongo_uri
-                config_file.write_text(json.dumps(data, indent=2) + "\n")
-                self.printer.success(f"Updated MongoDB URI in {config_file.name} ({set_key})")
-                return
-            except Exception as e:
-                self.printer.warning(f"Could not auto-update JSON config: {e}")
-                self.printer.step(f"MongoDB URI: {mongo_uri}")
-                return
-
-        # YAML-ish config update via regex
-        try:
-            content = config_file.read_text(encoding="utf-8", errors="replace")
-            escaped_uri = mongo_uri.replace('\\', '\\\\').replace('"', '\\"')
-            patterns = [
-                (r'(mongoURI\s*:\s*)["\']?.*?["\']?\s*$', r'\1"' + escaped_uri + '"'),
-                (r'(mongodb_uri\s*:\s*)["\']?.*?["\']?\s*$', r'\1"' + escaped_uri + '"'),
-                (r'(database_url\s*:\s*)["\']?.*?["\']?\s*$', r'\1"' + escaped_uri + '"'),
-                (r'(MongoURI\s*:\s*)["\']?.*?["\']?\s*$', r'\1"' + escaped_uri + '"'),
-            ]
-            updated = False
-            for pattern, replacement in patterns:
-                if re.search(pattern, content, flags=re.IGNORECASE | re.MULTILINE):
-                    content = re.sub(pattern, replacement, content, flags=re.IGNORECASE | re.MULTILINE)
-                    updated = True
-                    break
-
-            if updated:
-                config_file.write_text(content)
-                self.printer.success(f"Updated MongoDB URI in {config_file.name}")
-            else:
-                self.printer.warning(f"Could not find MongoDB URI field in {config_file.name}")
-                self.printer.step(f"Please manually add MongoDB URI: {mongo_uri}")
-        except Exception as e:
-            self.printer.warning(f"Could not auto-update config: {e}")
-            self.printer.step(f"MongoDB URI: {mongo_uri}")
-
-    def _validate_mongodb_uri(self, uri: str) -> bool:
-        """Validate that a MongoDB URI can authenticate and run a ping."""
-        script = (
-            "(function() {\n"
-            "  try {\n"
-            "    const res = db.runCommand({ ping: 1 });\n"
-            "    if (res && res.ok === 1) { print('__PLEXINSTALLER_OK__'); quit(0); }\n"
-            "    print('__PLEXINSTALLER_ERROR__ ping not ok'); quit(2);\n"
-            "  } catch (e) {\n"
-            "    print('__PLEXINSTALLER_ERROR__ ' + e); quit(2);\n"
-            "  }\n"
-            "})();"
-        )
-
-        try:
-            result = self._run_mongo_shell([uri, '--quiet', '--eval', script], timeout=20)
-            combined = (result.stdout or "") + "\n" + (result.stderr or "")
-            return result.returncode == 0 and "__PLEXINSTALLER_OK__" in combined
-        except Exception:
-            return False
-
-    def _wait_for_tcp_port(self, host: str, port: int, timeout_seconds: int = 30) -> bool:
-        """Wait until a TCP port accepts connections."""
-        deadline = time.time() + timeout_seconds
-        while time.time() < deadline:
-            try:
-                with socket.create_connection((host, port), timeout=2):
-                    return True
-            except OSError:
-                time.sleep(1)
-        return False
-
-    def _probe_http(self, host: str, port: int, path: str = "/", timeout: int = 3) -> Tuple[bool, str]:
-        """Probe an HTTP endpoint; returns (ok, detail)."""
-        try:
-            conn = http.client.HTTPConnection(host, port, timeout=timeout)
-            conn.request("GET", path)
-            resp = conn.getresponse()
-            detail = f"HTTP {resp.status} {resp.reason}"
-            return True, detail
-        except Exception as exc:
-            return False, str(exc)
-
-    def _check_node_version(self) -> Tuple[bool, str]:
-        try:
-            result = subprocess.run(['node', '-v'], capture_output=True, text=True, timeout=10)
-            if result.returncode != 0:
-                return False, (result.stderr or result.stdout or "node -v failed").strip()
-            version = (result.stdout or "").strip().lstrip('v')
-            major = int(version.split('.')[0])
-            if major < self.config.NODE_MIN_VERSION:
-                return False, f"Node.js v{version} (needs >= {self.config.NODE_MIN_VERSION})"
-            return True, f"Node.js v{version}"
-        except Exception as exc:
-            return False, str(exc)
-
     def _run_post_install_self_tests(self, context: InstallationContext, mongo_creds: Optional[Dict]) -> List[_SelfTestResult]:
         results: List[PlexInstaller._SelfTestResult] = []
 
@@ -1779,141 +1420,6 @@ gpgkey=https://www.mongodb.org/static/pgp/server-{mongo_ver}.asc
         
         self.printer.success(f"{product} uninstalled")
     
-    def _system_health_check(self):
-        """Perform comprehensive system health check"""
-        os.system('clear' if os.name != 'nt' else 'cls')
-        self.printer.header("System Health Check")
-        
-        # Check disk space
-        stat = os.statvfs(self.config.install_dir)
-        free_gb = (stat.f_bavail * stat.f_frsize) / (1024**3)
-        total_gb = (stat.f_blocks * stat.f_frsize) / (1024**3)
-        used_percent = ((total_gb - free_gb) / total_gb) * 100
-        
-        print("\n=== Disk Space ===")
-        print(f"Location: {self.config.install_dir}")
-        print(f"Total: {total_gb:.1f} GB")
-        print(f"Free: {free_gb:.1f} GB")
-        print(f"Used: {used_percent:.1f}%")
-        
-        if used_percent > 90:
-            self.printer.error("⚠ WARNING: Disk usage above 90%!")
-        elif used_percent > 80:
-            self.printer.warning("⚠ Disk usage above 80%")
-        else:
-            self.printer.success("✓ Disk space healthy")
-        
-        # Check services status
-        print("\n=== Services Status ===")
-        install_dir = self.config.install_dir
-        if install_dir.exists():
-            all_running = True
-            for product_dir in install_dir.iterdir():
-                if product_dir.is_dir() and product_dir.name != "backups":
-                    service_name = f"plex-{product_dir.name}"
-                    status = self.systemd.get_status(service_name)
-                    
-                    if "active" in status.lower():
-                        print(f"  ✓ {product_dir.name}: {ColorPrinter.GREEN}Running{ColorPrinter.NC}")
-                    elif "inactive" in status.lower():
-                        print(f"  ○ {product_dir.name}: {ColorPrinter.YELLOW}Stopped{ColorPrinter.NC}")
-                        all_running = False
-                    else:
-                        print(f"  ✗ {product_dir.name}: {ColorPrinter.RED}Not Found{ColorPrinter.NC}")
-                        all_running = False
-            
-            if all_running:
-                self.printer.success("\n✓ All services are running")
-            else:
-                self.printer.warning("\n⚠ Some services are not running")
-        else:
-            self.printer.warning("No installations found")
-        
-        # Check Nginx status
-        print("\n=== Web Server Status ===")
-        try:
-            result = subprocess.run(['systemctl', 'is-active', 'nginx'], 
-                                  capture_output=True, text=True)
-            if result.stdout.strip() == 'active':
-                self.printer.success("✓ Nginx is running")
-            else:
-                self.printer.error("✗ Nginx is not running")
-        except Exception:
-            self.printer.warning("⚠ Could not check Nginx status")
-        
-        # Check MongoDB status (if installed)
-        print("\n=== Database Status ===")
-        try:
-            result = subprocess.run(['systemctl', 'is-active', 'mongod'], 
-                                  capture_output=True, text=True)
-            if result.stdout.strip() == 'active':
-                self.printer.success("✓ MongoDB is running")
-            else:
-                self.printer.warning("○ MongoDB is not running")
-        except Exception:
-            self.printer.step("ℹ MongoDB not installed or not using systemd")
-        
-        # Check SSL certificates
-        print("\n=== SSL Certificates ===")
-        certbot_installed = subprocess.run(['which', 'certbot'], 
-                                          capture_output=True).returncode == 0
-        if certbot_installed:
-            try:
-                result = subprocess.run(['certbot', 'certificates'], 
-                                      capture_output=True, text=True)
-                if 'No certificates found' in result.stdout:
-                    self.printer.step("ℹ No SSL certificates found")
-                else:
-                    # Count certificates
-                    cert_count = result.stdout.count('Certificate Name:')
-                    self.printer.success(f"✓ Found {cert_count} SSL certificate(s)")
-            except Exception:
-                self.printer.warning("⚠ Could not check SSL certificates")
-        else:
-            self.printer.step("ℹ Certbot not installed")
-        
-        # Check memory usage
-        print("\n=== Memory Usage ===")
-        try:
-            with open('/proc/meminfo', 'r') as f:
-                lines = f.readlines()
-                mem_total = int([l for l in lines if 'MemTotal' in l][0].split()[1]) / 1024
-                mem_available = int([l for l in lines if 'MemAvailable' in l][0].split()[1]) / 1024
-                mem_used = mem_total - mem_available
-                mem_percent = (mem_used / mem_total) * 100
-                
-                print(f"Total: {mem_total:.0f} MB")
-                print(f"Used: {mem_used:.0f} MB ({mem_percent:.1f}%)")
-                print(f"Available: {mem_available:.0f} MB")
-                
-                if mem_percent > 90:
-                    self.printer.error("⚠ WARNING: Memory usage above 90%!")
-                elif mem_percent > 80:
-                    self.printer.warning("⚠ Memory usage above 80%")
-                else:
-                    self.printer.success("✓ Memory usage healthy")
-        except Exception:
-            self.printer.warning("⚠ Could not check memory usage")
-        
-        # Check system load
-        print("\n=== System Load ===")
-        try:
-            load1, load5, load15 = os.getloadavg()
-            cpu_count = os.cpu_count() or 1
-            print(f"1 min: {load1:.2f}")
-            print(f"5 min: {load5:.2f}")
-            print(f"15 min: {load15:.2f}")
-            print(f"CPU cores: {cpu_count}")
-            
-            if load5 > cpu_count * 2:
-                self.printer.error("⚠ WARNING: High system load!")
-            elif load5 > cpu_count:
-                self.printer.warning("⚠ System load is elevated")
-            else:
-                self.printer.success("✓ System load normal")
-        except Exception:
-            self.printer.warning("⚠ Could not check system load")
-    
     def _ssl_management_menu(self):
         """SSL certificate management menu"""
         while True:
@@ -1985,267 +1491,6 @@ gpgkey=https://www.mongodb.org/static/pgp/server-{mongo_ver}.asc
             self.printer.success("SSL renewal test successful! All certificates can be renewed.")
         except subprocess.CalledProcessError:
             self.printer.error("SSL renewal test failed. Check output above for details.")
-    
-    def _manage_backups(self):
-        """Manage backups menu"""
-        while True:
-            os.system('clear' if os.name != 'nt' else 'cls')
-            self.printer.header("Backup Management")
-            print(f"Backup Location: {self.config.install_dir / 'backups'}")
-            print("---")
-            
-            print("\n1) Create backup of a product")
-            print("2) List available backups")
-            print("3) Restore product from backup")
-            print("4) Delete backup")
-            print("0) Return to Main Menu")
-            
-            choice = input("\nEnter your choice: ").strip()
-            
-            if choice == "0":
-                break
-            elif choice == "1":
-                self._create_backup()
-            elif choice == "2":
-                self._list_backups()
-            elif choice == "3":
-                self._restore_backup()
-            elif choice == "4":
-                self._delete_backup()
-            else:
-                self.printer.error("Invalid choice")
-            
-            if choice != "0":
-                input("\nPress Enter to continue...")
-    
-    def _create_backup(self):
-        """Create backup of a product"""
-        products = [d for d in self.config.install_dir.iterdir() 
-                   if d.is_dir() and d.name != "backups"]
-        
-        if not products:
-            self.printer.warning("No installed products found to back up")
-            return
-        
-        print("\nSelect product to backup:")
-        for i, product_dir in enumerate(products, 1):
-            print(f"{i}) {product_dir.name}")
-        
-        choice = input(f"\nEnter choice (1-{len(products)}): ").strip()
-        
-        try:
-            idx = int(choice) - 1
-            if 0 <= idx < len(products):
-                product = products[idx].name
-                self._backup_product(product)
-            else:
-                self.printer.error("Invalid choice")
-        except ValueError:
-            self.printer.error("Invalid choice")
-    
-    def _backup_product(self, product: str):
-        """Backup a specific product"""
-        from datetime import datetime
-        import tarfile
-        
-        install_path = self.config.install_dir / product
-        backup_dir = self.config.install_dir / "backups"
-        backup_dir.mkdir(exist_ok=True)
-        
-        # Generate backup filename with timestamp
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_file = backup_dir / f"{product}_backup_{timestamp}.tar.gz"
-        
-        self.printer.step(f"Creating backup of {product}...")
-        
-        # Stop service before backup
-        service_name = f"plex-{product}"
-        was_running = "active" in self.systemd.get_status(service_name).lower()
-        
-        if was_running:
-            self.printer.step("Stopping service...")
-            self.systemd.stop(service_name)
-        
-        try:
-            # Create tar.gz archive
-            with tarfile.open(backup_file, "w:gz") as tar:
-                tar.add(install_path, arcname=product)
-            
-            # Get file size
-            size_mb = backup_file.stat().st_size / (1024 * 1024)
-            
-            self.printer.success(f"Backup created: {backup_file.name}")
-            self.printer.step(f"Size: {size_mb:.2f} MB")
-            
-        except Exception as e:
-            self.printer.error(f"Backup failed: {e}")
-        
-        # Restart service if it was running
-        if was_running:
-            self.printer.step("Restarting service...")
-            self.systemd.start(service_name)
-    
-    def _list_backups(self):
-        """List available backups"""
-        backup_dir = self.config.install_dir / "backups"
-        
-        if not backup_dir.exists():
-            self.printer.warning("No backups directory found")
-            return
-        
-        backups = sorted(backup_dir.glob("*.tar.gz"), key=lambda x: x.stat().st_mtime, reverse=True)
-        
-        if not backups:
-            self.printer.warning("No backups found")
-            return
-        
-        print("\nAvailable Backups:")
-        print(f"{'ID':<4} {'Product':<15} {'Date':<20} {'Size':<10}")
-        print("-" * 60)
-        
-        from datetime import datetime
-        for i, backup_file in enumerate(backups, 1):
-            size_mb = backup_file.stat().st_size / (1024 * 1024)
-            mtime = datetime.fromtimestamp(backup_file.stat().st_mtime)
-            date_str = mtime.strftime("%Y-%m-%d %H:%M:%S")
-            
-            # Extract product name from filename
-            product = backup_file.stem.replace("_backup_", " ").split()[0]
-            
-            print(f"{i:<4} {product:<15} {date_str:<20} {size_mb:>8.2f} MB")
-    
-    def _restore_backup(self):
-        """Restore product from backup"""
-        import tarfile
-        
-        backup_dir = self.config.install_dir / "backups"
-        
-        if not backup_dir.exists():
-            self.printer.warning("No backups directory found")
-            return
-        
-        backups = sorted(backup_dir.glob("*.tar.gz"), key=lambda x: x.stat().st_mtime, reverse=True)
-        
-        if not backups:
-            self.printer.warning("No backups found")
-            return
-        
-        self._list_backups()
-        
-        choice = input(f"\nSelect backup ID to restore (1-{len(backups)}): ").strip()
-        
-        try:
-            idx = int(choice) - 1
-            if 0 <= idx < len(backups):
-                selected_backup = backups[idx]
-                
-                # Extract product name
-                product = selected_backup.stem.replace("_backup_", " ").split()[0]
-                
-                self.printer.warning(f"This will restore {product} from backup.")
-                self.printer.warning("Current installation will be replaced!")
-                
-                confirm = input("Continue? (y/n): ").strip().lower()
-                
-                if confirm == 'y':
-                    self._restore_from_backup(selected_backup, product)
-                else:
-                    self.printer.step("Restore cancelled")
-            else:
-                self.printer.error("Invalid backup ID")
-        except ValueError:
-            self.printer.error("Invalid input")
-    
-    def _restore_from_backup(self, backup_file: Path, product: str):
-        """Restore from a specific backup file"""
-        import tarfile
-        import shutil
-        
-        install_path = self.config.install_dir / product
-        service_name = f"plex-{product}"
-        
-        # Stop service
-        self.printer.step("Stopping service...")
-        self.systemd.stop(service_name)
-        
-        # Backup current installation (just in case)
-        if install_path.exists():
-            self.printer.step("Backing up current installation...")
-            temp_backup = install_path.parent / f"{product}.backup.tmp"
-            if temp_backup.exists():
-                shutil.rmtree(temp_backup)
-            shutil.move(str(install_path), str(temp_backup))
-        
-        try:
-            # Extract backup
-            self.printer.step(f"Restoring from {backup_file.name}...")
-            
-            with tarfile.open(backup_file, "r:gz") as tar:
-                tar.extractall(self.config.install_dir)
-            
-            # Set permissions
-            self.printer.step("Setting permissions...")
-            subprocess.run(['chown', '-R', 'root:root', str(install_path)])
-            subprocess.run(['find', str(install_path), '-type', 'd', '-exec', 'chmod', '755', '{}', ';'])
-            subprocess.run(['find', str(install_path), '-type', 'f', '-exec', 'chmod', '644', '{}', ';'])
-            
-            # Remove temp backup
-            temp_backup = install_path.parent / f"{product}.backup.tmp"
-            if temp_backup.exists():
-                shutil.rmtree(temp_backup)
-            
-            self.printer.success(f"Restore of {product} complete")
-            
-            # Restart service
-            self.printer.step("Starting service...")
-            self.systemd.start(service_name)
-            
-        except Exception as e:
-            self.printer.error(f"Restore failed: {e}")
-            
-            # Restore from temp backup
-            temp_backup = install_path.parent / f"{product}.backup.tmp"
-            if temp_backup.exists():
-                self.printer.warning("Attempting to restore previous installation...")
-                if install_path.exists():
-                    shutil.rmtree(install_path)
-                shutil.move(str(temp_backup), str(install_path))
-    
-    def _delete_backup(self):
-        """Delete a backup file"""
-        backup_dir = self.config.install_dir / "backups"
-        
-        if not backup_dir.exists():
-            self.printer.warning("No backups directory found")
-            return
-        
-        backups = sorted(backup_dir.glob("*.tar.gz"), key=lambda x: x.stat().st_mtime, reverse=True)
-        
-        if not backups:
-            self.printer.warning("No backups found")
-            return
-        
-        self._list_backups()
-        
-        choice = input(f"\nSelect backup ID to DELETE (1-{len(backups)}): ").strip()
-        
-        try:
-            idx = int(choice) - 1
-            if 0 <= idx < len(backups):
-                selected_backup = backups[idx]
-                
-                self.printer.warning(f"You are about to permanently delete: {selected_backup.name}")
-                confirm = input("Are you absolutely sure? (y/n): ").strip().lower()
-                
-                if confirm == 'y':
-                    selected_backup.unlink()
-                    self.printer.success("Backup deleted successfully")
-                else:
-                    self.printer.step("Deletion cancelled")
-            else:
-                self.printer.error("Invalid backup ID")
-        except ValueError:
-            self.printer.error("Invalid input")
     
     # ========== ADDON MANAGEMENT ==========
     
@@ -2653,27 +1898,6 @@ gpgkey=https://www.mongodb.org/static/pgp/server-{mongo_ver}.asc
             self.printer.error(f"Restore failed: {e}")
     
     # ========== END ADDON MANAGEMENT ==========
-    
-    def _ssl_management(self):
-        """SSL certificate management"""
-        self.printer.header("SSL Management")
-        
-        print("\n1) View Certificate Status")
-        print("2) Renew Certificates")
-        print("3) Setup Auto-Renewal")
-        print("0) Back")
-        
-        choice = input("\nChoice: ").strip()
-        
-        if choice == "1":
-            subprocess.run(["certbot", "certificates"])
-        elif choice == "2":
-            subprocess.run(["certbot", "renew"])
-        elif choice == "3":
-            self.ssl.setup_auto_renewal()
-        
-        if choice != "0":
-            input("\nPress Enter to continue...")
 
 def main():
     """Entry point"""
