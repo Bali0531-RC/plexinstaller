@@ -31,15 +31,15 @@
     "backup_manager": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/backup_manager.py"
   },
   "checksums": {
-    "addon_manager": "fa248c06ed755250bf44d5ff6bdeaa5e05c645651367f47f7582411ef1cf3d17",
+    "addon_manager": "5d5cf5f3224caa4bdb14d80c3d546eefb74db7c8677d2a693e5a075ede3eb8f5",
     "backup_manager": "f1cfd9a9dcee16f09af19076075226a1fac1915641766f5a1411a745ecc4daed",
-    "config": "fd1dd3bfc1d75bad1ac3d484231ed125e876104ecf6bf9b769fe8f9520b59b99",
+    "config": "3f6a01377db08258eb8d03657f2bfeb51c085eba02e14e7798b2fee1bd20b013",
     "health_checker": "c83152ea1db3106c09b2a447ef813cb0873855abfdb69508191ad882090c4fc0",
-    "installer": "01ee55ba50aa3a474b7b6ca673f43d84fc081e0d7625f548520a25bc7f7cdc50",
+    "installer": "1620c38929f10cb3c4f19abaab1225f318f5b7291bb5f0e29617bd8317d6d4b2",
     "mongodb_manager": "0d3fbdb4e3fc1926a01b3c6510c3f6166db4dc2eaecd2354e4564a11f221f108",
-    "plex_cli": "78b94306f156afb2551ccbb265d21d82a5dbf81fe7f1a39bc5df596aa9f4bf1a",
+    "plex_cli": "5e2259185deb9fa2fe922c11735009f2f7ecffbf67ef839471a8eda860a2568f",
     "shared": "36f3fce1413f2b2603bab2bef9351962ed9f6b3551e22d22d2ed27068aab45c2",
-    "telemetry_client": "b9c039389da57a39e841855793cae7f5d5d06529e5fb36f52c1f3087d5e0f9da",
+    "telemetry_client": "5b694f1fddc03db3c75029fd9bb5eba32c2a4a5e9d483dd935c6fea6eef72b4c",
     "utils": "c73efc77f6a60754a682cc04db2b39ed6430027c5cc2b78a7c8733dfcd1e5294"
   }
 }

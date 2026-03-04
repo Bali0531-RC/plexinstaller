@@ -15,22 +15,22 @@ from pathlib import Path
 try:
     from config import Config
 except Exception:  # pragma: no cover
-    Config = None
+    Config = None  # type: ignore[assignment,misc]
 
 try:
     from addon_manager import AddonManager
 except Exception:  # pragma: no cover
-    AddonManager = None
+    AddonManager = None  # type: ignore[assignment,misc]
 
 try:
     import requests
 except Exception:  # pragma: no cover
-    requests = None
+    requests = None  # type: ignore[assignment]
 
 try:
     from utils import redact_sensitive_yaml
 except Exception:  # pragma: no cover
-    redact_sensitive_yaml = None
+    redact_sensitive_yaml = None  # type: ignore[assignment]
 
 try:
     from shared import (
@@ -46,12 +46,12 @@ try:
         verify_gpg_signature,
     )
 except Exception:  # pragma: no cover
-    is_newer_version = None
-    verify_gpg_signature = None
-    perform_update = None
-    ensure_cli_entrypoints = None
-    _SHARED_INSTALLER_DIR = None
-    _SHARED_VERSION_CHECK_URL = None
+    is_newer_version = None  # type: ignore[assignment]
+    verify_gpg_signature = None  # type: ignore[assignment]
+    perform_update = None  # type: ignore[assignment]
+    ensure_cli_entrypoints = None  # type: ignore[assignment]
+    _SHARED_INSTALLER_DIR = None  # type: ignore[assignment]
+    _SHARED_VERSION_CHECK_URL = None  # type: ignore[assignment]
 
 # Configuration
 INSTALL_DIR = Path("/var/www/plex")
@@ -258,7 +258,7 @@ def _maybe_auto_update():
 
 def get_installed_apps() -> list[str]:
     """Get list of installed Plex applications"""
-    apps = []
+    apps: list[str] = []
     if not INSTALL_DIR.exists():
         return apps
 
@@ -626,7 +626,7 @@ def debug_app(app: str) -> int:
         f"===== journalctl (last 500 lines) =====\n{logs_contents}\n"
     )
 
-    if redact_sensitive_yaml:
+    if redact_sensitive_yaml is not None:
         bundle = redact_sensitive_yaml(bundle)
 
     paste_endpoint = "https://paste.plexdev.xyz/documents"
@@ -1008,12 +1008,13 @@ def tool_setupdomain(app: str) -> int:
         utils_path = INSTALLER_DIR / "utils.py"
         if utils_path.exists():
             spec = importlib.util.spec_from_file_location("utils", utils_path)
+            assert spec is not None and spec.loader is not None
             utils_mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(utils_mod)
-            DNSChecker = utils_mod.DNSChecker
-            NginxManager = utils_mod.NginxManager
-            SSLManager = utils_mod.SSLManager
-            FirewallManager = utils_mod.FirewallManager
+            spec.loader.exec_module(utils_mod)  # type: ignore[union-attr]
+            DNSChecker = utils_mod.DNSChecker  # type: ignore[misc]
+            NginxManager = utils_mod.NginxManager  # type: ignore[misc]
+            SSLManager = utils_mod.SSLManager  # type: ignore[misc]
+            FirewallManager = utils_mod.FirewallManager  # type: ignore[misc]
         else:
             print_error("Cannot import utility modules. Is the installer properly installed?")
             return 1

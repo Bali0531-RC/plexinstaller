@@ -7,6 +7,7 @@ Modular, maintainable installer for Plex products
 import atexit
 import fcntl
 import hashlib
+import io
 import json
 import os
 import re
@@ -32,7 +33,7 @@ from utils import (
 try:
     from addon_manager import AddonManager
 except ImportError:
-    AddonManager = None
+    AddonManager = None  # type: ignore[assignment,misc]
 from telemetry_client import TelemetryClient
 
 try:
@@ -56,11 +57,11 @@ try:
         verify_gpg_signature as _shared_verify_gpg,
     )
 except ImportError:
-    _shared_is_newer = None
-    _shared_verify_gpg = None
-    _shared_perform_update = None
-    _shared_ensure_cli = None
-    _shared_download_missing = None
+    _shared_is_newer = None  # type: ignore[assignment]
+    _shared_verify_gpg = None  # type: ignore[assignment]
+    _shared_perform_update = None  # type: ignore[assignment]
+    _shared_ensure_cli = None  # type: ignore[assignment]
+    _shared_download_missing = None  # type: ignore[assignment]
     INSTALLER_DIR = Path("/opt/plexinstaller")
     UPDATE_FILE_MAP = {
         "installer": "installer.py",
@@ -77,16 +78,16 @@ except ImportError:
 try:
     from mongodb_manager import MongoDBManager
 except ImportError:
-    MongoDBManager = None
+    MongoDBManager = None  # type: ignore[assignment,misc]
 try:
     from backup_manager import BackupManager
 except ImportError:
-    BackupManager = None
+    BackupManager = None  # type: ignore[assignment,misc]
 try:
     from health_checker import HealthChecker, SelfTestResult
 except ImportError:
-    HealthChecker = None
-    SelfTestResult = None
+    HealthChecker = None  # type: ignore[assignment,misc]
+    SelfTestResult = None  # type: ignore[assignment,misc]
 from utils import setup_logging
 
 # Current installer version
@@ -124,7 +125,7 @@ class PlexInstaller:
         self.version = version
         self.config = Config()
         self.printer = ColorPrinter()
-        self._lock_fd = None
+        self._lock_fd: io.TextIOWrapper | None = None
 
         # Check root FIRST before any file operations
         if os.geteuid() != 0:
@@ -143,7 +144,7 @@ class PlexInstaller:
         self.ssl = SSLManager()
         self.systemd = SystemdManager()
         self.extractor = ArchiveExtractor()
-        self.addon_manager = AddonManager() if AddonManager else None
+        self.addon_manager = AddonManager() if AddonManager is not None else None
         self.mongo_manager = (
             MongoDBManager(
                 printer=self.printer,
@@ -151,7 +152,7 @@ class PlexInstaller:
                 mongodb_version=self.config.MONGODB_VERSION,
                 mongodb_repo_version_bookworm=self.config.MONGODB_REPO_VERSION_BOOKWORM,
             )
-            if MongoDBManager
+            if MongoDBManager is not None
             else None
         )
         self.backup_mgr = (
@@ -160,7 +161,7 @@ class PlexInstaller:
                 systemd=self.systemd,
                 install_dir=self.config.install_dir,
             )
-            if BackupManager
+            if BackupManager is not None
             else None
         )
         self.health = (
@@ -172,7 +173,7 @@ class PlexInstaller:
                 nginx_available=self.config.nginx_available,
                 nginx_enabled=self.config.nginx_enabled,
             )
-            if HealthChecker
+            if HealthChecker is not None
             else None
         )
         self.telemetry_enabled = self._initialize_telemetry_preference()
@@ -1301,7 +1302,7 @@ class PlexInstaller:
 
     def _get_addon_supported_products(self) -> list[tuple[str, Path]]:
         """Get list of installed products that support addons"""
-        products = []
+        products: list[tuple[str, Path]] = []
 
         if not self.config.install_dir.exists():
             return products

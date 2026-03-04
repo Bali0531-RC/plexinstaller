@@ -96,10 +96,11 @@ class AddonManager:
             # This check is already done implicitly if the folder existed
 
             # Set proper permissions
-            self._set_permissions(final_path)
+            if final_path is not None:
+                self._set_permissions(final_path)
 
             # Check for config file
-            config_path = self._find_addon_config(final_path)
+            config_path = self._find_addon_config(final_path) if final_path is not None else None
             config_msg = f" (config: {config_path.name})" if config_path else " (no config file found)"
 
             return True, f"Addon '{addon_name}' installed successfully{config_msg}", addon_name
@@ -295,7 +296,8 @@ class AddonManager:
             error_msg = str(e)
             if hasattr(e, "problem_mark"):
                 mark = e.problem_mark
-                error_msg = f"Line {mark.line + 1}, column {mark.column + 1}: {e.problem}"
+                problem = getattr(e, "problem", "")
+                error_msg = f"Line {mark.line + 1}, column {mark.column + 1}: {problem}"
             return False, error_msg
         except Exception as e:
             return False, str(e)
@@ -310,7 +312,7 @@ class AddonManager:
 
         return self._find_addon_config(addon_path)
 
-    def find_addon_archive(self, search_dirs: list[Path] = None) -> list[Path]:
+    def find_addon_archive(self, search_dirs: list[Path] | None = None) -> list[Path]:
         """
         Find addon archives in common directories.
 

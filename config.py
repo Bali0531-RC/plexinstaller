@@ -181,7 +181,7 @@ class Config:
         self.plex_setup_file = self.PLEX_SETUP_FILE
         self.telemetry_pref_file = self.TELEMETRY_PREF_FILE
 
-    def get_product(self, name: str) -> ProductConfig:
+    def get_product(self, name: str) -> ProductConfig | None:
         """Get product configuration"""
         return self.PRODUCTS.get(name.lower())
 

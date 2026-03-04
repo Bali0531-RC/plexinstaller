@@ -156,7 +156,7 @@ class TelemetryClient:
             )
             response.raise_for_status()
             data = response.json()
-            return data.get("url") or data.get("key")
+            return str(data.get("url") or data.get("key"))
         except requests.RequestException:
             return None
 
