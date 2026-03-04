@@ -10,6 +10,7 @@ from shared import _force_symlink, download_missing_files, is_newer_version, ver
 # is_newer_version
 # ---------------------------------------------------------------------------
 
+
 class TestIsNewerVersion:
     def test_newer_major(self):
         assert is_newer_version("4.0.0", "3.1.17") is True
@@ -45,6 +46,7 @@ class TestIsNewerVersion:
 # ---------------------------------------------------------------------------
 # verify_gpg_signature
 # ---------------------------------------------------------------------------
+
 
 def _noop(*_a, **_kw):
     """Dummy printer callback."""
@@ -89,7 +91,7 @@ class TestVerifyGpgSignature:
         bad_result = subprocess.CompletedProcess(args=[], returncode=1, stderr="BAD SIG")
 
         def _mock_run(cmd, **kw):
-            if cmd[0] == 'gpg' and '--verify' in cmd:
+            if cmd[0] == "gpg" and "--verify" in cmd:
                 return bad_result
             return subprocess.CompletedProcess(args=cmd, returncode=0)
 
@@ -104,6 +106,7 @@ class TestVerifyGpgSignature:
 # ---------------------------------------------------------------------------
 # _force_symlink
 # ---------------------------------------------------------------------------
+
 
 class TestForceSymlink:
     def test_creates_symlink(self, tmp_path: Path):
@@ -154,6 +157,7 @@ class TestForceSymlink:
 # download_missing_files
 # ---------------------------------------------------------------------------
 
+
 class TestDownloadMissingFiles:
     def _make_version_data(self):
         return {
@@ -163,9 +167,18 @@ class TestDownloadMissingFiles:
 
     def test_noop_when_all_files_present(self, tmp_path: Path):
         """No downloads when every managed file already exists."""
-        for fn in ['installer.py', 'config.py', 'utils.py', 'plex_cli.py',
-                    'telemetry_client.py', 'addon_manager.py', 'shared.py',
-                    'health_checker.py', 'mongodb_manager.py', 'backup_manager.py']:
+        for fn in [
+            "installer.py",
+            "config.py",
+            "utils.py",
+            "plex_cli.py",
+            "telemetry_client.py",
+            "addon_manager.py",
+            "shared.py",
+            "health_checker.py",
+            "mongodb_manager.py",
+            "backup_manager.py",
+        ]:
             (tmp_path / fn).write_text("")
 
         with mock.patch("shared.INSTALLER_DIR", tmp_path):
@@ -176,11 +189,13 @@ class TestDownloadMissingFiles:
     def test_downloads_missing_file(self, tmp_path: Path):
         """Missing file is downloaded and written with checksum verification."""
         import hashlib
+
         content = b"# utils code"
         checksum = hashlib.sha256(content).hexdigest()
 
         # Create all files except utils.py
         from shared import UPDATE_FILE_MAP
+
         for fn in set(UPDATE_FILE_MAP.values()) - {"utils.py"}:
             (tmp_path / fn).write_text("")
 
@@ -193,13 +208,11 @@ class TestDownloadMissingFiles:
             resp = mock.MagicMock()
             resp.__enter__ = mock.MagicMock(return_value=resp)
             resp.__exit__ = mock.MagicMock(return_value=False)
-            resp.read.return_value = (
-                json.dumps(version_data).encode()
-                if "version.json" in url else content
-            )
+            resp.read.return_value = json.dumps(version_data).encode() if "version.json" in url else content
             return resp
 
         import json
+
         with mock.patch("shared.INSTALLER_DIR", tmp_path):
             with mock.patch("shared.urllib.request.urlopen", side_effect=fake_urlopen):
                 download_missing_files(**_PRINTER_KWARGS)
@@ -212,6 +225,7 @@ class TestDownloadMissingFiles:
         content = b"# bad content"
 
         from shared import UPDATE_FILE_MAP
+
         for fn in set(UPDATE_FILE_MAP.values()) - {"utils.py"}:
             (tmp_path / fn).write_text("")
 
@@ -224,13 +238,11 @@ class TestDownloadMissingFiles:
             resp = mock.MagicMock()
             resp.__enter__ = mock.MagicMock(return_value=resp)
             resp.__exit__ = mock.MagicMock(return_value=False)
-            resp.read.return_value = (
-                json.dumps(version_data).encode()
-                if "version.json" in url else content
-            )
+            resp.read.return_value = json.dumps(version_data).encode() if "version.json" in url else content
             return resp
 
         import json
+
         with mock.patch("shared.INSTALLER_DIR", tmp_path):
             with mock.patch("shared.urllib.request.urlopen", side_effect=fake_urlopen):
                 download_missing_files(**_PRINTER_KWARGS)

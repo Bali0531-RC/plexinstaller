@@ -154,13 +154,16 @@ async def add_event(payload: TelemetryPayload):
             stats["other"] += 1
 
         recent = stats.setdefault("most_recent", [])
-        recent.insert(0, {
-            "session_id": payload.session_id,
-            "product": payload.product,
-            "status": payload.status,
-            "timestamp": payload.timestamp,
-            "failure_step": payload.failure_step,
-        })
+        recent.insert(
+            0,
+            {
+                "session_id": payload.session_id,
+                "product": payload.product,
+                "status": payload.status,
+                "timestamp": payload.timestamp,
+                "failure_step": payload.failure_step,
+            },
+        )
         stats["most_recent"] = recent[:20]
 
         _save_stats(stats)

@@ -44,18 +44,15 @@ class AddonManager:
         for item in sorted(addons_path.iterdir()):
             if item.is_dir():
                 config_path = self._find_addon_config(item)
-                addons.append({
-                    'name': item.name,
-                    'path': item,
-                    'has_config': config_path is not None,
-                    'config_path': config_path
-                })
+                addons.append(
+                    {"name": item.name, "path": item, "has_config": config_path is not None, "config_path": config_path}
+                )
 
         return addons
 
     def _find_addon_config(self, addon_path: Path) -> Path | None:
         """Find config.yml or config.yaml in addon folder"""
-        for config_name in ['config.yml', 'config.yaml']:
+        for config_name in ["config.yml", "config.yaml"]:
             config_file = addon_path / config_name
             if config_file.exists():
                 return config_file
@@ -90,9 +87,7 @@ class AddonManager:
                 return False, "No files were extracted from the archive", None
 
             # Analyze what was extracted
-            addon_name, final_path = self._handle_extracted_items(
-                new_items, addons_path, archive_path
-            )
+            addon_name, final_path = self._handle_extracted_items(new_items, addons_path, archive_path)
 
             if addon_name is None:
                 return False, "Failed to determine addon name from archive", None
@@ -121,28 +116,23 @@ class AddonManager:
         import subprocess
         import zipfile
 
-        if archive_path.suffix.lower() == '.zip':
-            with zipfile.ZipFile(archive_path, 'r') as zip_ref:
+        if archive_path.suffix.lower() == ".zip":
+            with zipfile.ZipFile(archive_path, "r") as zip_ref:
                 # Path traversal protection
                 for member in zip_ref.namelist():
                     member_path = (target_dir / member).resolve()
                     if not str(member_path).startswith(str(target_dir.resolve())):
                         raise ValueError(f"Path traversal attempt detected: {member}")
                 zip_ref.extractall(target_dir)
-        elif archive_path.suffix.lower() == '.rar':
-            if not shutil.which('unrar'):
+        elif archive_path.suffix.lower() == ".rar":
+            if not shutil.which("unrar"):
                 raise FileNotFoundError("unrar command not found. Install it with: apt install unrar")
-            subprocess.run([
-                'unrar', 'x', '-o+', str(archive_path), str(target_dir) + '/'
-            ], check=True, timeout=300)
+            subprocess.run(["unrar", "x", "-o+", str(archive_path), str(target_dir) + "/"], check=True, timeout=300)
         else:
             raise ValueError(f"Unsupported archive format: {archive_path.suffix}")
 
     def _handle_extracted_items(
-        self,
-        new_items: set,
-        addons_path: Path,
-        archive_path: Path
+        self, new_items: set, addons_path: Path, archive_path: Path
     ) -> tuple[str | None, Path | None]:
         """
         Handle extracted items and determine the final addon folder.
@@ -166,9 +156,9 @@ class AddonManager:
         # Create a folder based on archive name
         addon_name = archive_path.stem  # e.g., "TicketStats" from "TicketStats.zip"
         # Remove common suffixes that might be in the name
-        for suffix in ['-main', '-master', '-addon', '-v1', '-v2']:
+        for suffix in ["-main", "-master", "-addon", "-v1", "-v2"]:
             if addon_name.lower().endswith(suffix):
-                addon_name = addon_name[:-len(suffix)]
+                addon_name = addon_name[: -len(suffix)]
 
         target_folder = addons_path / addon_name
 
@@ -213,10 +203,11 @@ class AddonManager:
     def _set_permissions(self, addon_path: Path):
         """Set proper permissions on addon files"""
         import subprocess
+
         try:
-            subprocess.run(['chown', '-R', 'root:root', str(addon_path)], timeout=60)
-            subprocess.run(['find', str(addon_path), '-type', 'd', '-exec', 'chmod', '755', '{}', ';'], timeout=60)
-            subprocess.run(['find', str(addon_path), '-type', 'f', '-exec', 'chmod', '644', '{}', ';'], timeout=60)
+            subprocess.run(["chown", "-R", "root:root", str(addon_path)], timeout=60)
+            subprocess.run(["find", str(addon_path), "-type", "d", "-exec", "chmod", "755", "{}", ";"], timeout=60)
+            subprocess.run(["find", str(addon_path), "-type", "f", "-exec", "chmod", "644", "{}", ";"], timeout=60)
         except Exception:
             pass  # Best effort
 
@@ -296,13 +287,13 @@ class AddonManager:
         Returns: (is_valid, error_message or None)
         """
         try:
-            with open(config_path, encoding='utf-8') as f:
+            with open(config_path, encoding="utf-8") as f:
                 yaml.safe_load(f)
             return True, None
         except yaml.YAMLError as e:
             # Extract line number if available
             error_msg = str(e)
-            if hasattr(e, 'problem_mark'):
+            if hasattr(e, "problem_mark"):
                 mark = e.problem_mark
                 error_msg = f"Line {mark.line + 1}, column {mark.column + 1}: {e.problem}"
             return False, error_msg
@@ -326,13 +317,7 @@ class AddonManager:
         Returns list of found archive paths.
         """
         if search_dirs is None:
-            search_dirs = [
-                Path.home(),
-                Path("/root"),
-                Path("/tmp"),
-                Path("/var/tmp"),
-                Path.cwd()
-            ]
+            search_dirs = [Path.home(), Path("/root"), Path("/tmp"), Path("/var/tmp"), Path.cwd()]
 
         archives = []
         seen_paths = set()
@@ -370,11 +355,12 @@ class AddonManager:
         backups = []
         product_name = product_path.name
 
-        for backup_file in sorted(backup_dir.glob(f"{product_name}_*_addon_*.tar.gz"),
-                                  key=lambda x: x.stat().st_mtime, reverse=True):
+        for backup_file in sorted(
+            backup_dir.glob(f"{product_name}_*_addon_*.tar.gz"), key=lambda x: x.stat().st_mtime, reverse=True
+        ):
             try:
                 # Parse filename: product_addonname_addon_timestamp.tar.gz
-                parts = backup_file.stem.split('_addon_')
+                parts = backup_file.stem.split("_addon_")
                 if len(parts) >= 2:
                     prefix = parts[0]
                     timestamp_str = parts[1]
@@ -390,12 +376,9 @@ class AddonManager:
 
                     size_mb = backup_file.stat().st_size / (1024 * 1024)
 
-                    backups.append({
-                        'path': backup_file,
-                        'addon_name': addon_name,
-                        'timestamp': timestamp,
-                        'size_mb': size_mb
-                    })
+                    backups.append(
+                        {"path": backup_file, "addon_name": addon_name, "timestamp": timestamp, "size_mb": size_mb}
+                    )
             except Exception:
                 continue
 

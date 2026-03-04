@@ -63,9 +63,7 @@ class MongoDBManager:
         if choice not in {"y", "yes"}:
             if required:
                 self.printer.warning("This product requires MongoDB.")
-                self.printer.step(
-                    "If you are using a remote MongoDB, update your config with its URI."
-                )
+                self.printer.step("If you are using a remote MongoDB, update your config with its URI.")
             return None
 
         try:
@@ -81,9 +79,7 @@ class MongoDBManager:
 
             _wait = wait_for_tcp_port or self._default_wait_for_tcp_port
             if not _wait("127.0.0.1", 27017, 60):
-                raise RuntimeError(
-                    f"MongoDB service '{service_name}' did not become ready on 27017"
-                )
+                raise RuntimeError(f"MongoDB service '{service_name}' did not become ready on 27017")
 
             mongo_creds = self.create_user(instance_name)
             if not mongo_creds:
@@ -94,8 +90,7 @@ class MongoDBManager:
 
             if not self.validate_uri(mongo_creds["uri"]):
                 raise RuntimeError(
-                    "MongoDB credentials were created but authentication failed "
-                    "when validating the generated URI"
+                    "MongoDB credentials were created but authentication failed when validating the generated URI"
                 )
 
             return mongo_creds
@@ -143,13 +138,8 @@ class MongoDBManager:
             elif "arch" in distro:
                 return self._install_arch()
             else:
-                self.printer.error(
-                    f"Unsupported distribution for automatic MongoDB install: {distro}"
-                )
-                self.printer.step(
-                    "Please install MongoDB manually: "
-                    "https://docs.mongodb.com/manual/installation/"
-                )
+                self.printer.error(f"Unsupported distribution for automatic MongoDB install: {distro}")
+                self.printer.step("Please install MongoDB manually: https://docs.mongodb.com/manual/installation/")
                 return False
         except Exception as e:
             self.printer.error(f"MongoDB installation failed: {e}")
@@ -172,9 +162,7 @@ class MongoDBManager:
                 if result.stdout.strip() == "active":
                     return service
 
-                subprocess.run(
-                    ["systemctl", "start", service], check=True, timeout=60
-                )
+                subprocess.run(["systemctl", "start", service], check=True, timeout=60)
                 result2 = subprocess.run(
                     ["systemctl", "is-active", service],
                     capture_output=True,
@@ -186,17 +174,13 @@ class MongoDBManager:
             except Exception:
                 continue
 
-        raise RuntimeError(
-            "Could not start MongoDB service (tried 'mongod' and 'mongodb')"
-        )
+        raise RuntimeError("Could not start MongoDB service (tried 'mongod' and 'mongodb')")
 
     # ------------------------------------------------------------------
     # Shell helper
     # ------------------------------------------------------------------
 
-    def run_shell(
-        self, args: list[str], timeout: int = 30
-    ) -> subprocess.CompletedProcess:
+    def run_shell(self, args: list[str], timeout: int = 30) -> subprocess.CompletedProcess:
         """Run mongosh/mongo with *args*; prefers mongosh."""
         try:
             return subprocess.run(
@@ -220,9 +204,7 @@ class MongoDBManager:
     def create_user(self, instance_name: str) -> dict | None:
         """Create a MongoDB database and user for *instance_name*."""
         alphabet = string.ascii_letters + string.digits
-        random_suffix = "".join(
-            secrets.choice(string.ascii_lowercase + string.digits) for _ in range(5)
-        )
+        random_suffix = "".join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(5))
         db_name = f"{instance_name}_{random_suffix}"
         username = f"{instance_name}_user"
         password = "".join(secrets.choice(alphabet) for _ in range(24))
@@ -256,51 +238,36 @@ class MongoDBManager:
         last_error = ""
         for attempt in range(1, 6):
             try:
-                result = self.run_shell(
-                    ["--quiet", "--eval", create_user_script], timeout=30
-                )
+                result = self.run_shell(["--quiet", "--eval", create_user_script], timeout=30)
                 combined = (result.stdout or "") + "\n" + (result.stderr or "")
 
                 if result.returncode == 0 and "__PLEXINSTALLER_OK__" in combined:
-                    self.printer.success(
-                        f"Database '{db_name}' ready with user '{username}'"
-                    )
+                    self.printer.success(f"Database '{db_name}' ready with user '{username}'")
                     return {
                         "database": db_name,
                         "username": username,
                         "password": password,
                         "host": "localhost",
                         "port": 27017,
-                        "uri": (
-                            f"mongodb://{username}:{password}@localhost:27017/"
-                            f"{db_name}?authSource={db_name}"
-                        ),
+                        "uri": (f"mongodb://{username}:{password}@localhost:27017/{db_name}?authSource={db_name}"),
                     }
 
                 last_error = combined.strip()[-800:]
             except Exception as exc:
                 last_error = str(exc)
 
-            self.printer.warning(
-                f"MongoDB user creation attempt {attempt}/5 failed; retrying..."
-            )
+            self.printer.warning(f"MongoDB user creation attempt {attempt}/5 failed; retrying...")
             time.sleep(2)
 
         if "not authorized" in last_error.lower() or "unauthorized" in last_error.lower():
-            self.printer.error(
-                "MongoDB appears to have authentication enabled already."
-            )
-            self.printer.step(
-                "This installer can only auto-provision users on a local MongoDB without prior auth."
-            )
+            self.printer.error("MongoDB appears to have authentication enabled already.")
+            self.printer.step("This installer can only auto-provision users on a local MongoDB without prior auth.")
             self.printer.step(
                 "Workaround: temporarily disable auth or create the DB/user manually, "
                 "then paste the URI into your app config."
             )
 
-        self.printer.error(
-            f"Failed to create MongoDB user after retries. Last error: {last_error}"
-        )
+        self.printer.error(f"Failed to create MongoDB user after retries. Last error: {last_error}")
         return None
 
     # ------------------------------------------------------------------
@@ -330,14 +297,10 @@ class MongoDBManager:
 
     def update_config(self, install_path: Path, creds: dict):
         """Patch product config file with MongoDB connection string."""
-        config_files = list(install_path.glob("config.y*ml")) + list(
-            install_path.glob("config.json")
-        )
+        config_files = list(install_path.glob("config.y*ml")) + list(install_path.glob("config.json"))
 
         if not config_files:
-            self.printer.warning(
-                "No config file found to update with MongoDB settings"
-            )
+            self.printer.warning("No config file found to update with MongoDB settings")
             self.printer.step(f"MongoDB URI: {creds['uri']}")
             return
 
@@ -346,9 +309,7 @@ class MongoDBManager:
 
         if config_file.suffix.lower() == ".json":
             try:
-                data = json.loads(
-                    config_file.read_text(encoding="utf-8", errors="replace")
-                )
+                data = json.loads(config_file.read_text(encoding="utf-8", errors="replace"))
                 candidate_keys = [
                     "mongoURI",
                     "mongodb_uri",
@@ -366,9 +327,7 @@ class MongoDBManager:
                     set_key = "mongoURI"
                 data[set_key] = mongo_uri
                 config_file.write_text(json.dumps(data, indent=2) + "\n")
-                self.printer.success(
-                    f"Updated MongoDB URI in {config_file.name} ({set_key})"
-                )
+                self.printer.success(f"Updated MongoDB URI in {config_file.name} ({set_key})")
                 return
             except Exception as e:
                 self.printer.warning(f"Could not auto-update JSON config: {e}")
@@ -400,9 +359,7 @@ class MongoDBManager:
             updated = False
             for pattern, replacement in patterns:
                 if re.search(pattern, content, flags=re.IGNORECASE | re.MULTILINE):
-                    content = re.sub(
-                        pattern, replacement, content, flags=re.IGNORECASE | re.MULTILINE
-                    )
+                    content = re.sub(pattern, replacement, content, flags=re.IGNORECASE | re.MULTILINE)
                     updated = True
                     break
 
@@ -410,9 +367,7 @@ class MongoDBManager:
                 config_file.write_text(content)
                 self.printer.success(f"Updated MongoDB URI in {config_file.name}")
             else:
-                self.printer.warning(
-                    f"Could not find MongoDB URI field in {config_file.name}"
-                )
+                self.printer.warning(f"Could not find MongoDB URI field in {config_file.name}")
                 self.printer.step(f"Please manually add MongoDB URI: {mongo_uri}")
         except Exception as e:
             self.printer.warning(f"Could not auto-update config: {e}")
@@ -549,18 +504,14 @@ class MongoDBManager:
                     f"focal/mongodb-org/{mongo_ver} multiverse\n"
                 )
 
-            with open(
-                f"/etc/apt/sources.list.d/mongodb-org-{mongo_ver}.list", "w"
-            ) as f:
+            with open(f"/etc/apt/sources.list.d/mongodb-org-{mongo_ver}.list", "w") as f:
                 f.write(repo_line)
 
             self.printer.step("Updating package database...")
             subprocess.run(["apt-get", "update"], check=True, timeout=120)
 
             self.printer.step("Installing MongoDB packages...")
-            subprocess.run(
-                ["apt-get", "install", "-y", "mongodb-org"], check=True, timeout=300
-            )
+            subprocess.run(["apt-get", "install", "-y", "mongodb-org"], check=True, timeout=300)
 
             self.printer.step("Starting MongoDB service...")
             subprocess.run(["systemctl", "start", "mongod"], check=True, timeout=60)
@@ -586,19 +537,13 @@ class MongoDBManager:
                 f"enabled=1\n"
                 f"gpgkey=https://www.mongodb.org/static/pgp/server-{mongo_ver}.asc\n"
             )
-            with open(
-                f"/etc/yum.repos.d/mongodb-org-{mongo_ver}.repo", "w"
-            ) as f:
+            with open(f"/etc/yum.repos.d/mongodb-org-{mongo_ver}.repo", "w") as f:
                 f.write(repo_content)
 
             if "fedora" in (self.system.distribution or "").lower():
-                subprocess.run(
-                    ["dnf", "install", "-y", "mongodb-org"], check=True, timeout=300
-                )
+                subprocess.run(["dnf", "install", "-y", "mongodb-org"], check=True, timeout=300)
             else:
-                subprocess.run(
-                    ["yum", "install", "-y", "mongodb-org"], check=True, timeout=300
-                )
+                subprocess.run(["yum", "install", "-y", "mongodb-org"], check=True, timeout=300)
 
             subprocess.run(["systemctl", "start", "mongod"], check=True, timeout=60)
             subprocess.run(["systemctl", "enable", "mongod"], check=True, timeout=30)
@@ -618,12 +563,8 @@ class MongoDBManager:
                 check=True,
                 timeout=300,
             )
-            subprocess.run(
-                ["systemctl", "start", "mongodb"], check=True, timeout=60
-            )
-            subprocess.run(
-                ["systemctl", "enable", "mongodb"], check=True, timeout=30
-            )
+            subprocess.run(["systemctl", "start", "mongodb"], check=True, timeout=60)
+            subprocess.run(["systemctl", "enable", "mongodb"], check=True, timeout=30)
 
             self.printer.success("MongoDB installed successfully")
             return True
@@ -637,9 +578,7 @@ class MongoDBManager:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _default_wait_for_tcp_port(
-        host: str, port: int, timeout_seconds: int = 30
-    ) -> bool:
+    def _default_wait_for_tcp_port(host: str, port: int, timeout_seconds: int = 30) -> bool:
         import socket
 
         deadline = time.time() + timeout_seconds

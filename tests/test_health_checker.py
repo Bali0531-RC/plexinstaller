@@ -11,6 +11,7 @@ from utils import ColorPrinter, SystemdManager
 # SelfTestResult dataclass
 # ---------------------------------------------------------------------------
 
+
 class TestSelfTestResult:
     def test_default_fields(self):
         r = SelfTestResult(name="test", status="pass")
@@ -37,6 +38,7 @@ class TestSelfTestResult:
 # ---------------------------------------------------------------------------
 # HealthChecker.probe_http
 # ---------------------------------------------------------------------------
+
 
 class TestProbeHttp:
     def test_successful_probe(self):
@@ -68,6 +70,7 @@ class TestProbeHttp:
 # ---------------------------------------------------------------------------
 # HealthChecker.check_node_version
 # ---------------------------------------------------------------------------
+
 
 class TestCheckNodeVersion:
     def _make_checker(self) -> HealthChecker:
@@ -114,9 +117,7 @@ class TestCheckNodeVersion:
 
     def test_node_command_fails(self):
         hc = self._make_checker()
-        result = subprocess.CompletedProcess(
-            args=[], returncode=1, stdout="", stderr="command failed"
-        )
+        result = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="command failed")
         with mock.patch("health_checker.subprocess.run", return_value=result):
             ok, detail = hc.check_node_version()
         assert ok is False
@@ -126,6 +127,7 @@ class TestCheckNodeVersion:
 # ---------------------------------------------------------------------------
 # HealthChecker.print_summary
 # ---------------------------------------------------------------------------
+
 
 class TestPrintSummary:
     def _make_checker(self) -> HealthChecker:

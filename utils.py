@@ -50,6 +50,7 @@ def setup_logging(level: int = logging.INFO, log_file: str | None = None):
             # No log file — add a NullHandler to suppress "No handlers" warning
             root.addHandler(logging.NullHandler())
 
+
 class ColorPrinter:
     """Colored output printer"""
 
@@ -88,6 +89,7 @@ class ColorPrinter:
         print(f"{self.YELLOW}[!] {message}{self.NC}", file=sys.stderr)
         logger.warning(message)
 
+
 class SystemDetector:
     """System detection and package management"""
 
@@ -102,10 +104,10 @@ class SystemDetector:
 
         # Read /etc/os-release
         try:
-            with open('/etc/os-release') as f:
+            with open("/etc/os-release") as f:
                 for line in f:
-                    if line.startswith('ID='):
-                        self.distribution = line.split('=')[1].strip().strip('"')
+                    if line.startswith("ID="):
+                        self.distribution = line.split("=")[1].strip().strip('"')
                         break
         except FileNotFoundError:
             self.printer.error("Cannot detect distribution (/etc/os-release not found)")
@@ -115,11 +117,11 @@ class SystemDetector:
 
         # Detect package manager
         pkg_managers = {
-            'apt': ['apt', 'apt-get'],
-            'dnf': ['dnf'],
-            'yum': ['yum'],
-            'pacman': ['pacman'],
-            'zypper': ['zypper']
+            "apt": ["apt", "apt-get"],
+            "dnf": ["dnf"],
+            "yum": ["yum"],
+            "pacman": ["pacman"],
+            "zypper": ["zypper"],
         }
 
         for name, commands in pkg_managers.items():
@@ -154,17 +156,17 @@ class SystemDetector:
         self.printer.step("Updating package lists...")
 
         update_cmds = {
-            'apt': ['apt', 'update', '-y'],
-            'dnf': ['dnf', 'update', '-y'],
-            'yum': ['yum', 'update', '-y'],
-            'pacman': ['pacman', '-Syu', '--noconfirm'],
-            'zypper': ['zypper', 'refresh']
+            "apt": ["apt", "update", "-y"],
+            "dnf": ["dnf", "update", "-y"],
+            "yum": ["yum", "update", "-y"],
+            "pacman": ["pacman", "-Syu", "--noconfirm"],
+            "zypper": ["zypper", "refresh"],
         }
 
         cmd = update_cmds.get(self.pkg_manager)
         if cmd:
             try:
-                subprocess.run(['sudo'] + cmd, check=False)
+                subprocess.run(["sudo"] + cmd, check=False)
             except Exception as e:
                 self.printer.warning(f"Update failed: {e}")
 
@@ -172,17 +174,17 @@ class SystemDetector:
         self.printer.step(f"Installing {len(packages)} packages...")
 
         install_cmds = {
-            'apt': ['apt', 'install', '-y'] + packages,
-            'dnf': ['dnf', 'install', '-y'] + packages,
-            'yum': ['yum', 'install', '-y'] + packages,
-            'pacman': ['pacman', '-S', '--noconfirm', '--needed'] + packages,
-            'zypper': ['zypper', 'install', '-y'] + packages
+            "apt": ["apt", "install", "-y"] + packages,
+            "dnf": ["dnf", "install", "-y"] + packages,
+            "yum": ["yum", "install", "-y"] + packages,
+            "pacman": ["pacman", "-S", "--noconfirm", "--needed"] + packages,
+            "zypper": ["zypper", "install", "-y"] + packages,
         }
 
         cmd = install_cmds.get(self.pkg_manager)
         if cmd:
             try:
-                subprocess.run(['sudo'] + cmd, check=True)
+                subprocess.run(["sudo"] + cmd, check=True)
                 self.printer.success("System dependencies installed")
             except subprocess.CalledProcessError as e:
                 self.printer.error(f"Package installation failed: {e}")
@@ -194,51 +196,45 @@ class SystemDetector:
         """Install Node.js 20+"""
         self.printer.step("Installing Node.js 20+...")
 
-        if self.pkg_manager in ['apt', 'dnf', 'yum']:
+        if self.pkg_manager in ["apt", "dnf", "yum"]:
             # Use NodeSource repository
             script_url = {
-                'apt': 'https://deb.nodesource.com/setup_20.x',
-                'dnf': 'https://rpm.nodesource.com/setup_20.x',
-                'yum': 'https://rpm.nodesource.com/setup_20.x'
+                "apt": "https://deb.nodesource.com/setup_20.x",
+                "dnf": "https://rpm.nodesource.com/setup_20.x",
+                "yum": "https://rpm.nodesource.com/setup_20.x",
             }[self.pkg_manager]
 
             try:
                 # Download and run setup script
-                subprocess.run(
-                    f"curl -fsSL {script_url} | sudo -E bash -",
-                    shell=True,
-                    check=True
-                )
+                subprocess.run(f"curl -fsSL {script_url} | sudo -E bash -", shell=True, check=True)
 
                 # Install nodejs
                 install_cmd = {
-                    'apt': ['apt', 'install', '-y', 'nodejs'],
-                    'dnf': ['dnf', 'install', '-y', 'nodejs'],
-                    'yum': ['yum', 'install', '-y', 'nodejs']
+                    "apt": ["apt", "install", "-y", "nodejs"],
+                    "dnf": ["dnf", "install", "-y", "nodejs"],
+                    "yum": ["yum", "install", "-y", "nodejs"],
                 }[self.pkg_manager]
 
-                subprocess.run(['sudo'] + install_cmd, check=True)
+                subprocess.run(["sudo"] + install_cmd, check=True)
                 self.printer.success("Node.js installed")
             except subprocess.CalledProcessError as e:
                 self.printer.error(f"Node.js installation failed: {e}")
 
-        elif self.pkg_manager == 'pacman':
+        elif self.pkg_manager == "pacman":
             try:
-                subprocess.run(
-                    ['sudo', 'pacman', '-S', '--noconfirm', '--needed', 'nodejs', 'npm'],
-                    check=True
-                )
+                subprocess.run(["sudo", "pacman", "-S", "--noconfirm", "--needed", "nodejs", "npm"], check=True)
                 self.printer.success("Node.js installed")
             except subprocess.CalledProcessError as e:
                 self.printer.error(f"Node.js installation failed: {e}")
 
         # Verify installation
         try:
-            result = subprocess.run(['node', '-v'], capture_output=True, text=True)
+            result = subprocess.run(["node", "-v"], capture_output=True, text=True)
             version = result.stdout.strip()
             self.printer.step(f"Node.js version: {version}")
         except FileNotFoundError:
             self.printer.error("Node.js not found after installation")
+
 
 class DNSChecker:
     """DNS verification utilities"""
@@ -275,20 +271,11 @@ class DNSChecker:
 
     def _get_public_ip(self) -> str | None:
         """Get server's public IP address"""
-        services = [
-            'https://ifconfig.me',
-            'https://api.ipify.org',
-            'https://icanhazip.com'
-        ]
+        services = ["https://ifconfig.me", "https://api.ipify.org", "https://icanhazip.com"]
 
         for service in services:
             try:
-                result = subprocess.run(
-                    ['curl', '-s', '-m', '5', service],
-                    capture_output=True,
-                    text=True,
-                    timeout=10
-                )
+                result = subprocess.run(["curl", "-s", "-m", "5", service], capture_output=True, text=True, timeout=10)
                 if result.returncode == 0 and result.stdout.strip():
                     return result.stdout.strip()
             except (subprocess.TimeoutExpired, Exception):
@@ -342,7 +329,7 @@ def redact_sensitive_yaml(text: str) -> str:
                 if "#" in value_part:
                     before, after = value_part.split("#", 1)
                     comment = "#" + after
-                redacted = f"{match.group('indent')}{key}: \"<REDACTED>\""
+                redacted = f'{match.group("indent")}{key}: "<REDACTED>"'
                 if comment:
                     redacted = f"{redacted} {comment.strip()}"
                 lines.append(redacted)
@@ -360,6 +347,7 @@ def redact_sensitive_yaml(text: str) -> str:
 
     return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
 
+
 class FirewallManager:
     """Firewall port management"""
 
@@ -371,11 +359,11 @@ class FirewallManager:
         self.printer.step(f"Opening port {port} for {description}")
 
         # Check which firewall is in use
-        if shutil.which('ufw'):
+        if shutil.which("ufw"):
             self._open_ufw(port, description)
-        elif shutil.which('firewall-cmd'):
+        elif shutil.which("firewall-cmd"):
             self._open_firewalld(port)
-        elif shutil.which('iptables'):
+        elif shutil.which("iptables"):
             self._open_iptables(port)
         else:
             self.printer.warning("No supported firewall found")
@@ -384,20 +372,18 @@ class FirewallManager:
         """Close firewall port that was previously opened."""
         self.printer.step(f"Reverting firewall rule on port {port}")
 
-        if shutil.which('ufw'):
+        if shutil.which("ufw"):
             self._close_ufw(port)
-        elif shutil.which('firewall-cmd'):
+        elif shutil.which("firewall-cmd"):
             self._close_firewalld(port)
-        elif shutil.which('iptables'):
+        elif shutil.which("iptables"):
             self._close_iptables(port)
 
     def _open_ufw(self, port: int, description: str):
         """Open port in UFW"""
         try:
             subprocess.run(
-                ['sudo', 'ufw', 'allow', f'{port}/tcp', 'comment', description],
-                check=True,
-                capture_output=True
+                ["sudo", "ufw", "allow", f"{port}/tcp", "comment", description], check=True, capture_output=True
             )
             self.printer.success(f"Port {port} opened in UFW")
         except subprocess.CalledProcessError:
@@ -407,15 +393,9 @@ class FirewallManager:
         """Open port in firewalld"""
         try:
             subprocess.run(
-                ['sudo', 'firewall-cmd', '--permanent', f'--add-port={port}/tcp'],
-                check=True,
-                capture_output=True
+                ["sudo", "firewall-cmd", "--permanent", f"--add-port={port}/tcp"], check=True, capture_output=True
             )
-            subprocess.run(
-                ['sudo', 'firewall-cmd', '--reload'],
-                check=True,
-                capture_output=True
-            )
+            subprocess.run(["sudo", "firewall-cmd", "--reload"], check=True, capture_output=True)
             self.printer.success(f"Port {port} opened in firewalld")
         except subprocess.CalledProcessError:
             self.printer.warning("Failed to open port in firewalld")
@@ -424,9 +404,9 @@ class FirewallManager:
         """Open port in iptables"""
         try:
             subprocess.run(
-                ['sudo', 'iptables', '-A', 'INPUT', '-p', 'tcp', '--dport', str(port), '-j', 'ACCEPT'],
+                ["sudo", "iptables", "-A", "INPUT", "-p", "tcp", "--dport", str(port), "-j", "ACCEPT"],
                 check=True,
-                capture_output=True
+                capture_output=True,
             )
             self.printer.success(f"Port {port} opened in iptables")
             self.printer.warning("iptables rule may not persist after reboot")
@@ -435,11 +415,7 @@ class FirewallManager:
 
     def _close_ufw(self, port: int):
         try:
-            subprocess.run(
-                ['sudo', 'ufw', 'delete', 'allow', f'{port}/tcp'],
-                check=True,
-                capture_output=True
-            )
+            subprocess.run(["sudo", "ufw", "delete", "allow", f"{port}/tcp"], check=True, capture_output=True)
             self.printer.success(f"Port {port} rule removed from UFW")
         except subprocess.CalledProcessError:
             self.printer.warning("Failed to remove UFW rule")
@@ -447,15 +423,9 @@ class FirewallManager:
     def _close_firewalld(self, port: int):
         try:
             subprocess.run(
-                ['sudo', 'firewall-cmd', '--permanent', f'--remove-port={port}/tcp'],
-                check=True,
-                capture_output=True
+                ["sudo", "firewall-cmd", "--permanent", f"--remove-port={port}/tcp"], check=True, capture_output=True
             )
-            subprocess.run(
-                ['sudo', 'firewall-cmd', '--reload'],
-                check=True,
-                capture_output=True
-            )
+            subprocess.run(["sudo", "firewall-cmd", "--reload"], check=True, capture_output=True)
             self.printer.success(f"Port {port} removed from firewalld")
         except subprocess.CalledProcessError:
             self.printer.warning("Failed to remove firewalld rule")
@@ -463,13 +433,14 @@ class FirewallManager:
     def _close_iptables(self, port: int):
         try:
             subprocess.run(
-                ['sudo', 'iptables', '-D', 'INPUT', '-p', 'tcp', '--dport', str(port), '-j', 'ACCEPT'],
+                ["sudo", "iptables", "-D", "INPUT", "-p", "tcp", "--dport", str(port), "-j", "ACCEPT"],
                 check=True,
-                capture_output=True
+                capture_output=True,
             )
             self.printer.success(f"Port {port} rule removed from iptables")
         except subprocess.CalledProcessError:
             self.printer.warning("Failed to remove iptables rule")
+
 
 class NginxManager:
     """Nginx configuration management"""
@@ -477,6 +448,7 @@ class NginxManager:
     def __init__(self):
         self.printer = ColorPrinter()
         from config import Config
+
         self.config = Config()
 
     def setup(self, domain: str, port: int, service_name: str, install_path: Path):
@@ -525,12 +497,13 @@ class NginxManager:
 
         # Test and reload nginx
         try:
-            subprocess.run(['sudo', 'nginx', '-t'], check=True, capture_output=True)
-            subprocess.run(['sudo', 'systemctl', 'reload', 'nginx'], check=True)
+            subprocess.run(["sudo", "nginx", "-t"], check=True, capture_output=True)
+            subprocess.run(["sudo", "systemctl", "reload", "nginx"], check=True)
             self.printer.success("Nginx configured")
         except subprocess.CalledProcessError as e:
             self.printer.error(f"Nginx configuration failed: {e.stderr.decode()}")
             raise
+
 
 class SSLManager:
     """SSL certificate management"""
@@ -543,15 +516,22 @@ class SSLManager:
         self.printer.step(f"Setting up SSL for {domain}")
 
         try:
-            subprocess.run([
-                'sudo', 'certbot', '--nginx',
-                '-d', domain,
-                '--non-interactive',
-                '--agree-tos',
-                '--email', email,
-                '--redirect',
-                '--keep-until-expiring'
-            ], check=True)
+            subprocess.run(
+                [
+                    "sudo",
+                    "certbot",
+                    "--nginx",
+                    "-d",
+                    domain,
+                    "--non-interactive",
+                    "--agree-tos",
+                    "--email",
+                    email,
+                    "--redirect",
+                    "--keep-until-expiring",
+                ],
+                check=True,
+            )
 
             self.printer.success("SSL certificate obtained")
         except subprocess.CalledProcessError:
@@ -567,27 +547,19 @@ class SSLManager:
 
         try:
             # Get current crontab
-            result = subprocess.run(
-                ['sudo', 'crontab', '-l'],
-                capture_output=True,
-                text=True
-            )
+            result = subprocess.run(["sudo", "crontab", "-l"], capture_output=True, text=True)
             current_cron = result.stdout if result.returncode == 0 else ""
 
             # Add renewal entry if not present
-            if 'certbot renew' not in current_cron:
+            if "certbot renew" not in current_cron:
                 new_cron = current_cron + cron_entry
-                subprocess.run(
-                    ['sudo', 'crontab', '-'],
-                    input=new_cron,
-                    text=True,
-                    check=True
-                )
+                subprocess.run(["sudo", "crontab", "-"], input=new_cron, text=True, check=True)
                 self.printer.success("SSL auto-renewal configured")
             else:
                 self.printer.step("SSL auto-renewal already configured")
         except subprocess.CalledProcessError as e:
             self.printer.error(f"Failed to setup auto-renewal: {e}")
+
 
 class SystemdManager:
     """Systemd service management"""
@@ -624,16 +596,16 @@ WantedBy=multi-user.target
         os.chmod(service_file, 0o644)
 
         # Reload systemd and enable service
-        subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True, timeout=30)
-        subprocess.run(['sudo', 'systemctl', 'enable', f'plex-{service_name}'], check=True, timeout=30)
-        subprocess.run(['sudo', 'systemctl', 'start', f'plex-{service_name}'], check=True, timeout=60)
+        subprocess.run(["sudo", "systemctl", "daemon-reload"], check=True, timeout=30)
+        subprocess.run(["sudo", "systemctl", "enable", f"plex-{service_name}"], check=True, timeout=30)
+        subprocess.run(["sudo", "systemctl", "start", f"plex-{service_name}"], check=True, timeout=60)
 
         self.printer.success(f"Service plex-{service_name} created and started")
 
     def start(self, service_name: str):
         """Start service"""
         try:
-            subprocess.run(['sudo', 'systemctl', 'start', service_name], check=True, timeout=60)
+            subprocess.run(["sudo", "systemctl", "start", service_name], check=True, timeout=60)
             self.printer.success(f"{service_name} started")
         except subprocess.CalledProcessError:
             self.printer.error(f"Failed to start {service_name}")
@@ -641,7 +613,7 @@ WantedBy=multi-user.target
     def stop(self, service_name: str):
         """Stop service"""
         try:
-            subprocess.run(['sudo', 'systemctl', 'stop', service_name], check=True, timeout=60)
+            subprocess.run(["sudo", "systemctl", "stop", service_name], check=True, timeout=60)
             self.printer.success(f"{service_name} stopped")
         except subprocess.CalledProcessError:
             self.printer.error(f"Failed to stop {service_name}")
@@ -649,7 +621,7 @@ WantedBy=multi-user.target
     def restart(self, service_name: str):
         """Restart service"""
         try:
-            subprocess.run(['sudo', 'systemctl', 'restart', service_name], check=True, timeout=60)
+            subprocess.run(["sudo", "systemctl", "restart", service_name], check=True, timeout=60)
             self.printer.success(f"{service_name} restarted")
         except subprocess.CalledProcessError:
             self.printer.error(f"Failed to restart {service_name}")
@@ -658,10 +630,7 @@ WantedBy=multi-user.target
         """Get service status"""
         try:
             result = subprocess.run(
-                ['systemctl', 'is-active', service_name],
-                capture_output=True,
-                text=True,
-                timeout=10
+                ["systemctl", "is-active", service_name], capture_output=True, text=True, timeout=10
             )
             return result.stdout.strip() or "unknown"
         except Exception:
@@ -670,15 +639,15 @@ WantedBy=multi-user.target
     def view_logs(self, service_name: str):
         """View service logs"""
         try:
-            subprocess.run(['sudo', 'journalctl', '-u', service_name, '-n', '50', '-f'])
+            subprocess.run(["sudo", "journalctl", "-u", service_name, "-n", "50", "-f"])
         except KeyboardInterrupt:
             pass
 
     def remove_service(self, service_name: str):
         """Remove systemd service"""
         try:
-            subprocess.run(['sudo', 'systemctl', 'stop', service_name], check=False, timeout=60)
-            subprocess.run(['sudo', 'systemctl', 'disable', service_name], check=False, timeout=30)
+            subprocess.run(["sudo", "systemctl", "stop", service_name], check=False, timeout=60)
+            subprocess.run(["sudo", "systemctl", "disable", service_name], check=False, timeout=30)
 
             service_file = Path(f"/etc/systemd/system/{service_name}.service")
             # Use try/except instead of check-then-act to avoid race condition
@@ -687,10 +656,11 @@ WantedBy=multi-user.target
             except FileNotFoundError:
                 pass
 
-            subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True, timeout=30)
+            subprocess.run(["sudo", "systemctl", "daemon-reload"], check=True, timeout=30)
             self.printer.success(f"Service {service_name} removed")
         except subprocess.CalledProcessError as e:
             self.printer.error(f"Failed to remove service: {e}")
+
 
 class ArchiveExtractor:
     """Archive extraction utilities"""
@@ -718,11 +688,11 @@ class ArchiveExtractor:
 
             # Extract based on file type with improved error handling
             try:
-                if archive_path.suffix == '.zip':
+                if archive_path.suffix == ".zip":
                     self._extract_zip(archive_path, temp_path)
-                elif archive_path.suffix in ['.tar', '.gz', '.bz2', '.xz']:
+                elif archive_path.suffix in [".tar", ".gz", ".bz2", ".xz"]:
                     self._extract_tar(archive_path, temp_path)
-                elif archive_path.suffix == '.rar':
+                elif archive_path.suffix == ".rar":
                     self._extract_rar(archive_path, temp_path)
                 else:
                     raise ValueError(f"Unsupported archive format: {archive_path.suffix}")
@@ -747,16 +717,20 @@ class ArchiveExtractor:
                 shutil.move(str(item), str(target_dir))
 
             # Set permissions
-            subprocess.run(['sudo', 'chown', '-R', 'root:root', str(target_dir)], timeout=60)
-            subprocess.run(['sudo', 'find', str(target_dir), '-type', 'd', '-exec', 'chmod', '755', '{}', ';'], timeout=60)
-            subprocess.run(['sudo', 'find', str(target_dir), '-type', 'f', '-exec', 'chmod', '644', '{}', ';'], timeout=60)
+            subprocess.run(["sudo", "chown", "-R", "root:root", str(target_dir)], timeout=60)
+            subprocess.run(
+                ["sudo", "find", str(target_dir), "-type", "d", "-exec", "chmod", "755", "{}", ";"], timeout=60
+            )
+            subprocess.run(
+                ["sudo", "find", str(target_dir), "-type", "f", "-exec", "chmod", "644", "{}", ";"], timeout=60
+            )
 
         self.printer.success(f"Extracted to {target_dir}")
         return target_dir
 
     def _extract_zip(self, archive_path: Path, target_path: Path):
         """Extract ZIP file with path traversal protection"""
-        with zipfile.ZipFile(archive_path, 'r') as zip_ref:
+        with zipfile.ZipFile(archive_path, "r") as zip_ref:
             for member in zip_ref.namelist():
                 # Validate each path before extraction
                 member_path = (target_path / member).resolve()
@@ -766,7 +740,7 @@ class ArchiveExtractor:
 
     def _extract_tar(self, archive_path: Path, target_path: Path):
         """Extract TAR file with path traversal protection"""
-        with tarfile.open(archive_path, 'r:*') as tar_ref:
+        with tarfile.open(archive_path, "r:*") as tar_ref:
             for member in tar_ref.getmembers():
                 # Validate each path before extraction
                 member_path = (target_path / member.name).resolve()
@@ -777,16 +751,14 @@ class ArchiveExtractor:
     def _extract_rar(self, archive_path: Path, target_path: Path):
         """Extract RAR file with path traversal protection"""
         # Check if unrar is available
-        if not shutil.which('unrar'):
+        if not shutil.which("unrar"):
             raise FileNotFoundError("unrar command not found. Install it with: apt install unrar")
 
-        subprocess.run([
-            'unrar', 'x', '-o+', str(archive_path), str(target_path) + '/'
-        ], check=True, timeout=300)
+        subprocess.run(["unrar", "x", "-o+", str(archive_path), str(target_path) + "/"], check=True, timeout=300)
 
         # Post-extraction validation: ensure all files are within target
         target_resolved = target_path.resolve()
-        for item in target_path.rglob('*'):
+        for item in target_path.rglob("*"):
             if not str(item.resolve()).startswith(str(target_resolved)):
                 # Remove the offending file and raise error
                 if item.is_file():
@@ -798,7 +770,7 @@ class ArchiveExtractor:
         # Check if there's a single subdirectory
         subdirs = [d for d in temp_path.iterdir() if d.is_dir()]
 
-        if len(subdirs) == 1 and not list(temp_path.glob('*.[jt]s')):
+        if len(subdirs) == 1 and not list(temp_path.glob("*.[jt]s")):
             # Single subdirectory and no JS/TS files in root
             return subdirs[0]
 
@@ -808,7 +780,7 @@ class ArchiveExtractor:
                 return subdir
 
         # Check for package.json
-        package_json = list(temp_path.rglob('package.json'))
+        package_json = list(temp_path.rglob("package.json"))
         if package_json:
             return package_json[0].parent
 

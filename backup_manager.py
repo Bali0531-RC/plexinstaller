@@ -70,11 +70,7 @@ class BackupManager:
 
     def create_backup(self):
         """Prompt for product selection and create a backup."""
-        products = [
-            d
-            for d in self.install_dir.iterdir()
-            if d.is_dir() and d.name != "backups"
-        ]
+        products = [d for d in self.install_dir.iterdir() if d.is_dir() and d.name != "backups"]
 
         if not products:
             self.printer.warning("No installed products found to back up")
@@ -303,9 +299,7 @@ class BackupManager:
             if 0 <= idx < len(backups):
                 selected_backup = backups[idx]
 
-                self.printer.warning(
-                    f"You are about to permanently delete: {selected_backup.name}"
-                )
+                self.printer.warning(f"You are about to permanently delete: {selected_backup.name}")
                 confirm = input("Are you absolutely sure? (y/n): ").strip().lower()
 
                 if confirm == "y":

@@ -1,6 +1,5 @@
 """Tests for config.py — product metadata and system package lists."""
 
-
 from config import Config, ProductConfig
 
 
@@ -12,8 +11,14 @@ class TestConfig:
     def test_known_products(self):
         config = Config()
         expected = [
-            "plextickets", "plexstaff", "plexstatus", "plexstore",
-            "plexforms", "plexlinks", "plexpaste", "plextracker",
+            "plextickets",
+            "plexstaff",
+            "plexstatus",
+            "plexstore",
+            "plexforms",
+            "plexlinks",
+            "plexpaste",
+            "plextracker",
         ]
         for name in expected:
             assert name in config.PRODUCTS, f"Missing product: {name}"

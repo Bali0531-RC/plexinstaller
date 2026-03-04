@@ -18,6 +18,7 @@ from utils import (
 # setup_logging
 # ---------------------------------------------------------------------------
 
+
 class TestSetupLogging:
     def test_adds_null_handler_without_log_file(self):
         logger = logging.getLogger("plexinstaller")
@@ -61,6 +62,7 @@ class TestSetupLogging:
 # ColorPrinter
 # ---------------------------------------------------------------------------
 
+
 class TestColorPrinter:
     def test_attributes_are_strings(self):
         """Ensure colorama migration didn't break the class attributes."""
@@ -98,6 +100,7 @@ class TestColorPrinter:
 # ---------------------------------------------------------------------------
 # Redaction helpers
 # ---------------------------------------------------------------------------
+
 
 class TestRedactMongoUri:
     def test_redacts_standard_uri(self):
@@ -153,6 +156,7 @@ class TestRedactSensitiveYaml:
 # ArchiveExtractor
 # ---------------------------------------------------------------------------
 
+
 class TestArchiveExtractor:
     def test_extract_zip(self, tmp_path: Path):
         """Verify basic ZIP extraction works."""
@@ -162,7 +166,7 @@ class TestArchiveExtractor:
         content_dir.mkdir()
         (content_dir / "package.json").write_text('{"name":"test"}')
 
-        with zipfile.ZipFile(archive_path, 'w') as zf:
+        with zipfile.ZipFile(archive_path, "w") as zf:
             zf.write(content_dir / "package.json", "myapp/package.json")
 
         # Extract
@@ -189,7 +193,7 @@ class TestArchiveExtractor:
     def test_zip_path_traversal_blocked(self, tmp_path: Path):
         """Ensure path traversal in ZIP members is caught."""
         archive_path = tmp_path / "evil.zip"
-        with zipfile.ZipFile(archive_path, 'w') as zf:
+        with zipfile.ZipFile(archive_path, "w") as zf:
             zf.writestr("../../etc/passwd", "root:x:0:0:::")
 
         extractor = ArchiveExtractor()
@@ -203,6 +207,7 @@ class TestArchiveExtractor:
 # ---------------------------------------------------------------------------
 # find_product_dir heuristic
 # ---------------------------------------------------------------------------
+
 
 class TestFindProductDir:
     def test_single_subdir(self, tmp_path: Path):

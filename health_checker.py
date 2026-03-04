@@ -53,9 +53,7 @@ class HealthChecker:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def wait_for_tcp_port(
-        host: str, port: int, timeout_seconds: int = 30
-    ) -> bool:
+    def wait_for_tcp_port(host: str, port: int, timeout_seconds: int = 30) -> bool:
         """Wait until a TCP port accepts connections."""
         deadline = time.time() + timeout_seconds
         while time.time() < deadline:
@@ -67,9 +65,7 @@ class HealthChecker:
         return False
 
     @staticmethod
-    def probe_http(
-        host: str, port: int, path: str = "/", timeout: int = 3
-    ) -> tuple[bool, str]:
+    def probe_http(host: str, port: int, path: str = "/", timeout: int = 3) -> tuple[bool, str]:
         """Probe an HTTP endpoint; returns (ok, detail)."""
         try:
             conn = http.client.HTTPConnection(host, port, timeout=timeout)
@@ -83,19 +79,13 @@ class HealthChecker:
     def check_node_version(self) -> tuple[bool, str]:
         """Verify node is installed and meets the minimum version."""
         try:
-            result = subprocess.run(
-                ["node", "-v"], capture_output=True, text=True, timeout=10
-            )
+            result = subprocess.run(["node", "-v"], capture_output=True, text=True, timeout=10)
             if result.returncode != 0:
-                return False, (
-                    result.stderr or result.stdout or "node -v failed"
-                ).strip()
+                return False, (result.stderr or result.stdout or "node -v failed").strip()
             version = (result.stdout or "").strip().lstrip("v")
             major = int(version.split(".")[0])
             if major < self.node_min_version:
-                return False, (
-                    f"Node.js v{version} (needs >= {self.node_min_version})"
-                )
+                return False, (f"Node.js v{version} (needs >= {self.node_min_version})")
             return True, f"Node.js v{version}"
         except Exception as exc:
             return False, str(exc)
@@ -144,11 +134,7 @@ class HealthChecker:
                 name="package.json present",
                 status="pass" if package_json.exists() else "fail",
                 detail=str(package_json) if package_json.exists() else "missing",
-                hint=(
-                    "Ensure the archive contains a Node app with package.json"
-                    if not package_json.exists()
-                    else ""
-                ),
+                hint=("Ensure the archive contains a Node app with package.json" if not package_json.exists() else ""),
             )
         )
 
@@ -167,23 +153,13 @@ class HealthChecker:
         )
 
         # Config file existence
-        config_files = list(context.install_path.glob("config.y*ml")) + list(
-            context.install_path.glob("config.json")
-        )
+        config_files = list(context.install_path.glob("config.y*ml")) + list(context.install_path.glob("config.json"))
         results.append(
             SelfTestResult(
                 name="Config file present",
                 status="pass" if bool(config_files) else "warn",
-                detail=(
-                    config_files[0].name
-                    if config_files
-                    else "no config.yml/config.json found"
-                ),
-                hint=(
-                    "You may need to create/configure the app config manually"
-                    if not config_files
-                    else ""
-                ),
+                detail=(config_files[0].name if config_files else "no config.yml/config.json found"),
+                hint=("You may need to create/configure the app config manually" if not config_files else ""),
             )
         )
 
@@ -202,11 +178,7 @@ class HealthChecker:
                     name="systemd service active",
                     status="pass" if is_active else "fail",
                     detail=f"{service_name} is {self.systemd.get_status(service_name)}",
-                    hint=(
-                        f"Run: systemctl status {service_name} --no-pager"
-                        if not is_active
-                        else ""
-                    ),
+                    hint=(f"Run: systemctl status {service_name} --no-pager" if not is_active else ""),
                 )
             )
         else:
@@ -221,9 +193,7 @@ class HealthChecker:
 
         # App port checks
         if context.service_created:
-            port_ready = self.wait_for_tcp_port(
-                "127.0.0.1", context.port, timeout_seconds=45
-            )
+            port_ready = self.wait_for_tcp_port("127.0.0.1", context.port, timeout_seconds=45)
             results.append(
                 SelfTestResult(
                     name="Local TCP port reachable",
@@ -244,22 +214,14 @@ class HealthChecker:
                         name="Local HTTP responds",
                         status="pass" if http_ok else "warn",
                         detail=http_detail,
-                        hint=(
-                            "The app may not expose /; verify the configured bind/port"
-                            if not http_ok
-                            else ""
-                        ),
+                        hint=("The app may not expose /; verify the configured bind/port" if not http_ok else ""),
                     )
                 )
 
         # Mongo validation
         if mongo_creds and mongo_creds.get("uri"):
             uri = mongo_creds["uri"]
-            ok = (
-                mongo_manager.validate_uri(uri)
-                if mongo_manager
-                else False
-            )
+            ok = mongo_manager.validate_uri(uri) if mongo_manager else False
             results.append(
                 SelfTestResult(
                     name="MongoDB auth via generated URI",
@@ -289,14 +251,9 @@ class HealthChecker:
                     "})();"
                 )
                 try:
-                    result = mongo_manager.run_shell(
-                        [uri, "--quiet", "--eval", script], timeout=20
-                    )
+                    result = mongo_manager.run_shell([uri, "--quiet", "--eval", script], timeout=20)
                     combined = (result.stdout or "") + "\n" + (result.stderr or "")
-                    rw_ok = (
-                        result.returncode == 0
-                        and "__PLEXINSTALLER_OK__" in combined
-                    )
+                    rw_ok = result.returncode == 0 and "__PLEXINSTALLER_OK__" in combined
                 except Exception:
                     rw_ok = False
                 results.append(
@@ -308,11 +265,7 @@ class HealthChecker:
                     )
                 )
         else:
-            product_cfg = (
-                config.get_product(context.product)
-                if config and hasattr(config, "get_product")
-                else None
-            )
+            product_cfg = config.get_product(context.product) if config and hasattr(config, "get_product") else None
             requires = bool(getattr(product_cfg, "requires_mongodb", False))
             if requires:
                 results.append(
@@ -416,14 +369,10 @@ class HealthChecker:
 
         # SSL certificates
         logger.info("=== SSL Certificates ===")
-        certbot_installed = (
-            subprocess.run(["which", "certbot"], capture_output=True).returncode == 0
-        )
+        certbot_installed = subprocess.run(["which", "certbot"], capture_output=True).returncode == 0
         if certbot_installed:
             try:
-                result = subprocess.run(
-                    ["certbot", "certificates"], capture_output=True, text=True
-                )
+                result = subprocess.run(["certbot", "certificates"], capture_output=True, text=True)
                 if "No certificates found" in result.stdout:
                     self.printer.step("ℹ No SSL certificates found")
                 else:
@@ -439,12 +388,8 @@ class HealthChecker:
         try:
             with open("/proc/meminfo") as f:
                 lines = f.readlines()
-                mem_total = (
-                    int([line for line in lines if "MemTotal" in line][0].split()[1]) / 1024
-                )
-                mem_available = (
-                    int([line for line in lines if "MemAvailable" in line][0].split()[1]) / 1024
-                )
+                mem_total = int([line for line in lines if "MemTotal" in line][0].split()[1]) / 1024
+                mem_available = int([line for line in lines if "MemAvailable" in line][0].split()[1]) / 1024
                 mem_used = mem_total - mem_available
                 mem_percent = (mem_used / mem_total) * 100
 
@@ -505,13 +450,9 @@ class HealthChecker:
                     self.printer.step(r.hint)
 
         if failures:
-            self.printer.error(
-                f"Self-tests completed with {failures} failure(s) and {warnings} warning(s)"
-            )
+            self.printer.error(f"Self-tests completed with {failures} failure(s) and {warnings} warning(s)")
         elif warnings:
-            self.printer.warning(
-                f"Self-tests completed with {warnings} warning(s)"
-            )
+            self.printer.warning(f"Self-tests completed with {warnings} warning(s)")
         else:
             self.printer.success("All self-tests passed")
 
@@ -531,15 +472,9 @@ class HealthChecker:
             results.append(
                 SelfTestResult(
                     name="nginx service active",
-                    status="pass"
-                    if nginx_active.stdout.strip() == "active"
-                    else "fail",
+                    status="pass" if nginx_active.stdout.strip() == "active" else "fail",
                     detail=nginx_active.stdout.strip() or nginx_active.stderr.strip(),
-                    hint=(
-                        "Run: systemctl status nginx --no-pager"
-                        if nginx_active.stdout.strip() != "active"
-                        else ""
-                    ),
+                    hint=("Run: systemctl status nginx --no-pager" if nginx_active.stdout.strip() != "active" else ""),
                 )
             )
         except Exception as exc:
@@ -565,32 +500,20 @@ class HealthChecker:
         results.append(
             SelfTestResult(
                 name="nginx site enabled",
-                status="pass"
-                if (enabled_link.exists() or enabled_link.is_symlink())
-                else "fail",
-                detail=(
-                    str(enabled_link)
-                    if (enabled_link.exists() or enabled_link.is_symlink())
-                    else "missing"
-                ),
+                status="pass" if (enabled_link.exists() or enabled_link.is_symlink()) else "fail",
+                detail=(str(enabled_link) if (enabled_link.exists() or enabled_link.is_symlink()) else "missing"),
                 hint="Create symlink in sites-enabled and reload nginx",
             )
         )
 
         try:
-            t = subprocess.run(
-                ["nginx", "-t"], capture_output=True, text=True, timeout=15
-            )
+            t = subprocess.run(["nginx", "-t"], capture_output=True, text=True, timeout=15)
             results.append(
                 SelfTestResult(
                     name="nginx config test",
                     status="pass" if t.returncode == 0 else "fail",
                     detail=(t.stdout or t.stderr or "").strip()[-200:],
-                    hint=(
-                        "Fix nginx errors then reload: systemctl reload nginx"
-                        if t.returncode != 0
-                        else ""
-                    ),
+                    hint=("Fix nginx errors then reload: systemctl reload nginx" if t.returncode != 0 else ""),
                 )
             )
         except Exception as exc:
@@ -609,19 +532,13 @@ class HealthChecker:
                 name="SSL certificate present",
                 status="pass" if cert_path.exists() else "warn",
                 detail=str(cert_path) if cert_path.exists() else "not found",
-                hint=(
-                    "Re-run SSL setup or run certbot manually"
-                    if not cert_path.exists()
-                    else ""
-                ),
+                hint=("Re-run SSL setup or run certbot manually" if not cert_path.exists() else ""),
             )
         )
 
         try:
             resolved = socket.gethostbyname(context.domain)
-            results.append(
-                SelfTestResult(name="DNS resolves", status="pass", detail=resolved)
-            )
+            results.append(SelfTestResult(name="DNS resolves", status="pass", detail=resolved))
         except Exception as exc:
             results.append(
                 SelfTestResult(
@@ -634,16 +551,10 @@ class HealthChecker:
 
         try:
             ctx = ssl.create_default_context()
-            with socket.create_connection(
-                (context.domain, 443), timeout=5
-            ) as sock:
+            with socket.create_connection((context.domain, 443), timeout=5) as sock:
                 with ctx.wrap_socket(sock, server_hostname=context.domain) as ssock:
                     ssock.getpeercert()
-            results.append(
-                SelfTestResult(
-                    name="HTTPS handshake", status="pass", detail="ok"
-                )
-            )
+            results.append(SelfTestResult(name="HTTPS handshake", status="pass", detail="ok"))
         except Exception as exc:
             results.append(
                 SelfTestResult(

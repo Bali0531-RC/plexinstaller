@@ -22,23 +22,30 @@ VERSION_CHECK_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller
 
 # Files managed by the auto-update system
 MANAGED_FILES = [
-    'installer.py', 'config.py', 'utils.py', 'plex_cli.py',
-    'telemetry_client.py', 'addon_manager.py', 'shared.py',
-    'health_checker.py', 'mongodb_manager.py', 'backup_manager.py',
+    "installer.py",
+    "config.py",
+    "utils.py",
+    "plex_cli.py",
+    "telemetry_client.py",
+    "addon_manager.py",
+    "shared.py",
+    "health_checker.py",
+    "mongodb_manager.py",
+    "backup_manager.py",
 ]
 
 # Mapping from version.json keys to filenames
 UPDATE_FILE_MAP = {
-    'installer': 'installer.py',
-    'config': 'config.py',
-    'utils': 'utils.py',
-    'plex_cli': 'plex_cli.py',
-    'telemetry_client': 'telemetry_client.py',
-    'addon_manager': 'addon_manager.py',
-    'shared': 'shared.py',
-    'health_checker': 'health_checker.py',
-    'mongodb_manager': 'mongodb_manager.py',
-    'backup_manager': 'backup_manager.py',
+    "installer": "installer.py",
+    "config": "config.py",
+    "utils": "utils.py",
+    "plex_cli": "plex_cli.py",
+    "telemetry_client": "telemetry_client.py",
+    "addon_manager": "addon_manager.py",
+    "shared": "shared.py",
+    "health_checker": "health_checker.py",
+    "mongodb_manager": "mongodb_manager.py",
+    "backup_manager": "backup_manager.py",
 }
 
 
@@ -75,8 +82,8 @@ def download_missing_files(
         print_error(f"Could not fetch version manifest: {e}")
         return
 
-    urls = version_data.get('download_urls', {})
-    checksums = version_data.get('checksums', {})
+    urls = version_data.get("download_urls", {})
+    checksums = version_data.get("checksums", {})
 
     for key, filename in missing.items():
         if key not in urls:
@@ -93,15 +100,12 @@ def download_missing_files(
 
             actual_hash = hashlib.sha256(content).hexdigest()
             if actual_hash != checksums[key]:
-                print_error(
-                    f"Checksum mismatch for {filename}: "
-                    f"expected {checksums[key]}, got {actual_hash}"
-                )
+                print_error(f"Checksum mismatch for {filename}: expected {checksums[key]}, got {actual_hash}")
                 continue
 
             target = install_dir / filename
             target.write_bytes(content)
-            os.chmod(target, 0o755 if filename.endswith('.py') else 0o644)
+            os.chmod(target, 0o755 if filename.endswith(".py") else 0o644)
             print_success(f"Installed {filename}")
         except Exception as e:
             print_error(f"Failed to download {filename}: {e}")
@@ -113,8 +117,8 @@ def is_newer_version(remote: str, local: str) -> bool:
     Returns True if *remote* is strictly newer than *local*.
     """
     try:
-        remote_parts = [int(x) for x in remote.split('.')]
-        local_parts = [int(x) for x in local.split('.')]
+        remote_parts = [int(x) for x in remote.split(".")]
+        local_parts = [int(x) for x in local.split(".")]
 
         while len(remote_parts) < len(local_parts):
             remote_parts.append(0)
@@ -159,7 +163,7 @@ def verify_gpg_signature(
         with urllib.request.urlopen(KEY_URL, timeout=10) as resp:
             key_bytes = resp.read()
         subprocess.run(
-            ['gpg', '--batch', '--yes', '--import'],
+            ["gpg", "--batch", "--yes", "--import"],
             input=key_bytes,
             capture_output=True,
             timeout=15,
@@ -168,8 +172,8 @@ def verify_gpg_signature(
         pass  # key may already be imported
 
     # Verify
-    sig_fd, sig_path = tempfile.mkstemp(suffix='.sig')
-    data_fd, data_path = tempfile.mkstemp(suffix='.json')
+    sig_fd, sig_path = tempfile.mkstemp(suffix=".sig")
+    data_fd, data_path = tempfile.mkstemp(suffix=".json")
     try:
         os.write(sig_fd, sig_bytes)
         os.close(sig_fd)
@@ -177,7 +181,7 @@ def verify_gpg_signature(
         os.close(data_fd)
 
         result = subprocess.run(
-            ['gpg', '--verify', sig_path, data_path],
+            ["gpg", "--verify", sig_path, data_path],
             capture_output=True,
             text=True,
             timeout=30,
@@ -270,8 +274,8 @@ def perform_update(
     backup_dir = install_dir / "backup"
     backup_dir.mkdir(parents=True, exist_ok=True)
 
-    checksums = version_data.get('checksums', {})
-    urls = version_data.get('download_urls', {})
+    checksums = version_data.get("checksums", {})
+    urls = version_data.get("download_urls", {})
 
     # Backup current files
     for filename in MANAGED_FILES:
@@ -294,18 +298,13 @@ def perform_update(
                 expected_hash = checksums[key]
                 actual_hash = hashlib.sha256(content).hexdigest()
                 if actual_hash != expected_hash:
-                    raise ValueError(
-                        f"Checksum mismatch for {filename}: "
-                        f"expected {expected_hash}, got {actual_hash}"
-                    )
+                    raise ValueError(f"Checksum mismatch for {filename}: expected {expected_hash}, got {actual_hash}")
                 print_success(f"Checksum verified for {filename}")
             else:
-                raise ValueError(
-                    f"No checksum provided for {filename}. Aborting update for security."
-                )
+                raise ValueError(f"No checksum provided for {filename}. Aborting update for security.")
 
             target.write_bytes(content)
-            os.chmod(target, 0o755 if filename.endswith('.py') else 0o644)
+            os.chmod(target, 0o755 if filename.endswith(".py") else 0o644)
 
         ensure_cli_entrypoints()
 

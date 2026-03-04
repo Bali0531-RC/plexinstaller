@@ -76,9 +76,7 @@ class TelemetryClient:
         self._events = []
         self._active = True
 
-        self._write_line(
-            f"Session {self._session_id} started for {product} (instance: {instance})"
-        )
+        self._write_line(f"Session {self._session_id} started for {product} (instance: {instance})")
         return self._session_id
 
     def log_step(self, step: str, status: str, detail: str | None = None):
@@ -140,8 +138,12 @@ class TelemetryClient:
 
     def share_log(self) -> str | None:
         """Upload the current log file to the configured paste service."""
-        if (not self.enabled or not self.paste_endpoint or
-            not self._current_log_path or not self._current_log_path.exists()):
+        if (
+            not self.enabled
+            or not self.paste_endpoint
+            or not self._current_log_path
+            or not self._current_log_path.exists()
+        ):
             return None
 
         try:

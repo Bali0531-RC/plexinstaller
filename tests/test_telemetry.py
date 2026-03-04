@@ -9,6 +9,7 @@ from telemetry_client import TelemetryClient, TelemetrySummary, _redact
 # _redact
 # ---------------------------------------------------------------------------
 
+
 class TestRedact:
     def test_redacts_mongo_uri(self):
         text = "mongodb://admin:s3cret@db.host:27017/mydb"
@@ -48,6 +49,7 @@ class TestRedact:
 # TelemetrySummary dataclass
 # ---------------------------------------------------------------------------
 
+
 class TestTelemetrySummary:
     def test_construction(self):
         summary = TelemetrySummary(
@@ -80,6 +82,7 @@ class TestTelemetrySummary:
 # ---------------------------------------------------------------------------
 # TelemetryClient session lifecycle
 # ---------------------------------------------------------------------------
+
 
 class TestTelemetryClientSession:
     def _make_client(self, tmp_path: Path, enabled: bool = True) -> TelemetryClient:
