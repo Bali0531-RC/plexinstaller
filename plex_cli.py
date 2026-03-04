@@ -35,19 +35,41 @@ try:
 except Exception:  # pragma: no cover
     redact_sensitive_yaml = None
 
+try:
+    from shared import (
+        is_newer_version,
+        verify_gpg_signature,
+        perform_update,
+        ensure_cli_entrypoints,
+        INSTALLER_DIR as _SHARED_INSTALLER_DIR,
+        VERSION_CHECK_URL as _SHARED_VERSION_CHECK_URL,
+    )
+except Exception:  # pragma: no cover
+    is_newer_version = None
+    verify_gpg_signature = None
+    perform_update = None
+    ensure_cli_entrypoints = None
+    _SHARED_INSTALLER_DIR = None
+    _SHARED_VERSION_CHECK_URL = None
+
 # Configuration
 INSTALL_DIR = Path("/var/www/plex")
-INSTALLER_DIR = Path("/opt/plexinstaller")
-VERSION_CHECK_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/version.json"
+INSTALLER_DIR = _SHARED_INSTALLER_DIR or Path("/opt/plexinstaller")
+VERSION_CHECK_URL = _SHARED_VERSION_CHECK_URL or "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/version.json"
 
-# ANSI Colors
-RED = '\033[0;31m'
-GREEN = '\033[0;32m'
-YELLOW = '\033[0;33m'
-BLUE = '\033[0;34m'
-CYAN = '\033[0;36m'
-BOLD = '\033[1m'
-NC = '\033[0m'
+from colorama import Fore, Style, init as colorama_init
+
+# Initialize colorama
+colorama_init(autoreset=False)
+
+# ANSI Colors (via colorama)
+RED = Fore.RED
+GREEN = Fore.GREEN
+YELLOW = Fore.YELLOW
+BLUE = Fore.BLUE
+CYAN = Fore.CYAN
+BOLD = Style.BRIGHT
+NC = Style.RESET_ALL
 
 def print_error(message: str):
     """Print error message"""
@@ -105,15 +127,15 @@ def show_help():
 
 def _is_newer_version(remote: str, local: str) -> bool:
     """Compare semantic-ish version strings."""
+    if is_newer_version is not None:
+        return is_newer_version(remote, local)
     try:
         remote_parts = [int(x) for x in remote.split('.')]
         local_parts = [int(x) for x in local.split('.')]
-
         while len(remote_parts) < len(local_parts):
             remote_parts.append(0)
         while len(local_parts) < len(remote_parts):
             local_parts.append(0)
-
         return remote_parts > local_parts
     except Exception:
         return False
@@ -134,169 +156,56 @@ def _read_local_installer_version() -> str:
 
 def _ensure_cli_entrypoints():
     """Ensure `/usr/local/bin/plex` and `/usr/local/bin/plexinstaller` point at the bundle."""
+    if ensure_cli_entrypoints is not None:
+        return ensure_cli_entrypoints()
+    # Fallback if shared module not available
     if os.geteuid() != 0:
         return
-
     try:
         bin_dir = Path("/usr/local/bin")
         bin_dir.mkdir(parents=True, exist_ok=True)
-
-        def _ensure_symlink(link_path: Path, target: Path):
+        for name, target in {
+            "plexinstaller": INSTALLER_DIR / "installer.py",
+            "plex": INSTALLER_DIR / "plex_cli.py",
+        }.items():
+            link_path = bin_dir / name
             if not target.exists():
-                return
-            if link_path.is_symlink():
-                if link_path.resolve() == target.resolve():
-                    return
-                link_path.unlink(missing_ok=True)
-            elif link_path.exists():
-                link_path.unlink(missing_ok=True)
+                continue
+            if link_path.is_symlink() or link_path.exists():
+                link_path.unlink()
             link_path.symlink_to(target)
-
-        _ensure_symlink(bin_dir / "plexinstaller", INSTALLER_DIR / "installer.py")
-        _ensure_symlink(bin_dir / "plex", INSTALLER_DIR / "plex_cli.py")
-    except TypeError:
-        # Python < 3.8 missing_ok fallback
-        try:
-            bin_dir = Path("/usr/local/bin")
-            for name, target in {
-                "plexinstaller": INSTALLER_DIR / "installer.py",
-                "plex": INSTALLER_DIR / "plex_cli.py",
-            }.items():
-                link_path = bin_dir / name
-                if link_path.is_symlink() or link_path.exists():
-                    link_path.unlink()
-                if target.exists():
-                    link_path.symlink_to(target)
-        except Exception:
-            return
     except Exception:
         return
 
 
 def _verify_gpg_signature(version_json_bytes: bytes) -> bool:
-    """Download version.json.sig and verify version.json against it.
-
-    The public key (release-key.gpg) is imported automatically from the repo
-    if not already in the local keyring.
-    """
-    import tempfile as _tempfile
-
-    SIG_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/version.json.sig"
-    KEY_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/release-key.gpg"
-
-    try:
-        print_info("Downloading GPG signature...")
-        with urllib.request.urlopen(SIG_URL, timeout=10) as resp:
-            sig_bytes = resp.read()
-    except Exception:
-        print_warning("Could not download version.json.sig — skipping GPG verification")
-        return True
-
-    try:
-        with urllib.request.urlopen(KEY_URL, timeout=10) as resp:
-            key_bytes = resp.read()
-        subprocess.run(
-            ['gpg', '--batch', '--yes', '--import'],
-            input=key_bytes,
-            capture_output=True,
-            timeout=15
+    """Download version.json.sig and verify version.json against it."""
+    if verify_gpg_signature is not None:
+        return verify_gpg_signature(
+            version_json_bytes,
+            print_info=print_info,
+            print_success=print_success,
+            print_warning=print_warning,
+            print_error=print_error,
         )
-    except Exception:
-        pass
-
-    try:
-        sig_file = Path(_tempfile.mktemp(suffix='.sig'))
-        data_file = Path(_tempfile.mktemp(suffix='.json'))
-
-        sig_file.write_bytes(sig_bytes)
-        data_file.write_bytes(version_json_bytes)
-
-        result = subprocess.run(
-            ['gpg', '--verify', str(sig_file), str(data_file)],
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
-
-        sig_file.unlink(missing_ok=True)
-        data_file.unlink(missing_ok=True)
-
-        if result.returncode == 0:
-            print_success("GPG signature verified")
-            return True
-        else:
-            print_error(f"GPG signature verification failed: {result.stderr.strip()}")
-            return False
-    except FileNotFoundError:
-        print_warning("gpg not installed — skipping signature verification")
-        return True
-    except Exception as e:
-        print_warning(f"GPG verification error: {e} — skipping")
-        return True
+    # Fallback: skip verification if shared module unavailable
+    print_warning("Shared module unavailable — skipping GPG verification")
+    return True
 
 
 def _perform_update(version_data: Dict, version_json_bytes: bytes = b''):
     """Download and install new installer version with checksum verification."""
-    if os.geteuid() != 0:
-        print_warning("Auto-update requires root. Re-run the command with sudo.")
-        return
-
-    # Verify GPG signature before proceeding
-    if not _verify_gpg_signature(version_json_bytes):
-        print_error("Update aborted: GPG signature verification failed")
-        return
-
-    install_dir = INSTALLER_DIR
-    backup_dir = install_dir / "backup"
-    current_files = ['installer.py', 'config.py', 'utils.py', 'plex_cli.py', 'telemetry_client.py', 'addon_manager.py']
-
-    backup_dir.mkdir(parents=True, exist_ok=True)
-
-    checksums = version_data.get('checksums', {})
-    urls = version_data.get('download_urls', {})
-    files_to_update = {
-        'installer': 'installer.py',
-        'config': 'config.py',
-        'utils': 'utils.py',
-        'plex_cli': 'plex_cli.py',
-        'telemetry_client': 'telemetry_client.py',
-        'addon_manager': 'addon_manager.py'
-    }
-
-    for filename in current_files:
-        src = install_dir / filename
-        if src.exists():
-            shutil.copy2(src, backup_dir / f"{filename}.bak")
-
-    for key, filename in files_to_update.items():
-        if key not in urls:
-            continue
-        url = urls[key]
-        target = install_dir / filename
-
-        print_info(f"Downloading {filename}...")
-        with urllib.request.urlopen(url, timeout=30) as response:
-            content = response.read()
-
-        if key in checksums:
-            expected_hash = checksums[key]
-            actual_hash = hashlib.sha256(content).hexdigest()
-            if actual_hash != expected_hash:
-                raise ValueError(
-                    f"Checksum mismatch for {filename}: expected {expected_hash}, got {actual_hash}"
-                )
-        else:
-            raise ValueError(
-                f"No checksum provided for {filename}. Aborting update for security."
-            )
-
-        target.write_bytes(content)
-        os.chmod(target, 0o755 if filename.endswith('.py') else 0o644)
-
-    _ensure_cli_entrypoints()
-
-    print_success("Update completed successfully. Restarting...")
-    os.execv(sys.executable, [sys.executable] + sys.argv)
+    if perform_update is not None:
+        return perform_update(
+            version_data,
+            version_json_bytes,
+            print_info=print_info,
+            print_success=print_success,
+            print_warning=print_warning,
+            print_error=print_error,
+        )
+    # Fallback if shared module unavailable
+    print_warning("Shared module unavailable — cannot perform update.")
 
 
 def _maybe_auto_update():

@@ -63,3 +63,6 @@ web/.well-known/
 # Release script (contains local GPG key references)
 release.sh
 __pycache__/
+
+# Improvement plan (local only)
+plan.txt

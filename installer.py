@@ -34,6 +34,12 @@ try:
 except ImportError:
     AddonManager = None
 from telemetry_client import TelemetryClient
+from shared import (
+    is_newer_version as _shared_is_newer,
+    verify_gpg_signature as _shared_verify_gpg,
+    perform_update as _shared_perform_update,
+    ensure_cli_entrypoints as _shared_ensure_cli,
+)
 
 # Current installer version
 INSTALLER_VERSION = "3.1.17"
@@ -244,204 +250,32 @@ class PlexInstaller:
 
     def _ensure_cli_entrypoints(self):
         """Ensure `plexinstaller` and `plex` commands point at the current installer bundle."""
-        try:
-            install_dir = Path("/opt/plexinstaller")
-            bin_dir = Path("/usr/local/bin")
-            bin_dir.mkdir(parents=True, exist_ok=True)
+        _shared_ensure_cli()
 
-            installer_target = install_dir / "installer.py"
-            plex_target = install_dir / "plex_cli.py"
-            if installer_target.exists():
-                self._ensure_symlink(bin_dir / "plexinstaller", installer_target)
-            if plex_target.exists():
-                self._ensure_symlink(bin_dir / "plex", plex_target)
-        except Exception as exc:
-            self.printer.warning(f"Could not ensure CLI entrypoints: {exc}")
-
-    def _ensure_symlink(self, link_path: Path, target: Path):
-        """Force link_path to be a symlink pointing at target."""
-        try:
-            if link_path.is_symlink():
-                if link_path.resolve() == target.resolve():
-                    return
-                link_path.unlink(missing_ok=True)
-            elif link_path.exists():
-                link_path.unlink(missing_ok=True)
-
-            link_path.symlink_to(target)
-        except TypeError:
-            # Python < 3.8 compatibility for missing_ok
-            if link_path.is_symlink() or link_path.exists():
-                link_path.unlink()
-            link_path.symlink_to(target)
-    
     def _is_newer_version(self, remote: str, local: str) -> bool:
         """Compare version strings (semantic versioning)"""
-        try:
-            remote_parts = [int(x) for x in remote.split('.')]
-            local_parts = [int(x) for x in local.split('.')]
-            
-            # Pad to same length
-            while len(remote_parts) < len(local_parts):
-                remote_parts.append(0)
-            while len(local_parts) < len(remote_parts):
-                local_parts.append(0)
-            
-            return remote_parts > local_parts
-        except Exception:
-            return False
+        return _shared_is_newer(remote, local)
     
     def _verify_gpg_signature(self, version_json_bytes: bytes) -> bool:
-        """Download version.json.sig and verify version.json against it.
-
-        The public key (release-key.gpg) is imported automatically from the repo
-        if not already in the local keyring.
-        """
-        SIG_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/version.json.sig"
-        KEY_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/release-key.gpg"
-
-        try:
-            # Download the detached signature
-            self.printer.step("Downloading GPG signature...")
-            with urllib.request.urlopen(SIG_URL, timeout=10) as resp:
-                sig_bytes = resp.read()
-        except Exception:
-            self.printer.warning("Could not download version.json.sig — skipping GPG verification")
-            return True  # Backwards compatible: allow if no sig hosted yet
-
-        try:
-            # Import the release public key (idempotent)
-            with urllib.request.urlopen(KEY_URL, timeout=10) as resp:
-                key_bytes = resp.read()
-            subprocess.run(
-                ['gpg', '--batch', '--yes', '--import'],
-                input=key_bytes,
-                capture_output=True,
-                timeout=15
-            )
-        except Exception:
-            pass  # Key may already be imported
-
-        try:
-            sig_file = Path(tempfile.mktemp(suffix='.sig'))
-            data_file = Path(tempfile.mktemp(suffix='.json'))
-
-            sig_file.write_bytes(sig_bytes)
-            data_file.write_bytes(version_json_bytes)
-
-            result = subprocess.run(
-                ['gpg', '--verify', str(sig_file), str(data_file)],
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-
-            sig_file.unlink(missing_ok=True)
-            data_file.unlink(missing_ok=True)
-
-            if result.returncode == 0:
-                self.printer.success("GPG signature verified")
-                return True
-            else:
-                self.printer.error(f"GPG signature verification failed: {result.stderr.strip()}")
-                return False
-        except FileNotFoundError:
-            self.printer.warning("gpg not installed — skipping signature verification")
-            return True
-        except Exception as e:
-            self.printer.warning(f"GPG verification error: {e} — skipping")
-            return True
+        """Download version.json.sig and verify version.json against it."""
+        return _shared_verify_gpg(
+            version_json_bytes,
+            print_info=self.printer.step,
+            print_success=self.printer.success,
+            print_warning=self.printer.warning,
+            print_error=self.printer.error,
+        )
 
     def _perform_update(self, version_data: Dict, version_json_bytes: bytes = b''):
         """Download and install new installer version with checksum verification"""
-        install_dir: Path = Path("/opt/plexinstaller")
-        backup_dir: Path = install_dir / "backup"
-        current_files = ['installer.py', 'config.py', 'utils.py', 'plex_cli.py', 'telemetry_client.py', 'addon_manager.py']
-
-        try:
-            # Verify GPG signature before proceeding
-            if not self._verify_gpg_signature(version_json_bytes):
-                self.printer.error("Update aborted: GPG signature verification failed")
-                return
-
-            self.printer.step("Downloading updated installer files...")
-
-            backup_dir.mkdir(parents=True, exist_ok=True)
-
-            # Get checksums from version data
-            checksums = version_data.get('checksums', {})
-
-            # Backup current files
-            for filename in current_files:
-                src = install_dir / filename
-                if src.exists():
-                    shutil.copy2(src, backup_dir / f"{filename}.bak")
-            
-            # Download new files
-            urls = version_data.get('download_urls', {})
-            files_to_update = {
-                'installer': 'installer.py',
-                'config': 'config.py',
-                'utils': 'utils.py',
-                'plex_cli': 'plex_cli.py',
-                'telemetry_client': 'telemetry_client.py',
-                'addon_manager': 'addon_manager.py'
-            }
-            
-            for key, filename in files_to_update.items():
-                if key in urls:
-                    url = urls[key]
-                    target = install_dir / filename
-                    
-                    self.printer.step(f"Downloading {filename}...")
-                    with urllib.request.urlopen(url, timeout=30) as response:
-                        content = response.read()
-                    
-                    # Verify checksum (required)
-                    if key in checksums:
-                        expected_hash = checksums[key]
-                        actual_hash = hashlib.sha256(content).hexdigest()
-                        if actual_hash != expected_hash:
-                            raise ValueError(f"Checksum mismatch for {filename}: expected {expected_hash}, got {actual_hash}")
-                        self.printer.success(f"Checksum verified for {filename}")
-                    else:
-                        raise ValueError(f"No checksum provided for {filename}. Aborting update for security.")
-                    
-                    target.write_bytes(content)
-                    os.chmod(target, 0o755 if filename.endswith('.py') else 0o644)
-            
-            self.printer.success("Update completed successfully!")
-            self.printer.step("Restarting installer with new version...")
-
-            # Make sure CLI entrypoints are updated to point at the refreshed bundle.
-            self._ensure_cli_entrypoints()
-            
-            # Wait a moment for user to see message
-            import time
-            time.sleep(2)
-            
-            # Restart the installer
-            os.execv(sys.executable, [sys.executable] + sys.argv)
-            
-        except Exception as e:
-            self.printer.error(f"Update failed: {e}")
-            self.printer.warning("Restoring backup files...")
-            
-            # Restore backups
-            try:
-                if backup_dir.exists():
-                    for filename in current_files:
-                        backup = backup_dir / f"{filename}.bak"
-                        target = install_dir / filename
-                        if backup.exists():
-                            shutil.copy2(backup, target)
-                    self.printer.success("Backup restored successfully")
-                else:
-                    self.printer.warning("No backup directory found; nothing to restore.")
-            except Exception:
-                self.printer.error("Could not restore backup. Manual intervention may be required.")
-            
-            self.printer.step("Continuing with current version...")
+        _shared_perform_update(
+            version_data,
+            version_json_bytes,
+            print_info=self.printer.step,
+            print_success=self.printer.success,
+            print_warning=self.printer.warning,
+            print_error=self.printer.error,
+        )
 
     
     def _show_main_menu(self):
@@ -1770,7 +1604,8 @@ gpgkey=https://www.mongodb.org/static/pgp/server-{mongo_ver}.asc
             
             choice = input("Edit configuration now? (y/n): ").strip().lower()
             if choice == 'y':
-                subprocess.run(["nano", str(config_file)])
+                editor = os.environ.get('EDITOR', 'nano')
+                subprocess.run([editor, str(config_file)])
                 self.printer.step(f"Restart service: sudo systemctl restart plex-{instance_name}")
         
         # Display access information
@@ -1917,7 +1752,8 @@ gpgkey=https://www.mongodb.org/static/pgp/server-{mongo_ver}.asc
         config_files = list(install_path.glob("config.y*ml")) + list(install_path.glob("config.json"))
         
         if config_files:
-            subprocess.run(["nano", str(config_files[0])])
+            editor = os.environ.get('EDITOR', 'nano')
+            subprocess.run([editor, str(config_files[0])])
             self.printer.step(f"Restart service: sudo systemctl restart plex-{product}")
         else:
             self.printer.warning("No configuration file found")
@@ -2689,11 +2525,12 @@ gpgkey=https://www.mongodb.org/static/pgp/server-{mongo_ver}.asc
                 config_path = addon['config_path']
                 
                 self.printer.step(f"Opening {config_path.name} for editing...")
-                self.printer.warning("Save and exit the editor when done (Ctrl+X in nano)")
+                self.printer.warning("Save and exit the editor when done")
                 
-                # Open in nano
+                # Open in editor
+                editor = os.environ.get('EDITOR', 'nano')
                 import subprocess
-                subprocess.run(["nano", str(config_path)])
+                subprocess.run([editor, str(config_path)])
                 
                 # Validate YAML after editing
                 is_valid, error = self.addon_manager.validate_yaml(config_path)
@@ -2706,7 +2543,7 @@ gpgkey=https://www.mongodb.org/static/pgp/server-{mongo_ver}.asc
                     
                     fix_choice = input("Open editor again to fix? (y/n): ").strip().lower()
                     if fix_choice == 'y':
-                        subprocess.run(["nano", str(config_path)])
+                        subprocess.run([editor, str(config_path)])
                         is_valid, error = self.addon_manager.validate_yaml(config_path)
                         if is_valid:
                             self.printer.success("Configuration file is now valid YAML")

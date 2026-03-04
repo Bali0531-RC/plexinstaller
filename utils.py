@@ -16,18 +16,23 @@ import re
 from pathlib import Path
 from typing import Optional, List, Tuple
 
+from colorama import Fore, Style, init as colorama_init
+
+# Initialize colorama for cross-platform support
+colorama_init(autoreset=False)
+
 class ColorPrinter:
     """Colored output printer"""
     
-    # ANSI color codes
-    RED = '\033[0;31m'
-    GREEN = '\033[0;32m'
-    YELLOW = '\033[0;33m'
-    BLUE = '\033[0;34m'
-    PURPLE = '\033[0;35m'
-    CYAN = '\033[0;36m'
-    BOLD = '\033[1m'
-    NC = '\033[0m'  # No Color
+    # Color constants (using colorama instead of raw ANSI)
+    RED = Fore.RED
+    GREEN = Fore.GREEN
+    YELLOW = Fore.YELLOW
+    BLUE = Fore.BLUE
+    PURPLE = Fore.MAGENTA
+    CYAN = Fore.CYAN
+    BOLD = Style.BRIGHT
+    NC = Style.RESET_ALL  # No Color
     
     def header(self, message: str):
         """Print header"""
