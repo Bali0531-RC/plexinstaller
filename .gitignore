@@ -54,6 +54,9 @@ web/outputs
 web2/dist
 web2/build
 web2/outputs   
+build/
+plexinstaller.egg-info/
+.pytest_cache/
 
 # Misc
 web/ads.txt
@@ -63,3 +66,6 @@ web/.well-known/
 # Release script (contains local GPG key references)
 release.sh
 __pycache__/
+
+# Improvement plan (local only)
+plan.txt

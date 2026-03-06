@@ -1,9 +1,13 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { CommandBlock } from "./components/CommandBlock";
 import { ProductGrid } from "./components/ProductGrid";
 import { ReleaseTimeline } from "./components/ReleaseTimeline";
 import { SiteNav } from "./components/SiteNav";
 import { installerContent, InstallerTab } from "./data/installers";
+import { releases } from "./data/changelog";
+
+const currentVersion = releases[0]?.version ?? "unknown";
 
 const installerTabs: { id: InstallerTab; label: string }[] = [
   { id: "quick", label: "Quick" },
@@ -27,7 +31,7 @@ export const App = () => {
       <SiteNav />
       <main>
         <header className="hero">
-        <p className="eyebrow">PlexDev Installer · v3.1.13</p>
+        <p className="eyebrow">PlexDev Installer · v{currentVersion}</p>
         <h1>Unofficial PlexDevelopment installer for Linux hosts</h1>
         <p>
           plexdev.xyz is the home of the community-maintained installer. Bring your own PlexDevelopment product files and this script will handle MongoDB 8.x, systemd units, firewall rules, and health checks for you.
@@ -36,12 +40,12 @@ export const App = () => {
           <a className="primary" href="/setup.sh" download>
             Download setup.sh
           </a>
-          <a className="ghost" href="/guide.html" target="_blank" rel="noreferrer">
-            Read the guide
-          </a>
           <a className="ghost" href="https://github.com/Bali0531-RC/plexinstaller" target="_blank" rel="noreferrer">
             View on GitHub
           </a>
+          <Link className="ghost" to="/guide">
+            Read the guide
+          </Link>
         </div>
       </header>
 

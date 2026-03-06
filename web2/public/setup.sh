@@ -136,6 +136,11 @@ FILES_TO_DOWNLOAD=(
     "plex_cli.py"
     "telemetry_client.py"
     "addon_manager.py"
+    "shared.py"
+    "health_checker.py"
+    "mongodb_manager.py"
+    "backup_manager.py"
+    "requirements.txt"
     "version.json"
     "version.json.sig"
     "release-key.gpg"
@@ -182,12 +187,16 @@ if command -v gpg &> /dev/null; then
         else
             print_error "GPG signature verification FAILED"
             print_error "The downloaded files may have been tampered with!"
-            read -p "Continue anyway? (y/n): " continue_anyway
-            if [ "$continue_anyway" != "y" ] && [ "$continue_anyway" != "Y" ]; then
-                print_error "Installation aborted."
-                exit 1
+            if [ "$VERSION" = "Beta" ]; then
+                print_warning "Dev/beta branch — GPG mismatch is expected. Continuing..."
+            else
+                read -p "Continue anyway? (y/n): " continue_anyway
+                if [ "$continue_anyway" != "y" ] && [ "$continue_anyway" != "Y" ]; then
+                    print_error "Installation aborted."
+                    exit 1
+                fi
+                print_warning "Continuing without verified signature..."
             fi
-            print_warning "Continuing without verified signature..."
         fi
     else
         print_warning "Signature files not found — skipping GPG verification"
@@ -214,7 +223,7 @@ read_checksum() {
 
 if [ -f "$INSTALL_DIR/version.json" ]; then
     CHECKSUM_FAILED=false
-    for key in installer config utils plex_cli telemetry_client addon_manager; do
+    for key in installer config utils plex_cli telemetry_client addon_manager shared health_checker mongodb_manager backup_manager; do
         expected=$(read_checksum "$key" "$INSTALL_DIR/version.json")
         if [ -z "$expected" ]; then
             continue
@@ -228,6 +237,10 @@ if [ -f "$INSTALL_DIR/version.json" ]; then
             plex_cli)         fname="plex_cli.py" ;;
             telemetry_client) fname="telemetry_client.py" ;;
             addon_manager)    fname="addon_manager.py" ;;
+            shared)           fname="shared.py" ;;
+            health_checker)   fname="health_checker.py" ;;
+            mongodb_manager)  fname="mongodb_manager.py" ;;
+            backup_manager)   fname="backup_manager.py" ;;
             *)                continue ;;
         esac
 
@@ -261,12 +274,14 @@ else
     print_warning "version.json not found — skipping checksum verification"
 fi
 
-# Install Python dependencies for telemetry client
+# Install Python dependencies
 print_step "Installing Python dependencies..."
-if command -v pip3 &> /dev/null; then
-    pip3 install requests --quiet 2>/dev/null || pip3 install requests --break-system-packages --quiet 2>/dev/null || print_warning "Could not install requests module"
+if [ -f "${INSTALL_DIR}/requirements.txt" ]; then
+    pip3 install -r "${INSTALL_DIR}/requirements.txt" --quiet 2>/dev/null \
+        || pip3 install -r "${INSTALL_DIR}/requirements.txt" --break-system-packages --quiet 2>/dev/null \
+        || print_warning "Could not install Python dependencies from requirements.txt"
 else
-    print_warning "pip3 not found, telemetry may not work"
+    print_warning "requirements.txt not found — skipping dependency installation"
 fi
 
 # Make Python files executable
@@ -277,6 +292,10 @@ chmod 644 "${INSTALL_DIR}/config.py"
 chmod 644 "${INSTALL_DIR}/utils.py"
 chmod 644 "${INSTALL_DIR}/telemetry_client.py"
 chmod 644 "${INSTALL_DIR}/addon_manager.py"
+chmod 644 "${INSTALL_DIR}/shared.py"
+chmod 644 "${INSTALL_DIR}/health_checker.py"
+chmod 644 "${INSTALL_DIR}/mongodb_manager.py"
+chmod 644 "${INSTALL_DIR}/backup_manager.py"
 chmod 644 "${INSTALL_DIR}/version.json"
 chmod 644 "${INSTALL_DIR}/version.json.sig" 2>/dev/null || true
 chmod 644 "${INSTALL_DIR}/release-key.gpg" 2>/dev/null || true

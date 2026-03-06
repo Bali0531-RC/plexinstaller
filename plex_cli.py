@@ -4,66 +4,105 @@ Plex CLI Management Tool
 Command-line interface for managing PlexDevelopment applications
 """
 
-import sys
-import subprocess
-import os
 import json
-import urllib.request
-import hashlib
-import shutil
+import os
 import re
+import subprocess
+import sys
+import urllib.request
 from pathlib import Path
-from typing import List, Dict, Optional
 
 try:
     from config import Config
 except Exception:  # pragma: no cover
-    Config = None
+    Config = None  # type: ignore[assignment,misc]
 
 try:
     from addon_manager import AddonManager
 except Exception:  # pragma: no cover
-    AddonManager = None
+    AddonManager = None  # type: ignore[assignment,misc]
 
 try:
     import requests
 except Exception:  # pragma: no cover
-    requests = None
+    requests = None  # type: ignore[assignment]
 
 try:
     from utils import redact_sensitive_yaml
 except Exception:  # pragma: no cover
-    redact_sensitive_yaml = None
+    redact_sensitive_yaml = None  # type: ignore[assignment]
+
+try:
+    from shared import (
+        INSTALLER_DIR as _SHARED_INSTALLER_DIR,
+    )
+    from shared import (
+        VERSION_CHECK_URL as _SHARED_VERSION_CHECK_URL,
+    )
+    from shared import (
+        ensure_cli_entrypoints,
+        is_newer_version,
+        perform_update,
+        verify_gpg_signature,
+    )
+except Exception:  # pragma: no cover
+    is_newer_version = None  # type: ignore[assignment]
+    verify_gpg_signature = None  # type: ignore[assignment]
+    perform_update = None  # type: ignore[assignment]
+    ensure_cli_entrypoints = None  # type: ignore[assignment]
+    _SHARED_INSTALLER_DIR = None  # type: ignore[assignment]
+    _SHARED_VERSION_CHECK_URL = None  # type: ignore[assignment]
 
 # Configuration
 INSTALL_DIR = Path("/var/www/plex")
-INSTALLER_DIR = Path("/opt/plexinstaller")
-VERSION_CHECK_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/version.json"
+INSTALLER_DIR = _SHARED_INSTALLER_DIR or Path("/opt/plexinstaller")
+VERSION_CHECK_URL = (
+    _SHARED_VERSION_CHECK_URL or "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/version.json"
+)
 
-# ANSI Colors
-RED = '\033[0;31m'
-GREEN = '\033[0;32m'
-YELLOW = '\033[0;33m'
-BLUE = '\033[0;34m'
-CYAN = '\033[0;36m'
-BOLD = '\033[1m'
-NC = '\033[0m'
+import logging  # noqa: E402
+
+from colorama import Fore, Style  # noqa: E402
+from colorama import init as colorama_init  # noqa: E402
+
+# Initialize colorama
+colorama_init(autoreset=False)
+
+# ANSI Colors (via colorama)
+RED = Fore.RED
+GREEN = Fore.GREEN
+YELLOW = Fore.YELLOW
+BLUE = Fore.BLUE
+CYAN = Fore.CYAN
+BOLD = Style.BRIGHT
+NC = Style.RESET_ALL
+
+_cli_logger = logging.getLogger("plexinstaller.cli")
+
 
 def print_error(message: str):
     """Print error message"""
     print(f"{RED}[✗] {message}{NC}", file=sys.stderr)
+    _cli_logger.error(message)
+
 
 def print_success(message: str):
     """Print success message"""
     print(f"{GREEN}[✓] {message}{NC}", file=sys.stderr)
+    _cli_logger.info(message)
+
 
 def print_info(message: str):
     """Print info message"""
     print(f"{BLUE}[i] {message}{NC}", file=sys.stderr)
+    _cli_logger.info(message)
+
 
 def print_warning(message: str):
     """Print warning message"""
     print(f"{YELLOW}[!] {message}{NC}", file=sys.stderr)
+    _cli_logger.warning(message)
+
 
 def show_help():
     """Display help information"""
@@ -105,15 +144,15 @@ def show_help():
 
 def _is_newer_version(remote: str, local: str) -> bool:
     """Compare semantic-ish version strings."""
+    if is_newer_version is not None:
+        return is_newer_version(remote, local)
     try:
-        remote_parts = [int(x) for x in remote.split('.')]
-        local_parts = [int(x) for x in local.split('.')]
-
+        remote_parts = [int(x) for x in remote.split(".")]
+        local_parts = [int(x) for x in local.split(".")]
         while len(remote_parts) < len(local_parts):
             remote_parts.append(0)
         while len(local_parts) < len(remote_parts):
             local_parts.append(0)
-
         return remote_parts > local_parts
     except Exception:
         return False
@@ -134,169 +173,56 @@ def _read_local_installer_version() -> str:
 
 def _ensure_cli_entrypoints():
     """Ensure `/usr/local/bin/plex` and `/usr/local/bin/plexinstaller` point at the bundle."""
+    if ensure_cli_entrypoints is not None:
+        return ensure_cli_entrypoints()
+    # Fallback if shared module not available
     if os.geteuid() != 0:
         return
-
     try:
         bin_dir = Path("/usr/local/bin")
         bin_dir.mkdir(parents=True, exist_ok=True)
-
-        def _ensure_symlink(link_path: Path, target: Path):
+        for name, target in {
+            "plexinstaller": INSTALLER_DIR / "installer.py",
+            "plex": INSTALLER_DIR / "plex_cli.py",
+        }.items():
+            link_path = bin_dir / name
             if not target.exists():
-                return
-            if link_path.is_symlink():
-                if link_path.resolve() == target.resolve():
-                    return
-                link_path.unlink(missing_ok=True)
-            elif link_path.exists():
-                link_path.unlink(missing_ok=True)
+                continue
+            if link_path.is_symlink() or link_path.exists():
+                link_path.unlink()
             link_path.symlink_to(target)
-
-        _ensure_symlink(bin_dir / "plexinstaller", INSTALLER_DIR / "installer.py")
-        _ensure_symlink(bin_dir / "plex", INSTALLER_DIR / "plex_cli.py")
-    except TypeError:
-        # Python < 3.8 missing_ok fallback
-        try:
-            bin_dir = Path("/usr/local/bin")
-            for name, target in {
-                "plexinstaller": INSTALLER_DIR / "installer.py",
-                "plex": INSTALLER_DIR / "plex_cli.py",
-            }.items():
-                link_path = bin_dir / name
-                if link_path.is_symlink() or link_path.exists():
-                    link_path.unlink()
-                if target.exists():
-                    link_path.symlink_to(target)
-        except Exception:
-            return
     except Exception:
         return
 
 
 def _verify_gpg_signature(version_json_bytes: bytes) -> bool:
-    """Download version.json.sig and verify version.json against it.
-
-    The public key (release-key.gpg) is imported automatically from the repo
-    if not already in the local keyring.
-    """
-    import tempfile as _tempfile
-
-    SIG_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/version.json.sig"
-    KEY_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/release-key.gpg"
-
-    try:
-        print_info("Downloading GPG signature...")
-        with urllib.request.urlopen(SIG_URL, timeout=10) as resp:
-            sig_bytes = resp.read()
-    except Exception:
-        print_warning("Could not download version.json.sig — skipping GPG verification")
-        return True
-
-    try:
-        with urllib.request.urlopen(KEY_URL, timeout=10) as resp:
-            key_bytes = resp.read()
-        subprocess.run(
-            ['gpg', '--batch', '--yes', '--import'],
-            input=key_bytes,
-            capture_output=True,
-            timeout=15
+    """Download version.json.sig and verify version.json against it."""
+    if verify_gpg_signature is not None:
+        return verify_gpg_signature(
+            version_json_bytes,
+            print_info=print_info,
+            print_success=print_success,
+            print_warning=print_warning,
+            print_error=print_error,
         )
-    except Exception:
-        pass
-
-    try:
-        sig_file = Path(_tempfile.mktemp(suffix='.sig'))
-        data_file = Path(_tempfile.mktemp(suffix='.json'))
-
-        sig_file.write_bytes(sig_bytes)
-        data_file.write_bytes(version_json_bytes)
-
-        result = subprocess.run(
-            ['gpg', '--verify', str(sig_file), str(data_file)],
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
-
-        sig_file.unlink(missing_ok=True)
-        data_file.unlink(missing_ok=True)
-
-        if result.returncode == 0:
-            print_success("GPG signature verified")
-            return True
-        else:
-            print_error(f"GPG signature verification failed: {result.stderr.strip()}")
-            return False
-    except FileNotFoundError:
-        print_warning("gpg not installed — skipping signature verification")
-        return True
-    except Exception as e:
-        print_warning(f"GPG verification error: {e} — skipping")
-        return True
+    # Fallback: skip verification if shared module unavailable
+    print_warning("Shared module unavailable — skipping GPG verification")
+    return True
 
 
-def _perform_update(version_data: Dict, version_json_bytes: bytes = b''):
+def _perform_update(version_data: dict, version_json_bytes: bytes = b""):
     """Download and install new installer version with checksum verification."""
-    if os.geteuid() != 0:
-        print_warning("Auto-update requires root. Re-run the command with sudo.")
-        return
-
-    # Verify GPG signature before proceeding
-    if not _verify_gpg_signature(version_json_bytes):
-        print_error("Update aborted: GPG signature verification failed")
-        return
-
-    install_dir = INSTALLER_DIR
-    backup_dir = install_dir / "backup"
-    current_files = ['installer.py', 'config.py', 'utils.py', 'plex_cli.py', 'telemetry_client.py', 'addon_manager.py']
-
-    backup_dir.mkdir(parents=True, exist_ok=True)
-
-    checksums = version_data.get('checksums', {})
-    urls = version_data.get('download_urls', {})
-    files_to_update = {
-        'installer': 'installer.py',
-        'config': 'config.py',
-        'utils': 'utils.py',
-        'plex_cli': 'plex_cli.py',
-        'telemetry_client': 'telemetry_client.py',
-        'addon_manager': 'addon_manager.py'
-    }
-
-    for filename in current_files:
-        src = install_dir / filename
-        if src.exists():
-            shutil.copy2(src, backup_dir / f"{filename}.bak")
-
-    for key, filename in files_to_update.items():
-        if key not in urls:
-            continue
-        url = urls[key]
-        target = install_dir / filename
-
-        print_info(f"Downloading {filename}...")
-        with urllib.request.urlopen(url, timeout=30) as response:
-            content = response.read()
-
-        if key in checksums:
-            expected_hash = checksums[key]
-            actual_hash = hashlib.sha256(content).hexdigest()
-            if actual_hash != expected_hash:
-                raise ValueError(
-                    f"Checksum mismatch for {filename}: expected {expected_hash}, got {actual_hash}"
-                )
-        else:
-            raise ValueError(
-                f"No checksum provided for {filename}. Aborting update for security."
-            )
-
-        target.write_bytes(content)
-        os.chmod(target, 0o755 if filename.endswith('.py') else 0o644)
-
-    _ensure_cli_entrypoints()
-
-    print_success("Update completed successfully. Restarting...")
-    os.execv(sys.executable, [sys.executable] + sys.argv)
+    if perform_update is not None:
+        return perform_update(
+            version_data,
+            version_json_bytes,
+            print_info=print_info,
+            print_success=print_success,
+            print_warning=print_warning,
+            print_error=print_error,
+        )
+    # Fallback if shared module unavailable
+    print_warning("Shared module unavailable — cannot perform update.")
 
 
 def _maybe_auto_update():
@@ -308,18 +234,18 @@ def _maybe_auto_update():
         with urllib.request.urlopen(VERSION_CHECK_URL, timeout=5) as response:
             version_json_bytes = response.read()
         version_data = json.loads(version_json_bytes.decode())
-        remote_version = version_data.get('version', '0.0.0')
+        remote_version = version_data.get("version", "0.0.0")
         local_version = _read_local_installer_version()
 
         if _is_newer_version(remote_version, local_version):
             print_warning(f"New installer version available: {remote_version} (current: {local_version})")
-            changelog = version_data.get('changelog', [])
+            changelog = version_data.get("changelog", [])
             if changelog:
                 print(f"\n{CYAN}Changelog:{NC}")
                 for item in changelog:
                     print(f"  • {item}")
             choice = input(f"\n{YELLOW}Auto-update to latest version? (y/n): {NC}").strip().lower()
-            if choice == 'y':
+            if choice == "y":
                 _perform_update(version_data, version_json_bytes)
     except KeyboardInterrupt:
         return
@@ -329,22 +255,23 @@ def _maybe_auto_update():
     finally:
         _ensure_cli_entrypoints()
 
-def get_installed_apps() -> List[str]:
+
+def get_installed_apps() -> list[str]:
     """Get list of installed Plex applications"""
-    apps = []
+    apps: list[str] = []
     if not INSTALL_DIR.exists():
         return apps
-    
+
     for app_dir in INSTALL_DIR.iterdir():
         if app_dir.is_dir() and (app_dir / "package.json").exists():
             # Skip backups directory
             if app_dir.name != "backups":
                 apps.append(app_dir.name)
-    
+
     return sorted(apps)
 
 
-def resolve_app_instance(name: str) -> Optional[str]:
+def resolve_app_instance(name: str) -> str | None:
     """Resolve a user-provided name to an installed instance folder.
 
     Supports:
@@ -378,32 +305,27 @@ def resolve_app_instance(name: str) -> Optional[str]:
 
     return None
 
+
 def is_valid_app(app: str) -> bool:
     """Check if app is a valid installed application"""
     return resolve_app_instance(app) is not None
+
 
 def get_service_name(app: str) -> str:
     """Get systemd service name for app"""
     instance = resolve_app_instance(app) or app
     return f"plex-{instance}"
 
-def get_service_status(service_name: str) -> Dict[str, object]:
+
+def get_service_status(service_name: str) -> dict[str, object]:
     """Get detailed service status"""
     try:
-        result = subprocess.run(
-            ['systemctl', 'is-active', service_name],
-            capture_output=True,
-            text=True
-        )
-        is_active = result.stdout.strip() == 'active'
-        
-        result = subprocess.run(
-            ['systemctl', 'is-enabled', service_name],
-            capture_output=True,
-            text=True
-        )
-        is_enabled = result.stdout.strip() == 'enabled'
-        
+        result = subprocess.run(["systemctl", "is-active", service_name], capture_output=True, text=True)
+        is_active = result.stdout.strip() == "active"
+
+        result = subprocess.run(["systemctl", "is-enabled", service_name], capture_output=True, text=True)
+        is_enabled = result.stdout.strip() == "enabled"
+
         if is_active:
             status = "Running"
             color = GREEN
@@ -413,59 +335,51 @@ def get_service_status(service_name: str) -> Dict[str, object]:
         else:
             status = "Disabled"
             color = RED
-        
-        return {
-            'status': status,
-            'color': color,
-            'active': is_active,
-            'enabled': is_enabled
-        }
+
+        return {"status": status, "color": color, "active": is_active, "enabled": is_enabled}
     except Exception:
-        return {
-            'status': 'Unknown',
-            'color': RED,
-            'active': False,
-            'enabled': False
-        }
+        return {"status": "Unknown", "color": RED, "active": False, "enabled": False}
+
 
 def list_apps():
     """List all installed Plex applications"""
     print_info("Scanning for installed Plex applications...")
     apps = get_installed_apps()
-    
+
     if not apps:
         print_error(f"No Plex applications found in {INSTALL_DIR}")
         return 1
-    
+
     print()
     print(f"{BOLD}{CYAN}Installed Plex Applications:{NC}")
     print()
-    
+
     for app in apps:
         service_name = get_service_name(app)
         app_dir = INSTALL_DIR / app
         status_info = get_service_status(service_name)
-        
+
         print(f"{BOLD}{app}{NC}")
         print(f"  Status: {status_info['color']}{status_info['status']}{NC}")
         print(f"  Path: {app_dir}")
-        
+
         # Show config file if exists
-        for config_name in ['config.yml', 'config.yaml', 'config.json']:
+        for config_name in ["config.yml", "config.yaml", "config.json"]:
             config_file = app_dir / config_name
             if config_file.exists():
                 print(f"  Config: {config_file}")
                 break
-        
+
         # Show if enabled on boot
-        if status_info['enabled']:
+        if status_info["enabled"]:
             print(f"  {GREEN}✓ Enabled on boot{NC}")
         else:
             print(f"  {YELLOW}○ Not enabled on boot{NC}")
-        
+
         print()
-    
+
     return 0
+
 
 def start_app(app: str):
     """Start an application"""
@@ -473,30 +387,32 @@ def start_app(app: str):
     if not instance:
         print_error(f"Application '{app}' not found. Use 'plex list' to see installed apps.")
         return 1
-    
+
     service_name = get_service_name(instance)
     print_info(f"Starting {instance}...")
-    
+
     try:
-        subprocess.run(['systemctl', 'start', service_name], check=True)
+        subprocess.run(["systemctl", "start", service_name], check=True)
         print_success(f"{instance} started successfully")
-        
+
         # Wait a moment and check if it's actually running
         import time
+
         time.sleep(2)
-        
+
         status_info = get_service_status(service_name)
-        if status_info['active']:
+        if status_info["active"]:
             print_success(f"{instance} is now running")
         else:
             print_error(f"{instance} failed to start properly")
             print(f"Check logs with: plex logs {instance}")
             return 1
-        
+
         return 0
     except subprocess.CalledProcessError:
         print_error(f"Failed to start {instance}")
         return 1
+
 
 def stop_app(app: str):
     """Stop an application"""
@@ -504,17 +420,18 @@ def stop_app(app: str):
     if not instance:
         print_error(f"Application '{app}' not found. Use 'plex list' to see installed apps.")
         return 1
-    
+
     service_name = get_service_name(instance)
     print_info(f"Stopping {instance}...")
-    
+
     try:
-        subprocess.run(['systemctl', 'stop', service_name], check=True)
+        subprocess.run(["systemctl", "stop", service_name], check=True)
         print_success(f"{instance} stopped successfully")
         return 0
     except subprocess.CalledProcessError:
         print_error(f"Failed to stop {instance}")
         return 1
+
 
 def restart_app(app: str):
     """Restart an application"""
@@ -522,30 +439,32 @@ def restart_app(app: str):
     if not instance:
         print_error(f"Application '{app}' not found. Use 'plex list' to see installed apps.")
         return 1
-    
+
     service_name = get_service_name(instance)
     print_info(f"Restarting {instance}...")
-    
+
     try:
-        subprocess.run(['systemctl', 'restart', service_name], check=True)
+        subprocess.run(["systemctl", "restart", service_name], check=True)
         print_success(f"{instance} restarted successfully")
-        
+
         # Wait a moment and check if it's running
         import time
+
         time.sleep(2)
-        
+
         status_info = get_service_status(service_name)
-        if status_info['active']:
+        if status_info["active"]:
             print_success(f"{instance} is now running")
         else:
             print_error(f"{instance} failed to start after restart")
             print(f"Check logs with: plex logs {instance}")
             return 1
-        
+
         return 0
     except subprocess.CalledProcessError:
         print_error(f"Failed to restart {instance}")
         return 1
+
 
 def show_status(app: str):
     """Show detailed status of an application"""
@@ -553,16 +472,17 @@ def show_status(app: str):
     if not instance:
         print_error(f"Application '{app}' not found. Use 'plex list' to see installed apps.")
         return 1
-    
+
     service_name = get_service_name(instance)
     print(f"{BOLD}{CYAN}Status for {instance}:{NC}")
     print()
-    
+
     try:
-        subprocess.run(['systemctl', 'status', service_name, '--no-pager', '-l'])
+        subprocess.run(["systemctl", "status", service_name, "--no-pager", "-l"])
         return 0
     except subprocess.CalledProcessError:
         return 1
+
 
 def view_logs(app: str):
     """View application logs"""
@@ -570,13 +490,13 @@ def view_logs(app: str):
     if not instance:
         print_error(f"Application '{app}' not found. Use 'plex list' to see installed apps.")
         return 1
-    
+
     service_name = get_service_name(instance)
     print_info(f"Showing logs for {instance} (Press Ctrl+C to exit)...")
     print()
-    
+
     try:
-        subprocess.run(['journalctl', '-u', service_name, '-f', '--no-pager'])
+        subprocess.run(["journalctl", "-u", service_name, "-f", "--no-pager"])
         return 0
     except KeyboardInterrupt:
         print()
@@ -585,37 +505,38 @@ def view_logs(app: str):
         print_error(f"Failed to view logs for {instance}")
         return 1
 
+
 def edit_config(app: str):
     """Edit application configuration"""
     instance = resolve_app_instance(app)
     if not instance:
         print_error(f"Application '{app}' not found. Use 'plex list' to see installed apps.")
         return 1
-    
+
     app_dir = INSTALL_DIR / instance
     config_file = None
-    
+
     # Look for config files
-    for config_name in ['config.yml', 'config.yaml', 'config.json']:
+    for config_name in ["config.yml", "config.yaml", "config.json"]:
         potential_config = app_dir / config_name
         if potential_config.exists():
             config_file = potential_config
             break
-    
+
     if not config_file:
         print_error(f"No configuration file found for {app}")
         print(f"Looked for: config.yml, config.yaml, config.json in {app_dir}")
         return 1
-    
+
     print_info(f"Opening configuration file: {config_file}")
     print_info("Remember to restart the application after making changes!")
     print()
-    
+
     # Use nano as default editor, fall back to vi
-    editor = os.environ.get('EDITOR', 'nano')
-    if not subprocess.run(['which', editor], capture_output=True).returncode == 0:
-        editor = 'nano' if subprocess.run(['which', 'nano'], capture_output=True).returncode == 0 else 'vi'
-    
+    editor = os.environ.get("EDITOR", "nano")
+    if not subprocess.run(["which", editor], capture_output=True).returncode == 0:
+        editor = "nano" if subprocess.run(["which", "nano"], capture_output=True).returncode == 0 else "vi"
+
     try:
         subprocess.run([editor, str(config_file)])
         print()
@@ -626,23 +547,25 @@ def edit_config(app: str):
         print_error("Failed to open editor")
         return 1
 
+
 def enable_app(app: str):
     """Enable application to start on boot"""
     instance = resolve_app_instance(app)
     if not instance:
         print_error(f"Application '{app}' not found. Use 'plex list' to see installed apps.")
         return 1
-    
+
     service_name = get_service_name(instance)
     print_info(f"Enabling {instance} to start on boot...")
-    
+
     try:
-        subprocess.run(['systemctl', 'enable', service_name], check=True)
+        subprocess.run(["systemctl", "enable", service_name], check=True)
         print_success(f"{instance} will now start automatically on boot")
         return 0
     except subprocess.CalledProcessError:
         print_error(f"Failed to enable {instance}")
         return 1
+
 
 def disable_app(app: str):
     """Disable application from starting on boot"""
@@ -650,12 +573,12 @@ def disable_app(app: str):
     if not instance:
         print_error(f"Application '{app}' not found. Use 'plex list' to see installed apps.")
         return 1
-    
+
     service_name = get_service_name(instance)
     print_info(f"Disabling {instance} from starting on boot...")
-    
+
     try:
-        subprocess.run(['systemctl', 'disable', service_name], check=True)
+        subprocess.run(["systemctl", "disable", service_name], check=True)
         print_success(f"{instance} will no longer start automatically on boot")
         return 0
     except subprocess.CalledProcessError:
@@ -703,7 +626,7 @@ def debug_app(app: str) -> int:
         f"===== journalctl (last 500 lines) =====\n{logs_contents}\n"
     )
 
-    if redact_sensitive_yaml:
+    if redact_sensitive_yaml is not None:
         bundle = redact_sensitive_yaml(bundle)
 
     paste_endpoint = "https://paste.plexdev.xyz/documents"
@@ -748,6 +671,7 @@ def debug_app(app: str) -> int:
 
 # ========== ADDON MANAGEMENT CLI ==========
 
+
 def _get_addon_manager():
     """Get AddonManager instance if available"""
     if AddonManager is None:
@@ -758,8 +682,8 @@ def _get_addon_manager():
 
 def _supports_addons(app: str) -> bool:
     """Check if an app supports addons"""
-    base_product = app.split('-')[0]
-    return base_product.lower() in ['plextickets', 'plexstaff']
+    base_product = app.split("-")[0]
+    return base_product.lower() in ["plextickets", "plexstaff"]
 
 
 def addon_list(app: str) -> int:
@@ -768,33 +692,33 @@ def addon_list(app: str) -> int:
     if not instance:
         print_error(f"Application '{app}' not found. Use 'plex list' to see installed apps.")
         return 1
-    
+
     if not _supports_addons(instance):
         print_error(f"Application '{instance}' does not support addons.")
         print_info("Addons are only supported for PlexTickets and PlexStaff.")
         return 1
-    
+
     addon_mgr = _get_addon_manager()
     if not addon_mgr:
         return 1
-    
+
     app_dir = INSTALL_DIR / instance
     addons = addon_mgr.list_addons(app_dir)
-    
+
     if not addons:
         print_info(f"No addons installed for {instance}")
         print(f"Install addons with: plex addon install {instance} /path/to/addon.zip")
         return 0
-    
+
     print(f"{BOLD}{CYAN}Installed Addons for {instance}:{NC}")
     print()
     print(f"{'Name':<25} {'Config File':<20}")
     print("-" * 50)
-    
+
     for addon in addons:
-        config_status = addon['config_path'].name if addon['has_config'] else "No config"
+        config_status = addon["config_path"].name if addon["has_config"] else "No config"
         print(f"{addon['name']:<25} {config_status:<20}")
-    
+
     print()
     print(f"Total: {len(addons)} addon(s)")
     return 0
@@ -806,43 +730,43 @@ def addon_install(app: str, archive_path: str) -> int:
     if not instance:
         print_error(f"Application '{app}' not found. Use 'plex list' to see installed apps.")
         return 1
-    
+
     if not _supports_addons(instance):
         print_error(f"Application '{instance}' does not support addons.")
         print_info("Addons are only supported for PlexTickets and PlexStaff.")
         return 1
-    
+
     addon_mgr = _get_addon_manager()
     if not addon_mgr:
         return 1
-    
+
     archive = Path(archive_path)
     if not archive.exists():
         print_error(f"Archive not found: {archive_path}")
         return 1
-    
-    if archive.suffix.lower() not in ['.zip', '.rar']:
+
+    if archive.suffix.lower() not in [".zip", ".rar"]:
         print_error(f"Unsupported archive format: {archive.suffix}")
         print_info("Supported formats: .zip, .rar")
         return 1
-    
+
     app_dir = INSTALL_DIR / instance
-    
+
     # Check for collision
     potential_name = archive.stem
-    for suffix in ['-main', '-master', '-addon', '-v1', '-v2']:
+    for suffix in ["-main", "-master", "-addon", "-v1", "-v2"]:
         if potential_name.lower().endswith(suffix):
-            potential_name = potential_name[:-len(suffix)]
-    
+            potential_name = potential_name[: -len(suffix)]
+
     if addon_mgr.addon_exists(potential_name, app_dir):
         print_error(f"Addon '{potential_name}' already exists.")
         print_info("Remove the existing addon first: plex addon remove {instance} {potential_name}")
         return 1
-    
+
     print_info(f"Installing addon from {archive.name}...")
-    
+
     success, message, addon_name = addon_mgr.install_addon(archive, app_dir)
-    
+
     if success:
         print_success(message)
         print()
@@ -860,27 +784,27 @@ def addon_remove(app: str, addon_name: str) -> int:
     if not instance:
         print_error(f"Application '{app}' not found. Use 'plex list' to see installed apps.")
         return 1
-    
+
     if not _supports_addons(instance):
         print_error(f"Application '{instance}' does not support addons.")
         return 1
-    
+
     addon_mgr = _get_addon_manager()
     if not addon_mgr:
         return 1
-    
+
     app_dir = INSTALL_DIR / instance
-    
+
     if not addon_mgr.addon_exists(addon_name, app_dir):
         print_error(f"Addon '{addon_name}' not found in {instance}")
         print_info(f"Use 'plex addon list {instance}' to see installed addons")
         return 1
-    
+
     print_info(f"Removing addon '{addon_name}' from {instance}...")
     print_info("Creating backup before removal...")
-    
+
     success, message = addon_mgr.remove_addon(addon_name, app_dir, backup_first=True)
-    
+
     if success:
         print_success(message)
         print()
@@ -898,22 +822,22 @@ def addon_config(app: str, addon_name: str) -> int:
     if not instance:
         print_error(f"Application '{app}' not found. Use 'plex list' to see installed apps.")
         return 1
-    
+
     if not _supports_addons(instance):
         print_error(f"Application '{instance}' does not support addons.")
         return 1
-    
+
     addon_mgr = _get_addon_manager()
     if not addon_mgr:
         return 1
-    
+
     app_dir = INSTALL_DIR / instance
-    
+
     config_path = addon_mgr.get_addon_config_path(addon_name, app_dir)
-    
+
     if not config_path:
         print_error(f"No configuration file found for addon '{addon_name}'")
-        
+
         # Check if addon exists at all
         if not addon_mgr.addon_exists(addon_name, app_dir):
             print_info(f"Addon '{addon_name}' is not installed")
@@ -921,28 +845,28 @@ def addon_config(app: str, addon_name: str) -> int:
         else:
             print_info("This addon does not have a config.yml or config.yaml file")
         return 1
-    
+
     print_info(f"Opening {config_path.name} for editing...")
     print_info("Remember to restart the application after making changes!")
     print()
-    
+
     # Use nano as default editor
-    editor = os.environ.get('EDITOR', 'nano')
-    if not subprocess.run(['which', editor], capture_output=True).returncode == 0:
-        editor = 'nano' if subprocess.run(['which', 'nano'], capture_output=True).returncode == 0 else 'vi'
-    
+    editor = os.environ.get("EDITOR", "nano")
+    if not subprocess.run(["which", editor], capture_output=True).returncode == 0:
+        editor = "nano" if subprocess.run(["which", "nano"], capture_output=True).returncode == 0 else "vi"
+
     try:
         subprocess.run([editor, str(config_path)])
-        
+
         # Validate YAML after editing
         is_valid, error = addon_mgr.validate_yaml(config_path)
-        
+
         if is_valid:
             print_success("Configuration file is valid YAML")
         else:
             print_error(f"YAML syntax error: {error}")
             print_warning("The configuration may not work correctly until fixed")
-        
+
         print()
         print(f"{YELLOW}Restart the application to apply changes:{NC}")
         print(f"  plex restart {instance}")
@@ -952,7 +876,7 @@ def addon_config(app: str, addon_name: str) -> int:
         return 1
 
 
-def handle_addon_command(args: List[str]) -> int:
+def handle_addon_command(args: list[str]) -> int:
     """Handle addon subcommands"""
     if len(args) < 2:
         print_error("Usage: plex addon <subcommand> <app> [options]")
@@ -963,33 +887,33 @@ def handle_addon_command(args: List[str]) -> int:
         print(f"  {GREEN}remove <app> <addon>{NC}  - Remove an addon")
         print(f"  {GREEN}config <app> <addon>{NC}  - Edit addon configuration")
         return 1
-    
+
     subcommand = args[0].lower()
-    
-    if subcommand == 'list':
+
+    if subcommand == "list":
         if len(args) < 2:
             print_error("Usage: plex addon list <app>")
             return 1
         return addon_list(args[1])
-    
-    elif subcommand == 'install':
+
+    elif subcommand == "install":
         if len(args) < 3:
             print_error("Usage: plex addon install <app> <archive_path>")
             return 1
         return addon_install(args[1], args[2])
-    
-    elif subcommand == 'remove':
+
+    elif subcommand == "remove":
         if len(args) < 3:
             print_error("Usage: plex addon remove <app> <addon_name>")
             return 1
         return addon_remove(args[1], args[2])
-    
-    elif subcommand in ['config', 'configure']:
+
+    elif subcommand in ["config", "configure"]:
         if len(args) < 3:
             print_error("Usage: plex addon config <app> <addon_name>")
             return 1
         return addon_config(args[1], args[2])
-    
+
     else:
         print_error(f"Unknown addon subcommand: {subcommand}")
         print_info("Use 'plex addon' for usage information")
@@ -1000,6 +924,7 @@ def handle_addon_command(args: List[str]) -> int:
 
 
 # ========== TOOL COMMANDS ==========
+
 
 def tool_setupdomain(app: str) -> int:
     """Set up domain, nginx reverse proxy, and SSL for an existing instance."""
@@ -1016,12 +941,12 @@ def tool_setupdomain(app: str) -> int:
 
     # Detect current port from config
     port = None
-    for config_name in ['config.yml', 'config.yaml', 'config.json']:
+    for config_name in ["config.yml", "config.yaml", "config.json"]:
         config_file = app_dir / config_name
         if config_file.exists():
             try:
                 content = config_file.read_text()
-                match = re.search(r'port[:\s]+(\d+)', content, re.IGNORECASE)
+                match = re.search(r"port[:\s]+(\d+)", content, re.IGNORECASE)
                 if match:
                     port = int(match.group(1))
                     break
@@ -1042,7 +967,7 @@ def tool_setupdomain(app: str) -> int:
     else:
         print_info(f"Detected port: {port}")
         port_input = input("Use this port? (Y/n, or enter a different port): ").strip()
-        if port_input and port_input.lower() != 'y':
+        if port_input and port_input.lower() != "y":
             if port_input.isdigit() and 1 <= int(port_input) <= 65535:
                 port = int(port_input)
             else:
@@ -1050,8 +975,8 @@ def tool_setupdomain(app: str) -> int:
 
     # Get domain
     domain_pattern = re.compile(
-        r'^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?'
-        r'(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$'
+        r"^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?"
+        r"(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$"
     )
     domain = ""
     while not domain:
@@ -1063,7 +988,7 @@ def tool_setupdomain(app: str) -> int:
             domain = ""
 
     # Get email for SSL
-    email_pattern = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+    email_pattern = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
     email = ""
     while not email:
         email = input("Enter email for SSL certificates: ").strip()
@@ -1075,19 +1000,21 @@ def tool_setupdomain(app: str) -> int:
 
     # Import utility classes
     try:
-        from utils import DNSChecker, NginxManager, SSLManager, FirewallManager
+        from utils import DNSChecker, FirewallManager, NginxManager, SSLManager
     except ImportError:
         # Try from the installer directory
         import importlib.util
+
         utils_path = INSTALLER_DIR / "utils.py"
         if utils_path.exists():
             spec = importlib.util.spec_from_file_location("utils", utils_path)
+            assert spec is not None and spec.loader is not None
             utils_mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(utils_mod)
-            DNSChecker = utils_mod.DNSChecker
-            NginxManager = utils_mod.NginxManager
-            SSLManager = utils_mod.SSLManager
-            FirewallManager = utils_mod.FirewallManager
+            spec.loader.exec_module(utils_mod)  # type: ignore[union-attr]
+            DNSChecker = utils_mod.DNSChecker  # type: ignore[misc]
+            NginxManager = utils_mod.NginxManager  # type: ignore[misc]
+            SSLManager = utils_mod.SSLManager  # type: ignore[misc]
+            FirewallManager = utils_mod.FirewallManager  # type: ignore[misc]
         else:
             print_error("Cannot import utility modules. Is the installer properly installed?")
             return 1
@@ -1103,7 +1030,7 @@ def tool_setupdomain(app: str) -> int:
     # Check DNS
     if not dns_checker.check(domain):
         proceed = input("DNS check failed. Proceed anyway? (y/n): ").strip().lower()
-        if proceed != 'y':
+        if proceed != "y":
             print_error("Setup aborted due to DNS issues.")
             return 1
 
@@ -1143,7 +1070,7 @@ def handle_tool_command(args: list) -> int:
 
     subcommand = args[0].lower()
 
-    if subcommand == 'setupdomain':
+    if subcommand == "setupdomain":
         if len(args) < 2:
             print_error("Usage: plex tool setupdomain <app>")
             print("Use 'plex list' to see installed applications")
@@ -1160,95 +1087,103 @@ def handle_tool_command(args: list) -> int:
 
 def main():
     """Main entry point"""
+    try:
+        from utils import setup_logging
+
+        setup_logging()
+    except Exception:  # pragma: no cover
+        pass
+
     _maybe_auto_update()
 
     if len(sys.argv) < 2:
         show_help()
         return 1
-    
+
     command = sys.argv[1].lower()
-    
-    if command in ['list', 'ls']:
+
+    if command in ["list", "ls"]:
         return list_apps()
-    
-    elif command == 'start':
+
+    elif command == "start":
         if len(sys.argv) < 3:
             print_error("Usage: plex start <app_name>")
             print("Use 'plex list' to see available applications")
             return 1
         return start_app(sys.argv[2])
-    
-    elif command == 'stop':
+
+    elif command == "stop":
         if len(sys.argv) < 3:
             print_error("Usage: plex stop <app_name>")
             print("Use 'plex list' to see available applications")
             return 1
         return stop_app(sys.argv[2])
-    
-    elif command == 'restart':
+
+    elif command == "restart":
         if len(sys.argv) < 3:
             print_error("Usage: plex restart <app_name>")
             print("Use 'plex list' to see available applications")
             return 1
         return restart_app(sys.argv[2])
-    
-    elif command == 'status':
+
+    elif command == "status":
         if len(sys.argv) < 3:
             print_error("Usage: plex status <app_name>")
             print("Use 'plex list' to see available applications")
             return 1
         return show_status(sys.argv[2])
-    
-    elif command == 'logs':
+
+    elif command == "logs":
         if len(sys.argv) < 3:
             print_error("Usage: plex logs <app_name>")
             print("Use 'plex list' to see available applications")
             return 1
         return view_logs(sys.argv[2])
-    
-    elif command in ['config', 'configure']:
+
+    elif command in ["config", "configure"]:
         if len(sys.argv) < 3:
             print_error("Usage: plex config <app_name>")
             print("Use 'plex list' to see available applications")
             return 1
         return edit_config(sys.argv[2])
-    
-    elif command == 'enable':
+
+    elif command == "enable":
         if len(sys.argv) < 3:
             print_error("Usage: plex enable <app_name>")
             print("Use 'plex list' to see available applications")
             return 1
         return enable_app(sys.argv[2])
-    
-    elif command == 'disable':
+
+    elif command == "disable":
         if len(sys.argv) < 3:
             print_error("Usage: plex disable <app_name>")
             print("Use 'plex list' to see available applications")
             return 1
         return disable_app(sys.argv[2])
 
-    elif command == 'debug':
+    elif command == "debug":
         if len(sys.argv) < 3:
             print_error("Usage: plex debug <app_name>")
             print("Use 'plex list' to see available applications")
             return 1
         return debug_app(sys.argv[2])
-    
-    elif command == 'addon':
+
+    elif command == "addon":
         return handle_addon_command(sys.argv[2:])
-    
-    elif command == 'tool':
+
+    elif command == "tool":
         return handle_tool_command(sys.argv[2:])
-    
-    elif command in ['help', '-h', '--help']:
+
+    elif command in ["help", "-h", "--help"]:
         show_help()
         return 0
-    
+
     else:
         print_error(f"Unknown command: {command}")
         print()
         show_help()
         return 1
+
 
 if __name__ == "__main__":
     sys.exit(main())
