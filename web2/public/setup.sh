@@ -28,7 +28,7 @@ while getopts "b" opt; do
     case $opt in
         b)
             VERSION="Beta"
-            GITHUB_BRANCH="beta"  # Use beta branch if it exists
+            GITHUB_BRANCH="dev"  # Use dev branch for beta builds
             ;;
         \?)
             echo "Usage: $0 [-b]"
@@ -158,6 +158,13 @@ for file in "${FILES_TO_DOWNLOAD[@]}"; do
         fi
     fi
 done
+
+# If using the dev branch, rewrite download URLs in version.json from main to dev
+if [ "$GITHUB_BRANCH" = "dev" ] && [ -f "$INSTALL_DIR/version.json" ]; then
+    print_step "Patching version.json download URLs for dev branch..."
+    sed -i 's|/plexinstaller/main/|/plexinstaller/dev/|g' "$INSTALL_DIR/version.json"
+    print_success "Download URLs updated to use dev branch"
+fi
 
 # Verify GPG signature of version.json
 print_header "Verifying GPG Signature"
