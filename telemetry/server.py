@@ -89,7 +89,7 @@ def _load_stats() -> dict[str, Any]:
     return {
         "success": 0,
         "failure": 0,
-        "other": 0,
+        "uncompleted": 0,
         "failures_by_step": {},
         "most_recent": [],
     }
@@ -102,10 +102,12 @@ def _save_stats(stats: dict[str, Any]):
 def _derive_stats(stats: dict[str, Any]) -> dict[str, Any]:
     success = stats.get("success", 0)
     failure = stats.get("failure", 0)
-    other = stats.get("other", 0)
-    total = success + failure + other
+    uncompleted = stats.get("uncompleted", 0)
+    # Uncompleted installs (user cancellations) don't count toward success/failure rates
+    counted = success + failure
+    total = counted + uncompleted
     stats["total"] = total
-    stats["success_rate"] = round((success / total) * 100, 2) if total else 0.0
+    stats["success_rate"] = round((success / counted) * 100, 2) if counted else 0.0
     return stats
 
 
@@ -149,9 +151,10 @@ async def add_event(payload: TelemetryPayload):
             if payload.failure_step:
                 failures = stats.setdefault("failures_by_step", {})
                 failures[payload.failure_step] = failures.get(payload.failure_step, 0) + 1
+        elif payload.status.lower() == "uncompleted":
+            stats["uncompleted"] = stats.get("uncompleted", 0) + 1
         else:
-            stats.setdefault("other", 0)
-            stats["other"] += 1
+            stats["uncompleted"] = stats.get("uncompleted", 0) + 1
 
         recent = stats.setdefault("most_recent", [])
         recent.insert(

@@ -582,8 +582,8 @@ class PlexInstaller:
             self.telemetry.log_step(current_step, "start", "Searching for product archive")
             archive_path = self._find_archive(product)
             if not archive_path:
-                self.telemetry.log_step(current_step, "aborted", "No archive selected")
-                self.telemetry.finish_session("aborted", current_step, "Archive not provided")
+                self.telemetry.log_step(current_step, "uncompleted", "No archive selected")
+                self.telemetry.finish_session("uncompleted", current_step, "Archive not provided")
                 return
             self.telemetry.log_step(current_step, "success", str(archive_path))
 
@@ -695,8 +695,8 @@ class PlexInstaller:
         except KeyboardInterrupt:
             self.printer.warning("\nInstallation cancelled by user")
             if self.telemetry:
-                self.telemetry.log_step(current_step, "cancelled")
-                self.telemetry.finish_session("cancelled", current_step, "User interrupted")
+                self.telemetry.log_step(current_step, "uncompleted")
+                self.telemetry.finish_session("uncompleted", current_step, "User interrupted")
             if context:
                 self._cleanup_failed_install(context)
         except Exception as e:
