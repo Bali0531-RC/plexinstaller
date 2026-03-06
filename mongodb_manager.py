@@ -561,8 +561,7 @@ class MongoDBManager:
 
         if aur_helper is None:
             self.printer.error(
-                "mongodb-bin is an AUR package. Install an AUR helper "
-                "(yay or paru) first, then re-run the installer."
+                "mongodb-bin is an AUR package. Install an AUR helper (yay or paru) first, then re-run the installer."
             )
             return False
 

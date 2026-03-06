@@ -173,9 +173,7 @@ class TestTelemetryClientSession:
         client.log_step("install_deps", "ok")
         client.log_step("install_node", "fail", "node not found")
 
-        summary = client.finish_session(
-            "failure", failure_step="install_node", error="node not found"
-        )
+        summary = client.finish_session("failure", failure_step="install_node", error="node not found")
 
         assert summary is not None
         assert summary.status == "failure"
