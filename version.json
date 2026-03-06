@@ -34,7 +34,7 @@
     "addon_manager": "5d5cf5f3224caa4bdb14d80c3d546eefb74db7c8677d2a693e5a075ede3eb8f5",
     "backup_manager": "f1cfd9a9dcee16f09af19076075226a1fac1915641766f5a1411a745ecc4daed",
     "config": "8be596365d26dbb345aeec44ddf2fe701ce8bc85c6959189a949c5aba7bf163c",
-    "health_checker": "c83152ea1db3106c09b2a447ef813cb0873855abfdb69508191ad882090c4fc0",
+    "health_checker": "6ffcca9021e697d022ebeeedf29679624e8777f8e544ab7905f867c4e59aa591",
     "installer": "1620c38929f10cb3c4f19abaab1225f318f5b7291bb5f0e29617bd8317d6d4b2",
     "mongodb_manager": "cd39b85465323a62f7d223813998cdc739b12e909e6d051ca37f89ade2d20561",
     "plex_cli": "5e2259185deb9fa2fe922c11735009f2f7ecffbf67ef839471a8eda860a2568f",
