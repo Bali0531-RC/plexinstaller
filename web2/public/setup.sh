@@ -28,7 +28,7 @@ while getopts "b" opt; do
     case $opt in
         b)
             VERSION="Beta"
-            GITHUB_BRANCH="beta"  # Use beta branch if it exists
+            GITHUB_BRANCH="dev"  # Use dev branch for beta builds
             ;;
         \?)
             echo "Usage: $0 [-b]"
@@ -136,6 +136,11 @@ FILES_TO_DOWNLOAD=(
     "plex_cli.py"
     "telemetry_client.py"
     "addon_manager.py"
+    "shared.py"
+    "health_checker.py"
+    "mongodb_manager.py"
+    "backup_manager.py"
+    "requirements.txt"
     "version.json"
     "version.json.sig"
     "release-key.gpg"
@@ -207,7 +212,7 @@ read_checksum() {
 
 if [ -f "$INSTALL_DIR/version.json" ]; then
     CHECKSUM_FAILED=false
-    for key in installer config utils plex_cli telemetry_client addon_manager; do
+    for key in installer config utils plex_cli telemetry_client addon_manager shared health_checker mongodb_manager backup_manager; do
         expected=$(read_checksum "$key" "$INSTALL_DIR/version.json")
         if [ -z "$expected" ]; then
             continue
@@ -221,6 +226,10 @@ if [ -f "$INSTALL_DIR/version.json" ]; then
             plex_cli)         fname="plex_cli.py" ;;
             telemetry_client) fname="telemetry_client.py" ;;
             addon_manager)    fname="addon_manager.py" ;;
+            shared)           fname="shared.py" ;;
+            health_checker)   fname="health_checker.py" ;;
+            mongodb_manager)  fname="mongodb_manager.py" ;;
+            backup_manager)   fname="backup_manager.py" ;;
             *)                continue ;;
         esac
 
@@ -254,12 +263,23 @@ else
     print_warning "version.json not found — skipping checksum verification"
 fi
 
-# Install Python dependencies for telemetry client
+# Rewrite download URLs for dev branch AFTER integrity checks
+if [ "$GITHUB_BRANCH" = "dev" ] && [ -f "$INSTALL_DIR/version.json" ]; then
+    print_step "Patching version.json download URLs for dev branch..."
+    sed -i 's|/plexinstaller/main/|/plexinstaller/dev/|g' "$INSTALL_DIR/version.json"
+    print_success "Download URLs updated to use dev branch"
+fi
+
+# Install Python dependencies
 print_step "Installing Python dependencies..."
-if command -v pip3 &> /dev/null; then
-    pip3 install requests --quiet 2>/dev/null || pip3 install requests --break-system-packages --quiet 2>/dev/null || print_warning "Could not install requests module"
+if [ -f "${INSTALL_DIR}/requirements.txt" ]; then
+    if ! pip3 install -r "${INSTALL_DIR}/requirements.txt" --quiet 2>/dev/null \
+        && ! pip3 install -r "${INSTALL_DIR}/requirements.txt" --break-system-packages --quiet 2>/dev/null; then
+        print_error "Failed to install Python dependencies from requirements.txt"
+        exit 1
+    fi
 else
-    print_warning "pip3 not found, telemetry may not work"
+    print_warning "requirements.txt not found — skipping dependency installation"
 fi
 
 # Make Python files executable
@@ -270,6 +290,10 @@ chmod 644 "${INSTALL_DIR}/config.py"
 chmod 644 "${INSTALL_DIR}/utils.py"
 chmod 644 "${INSTALL_DIR}/telemetry_client.py"
 chmod 644 "${INSTALL_DIR}/addon_manager.py"
+chmod 644 "${INSTALL_DIR}/shared.py"
+chmod 644 "${INSTALL_DIR}/health_checker.py"
+chmod 644 "${INSTALL_DIR}/mongodb_manager.py"
+chmod 644 "${INSTALL_DIR}/backup_manager.py"
 chmod 644 "${INSTALL_DIR}/version.json"
 chmod 644 "${INSTALL_DIR}/version.json.sig" 2>/dev/null || true
 chmod 644 "${INSTALL_DIR}/release-key.gpg" 2>/dev/null || true

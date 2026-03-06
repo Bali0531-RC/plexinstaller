@@ -9,11 +9,10 @@ import re
 import time
 from collections import defaultdict
 from contextlib import contextmanager
-from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request, Depends
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -32,7 +31,7 @@ LOCK_FILE = DATA_DIR / ".stats.lock"
 TELEMETRY_API_KEY = os.environ.get("TELEMETRY_API_KEY", "")
 
 # In-memory rate limiter: IP -> list of timestamps
-_rate_limit_store: Dict[str, list] = defaultdict(list)
+_rate_limit_store: dict[str, list] = defaultdict(list)
 RATE_LIMIT_MAX = 60  # requests per window
 RATE_LIMIT_WINDOW = 60  # seconds
 
@@ -81,44 +80,50 @@ def _file_lock():
         lock_fd.close()
 
 
-def _load_stats() -> Dict[str, Any]:
+def _load_stats() -> dict[str, Any]:
     if STATS_FILE.exists():
         try:
-            return json.loads(STATS_FILE.read_text())
+            data = json.loads(STATS_FILE.read_text())
+            # Migrate legacy "other" counter to "uncompleted"
+            if "other" in data:
+                data["uncompleted"] = data.pop("other") + data.get("uncompleted", 0)
+            return data
         except json.JSONDecodeError:
             pass
     return {
         "success": 0,
         "failure": 0,
-        "other": 0,
+        "uncompleted": 0,
         "failures_by_step": {},
         "most_recent": [],
     }
 
 
-def _save_stats(stats: Dict[str, Any]):
+def _save_stats(stats: dict[str, Any]):
     STATS_FILE.write_text(json.dumps(stats, indent=2))
 
 
-def _derive_stats(stats: Dict[str, Any]) -> Dict[str, Any]:
+def _derive_stats(stats: dict[str, Any]) -> dict[str, Any]:
     success = stats.get("success", 0)
     failure = stats.get("failure", 0)
-    other = stats.get("other", 0)
-    total = success + failure + other
+    uncompleted = stats.get("uncompleted", 0)
+    # Uncompleted installs (user cancellations) don't count toward success/failure rates
+    counted = success + failure
+    total = counted + uncompleted
     stats["total"] = total
-    stats["success_rate"] = round((success / total) * 100, 2) if total else 0.0
+    stats["success_rate"] = round((success / counted) * 100, 2) if counted else 0.0
     return stats
 
 
 class TelemetryPayload(BaseModel):
     session_id: str
     product: str
-    instance: Optional[str]
+    instance: str | None
     status: str
-    failure_step: Optional[str] = None
-    error: Optional[str] = None
-    events: List[Dict[str, str]] = []
-    log: Optional[str] = None
+    failure_step: str | None = None
+    error: str | None = None
+    events: list[dict[str, str]] = []
+    log: str | None = None
     timestamp: str
 
 
@@ -150,18 +155,22 @@ async def add_event(payload: TelemetryPayload):
             if payload.failure_step:
                 failures = stats.setdefault("failures_by_step", {})
                 failures[payload.failure_step] = failures.get(payload.failure_step, 0) + 1
+        elif payload.status.lower() == "uncompleted":
+            stats["uncompleted"] = stats.get("uncompleted", 0) + 1
         else:
-            stats.setdefault("other", 0)
-            stats["other"] += 1
+            stats["uncompleted"] = stats.get("uncompleted", 0) + 1
 
         recent = stats.setdefault("most_recent", [])
-        recent.insert(0, {
-            "session_id": payload.session_id,
-            "product": payload.product,
-            "status": payload.status,
-            "timestamp": payload.timestamp,
-            "failure_step": payload.failure_step,
-        })
+        recent.insert(
+            0,
+            {
+                "session_id": payload.session_id,
+                "product": payload.product,
+                "status": payload.status,
+                "timestamp": payload.timestamp,
+                "failure_step": payload.failure_step,
+            },
+        )
         stats["most_recent"] = recent[:20]
 
         _save_stats(stats)
