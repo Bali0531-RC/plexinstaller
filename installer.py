@@ -96,6 +96,10 @@ VERSION_CHECK_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller
 LOCK_FILE = "/var/run/plexinstaller.lock"
 
 
+class UserAbortError(Exception):
+    """Raised when the installation cannot continue due to a user action (bad input, declining a prompt, etc.)."""
+
+
 @dataclass
 class InstallationContext:
     """Context for an installation session"""
@@ -592,7 +596,7 @@ class PlexInstaller:
             self.telemetry.log_step(current_step, "start", f"-> {install_path}")
             extracted_path = self._extract_product(archive_path, instance_name)
             if not extracted_path:
-                raise RuntimeError("Archive extraction failed")
+                raise UserAbortError("Archive extraction failed — check the file path and format")
             context.install_path = extracted_path
             context.install_path_ready = True
             self.telemetry.log_step(current_step, "success", f"Extracted to {extracted_path}")
@@ -697,6 +701,13 @@ class PlexInstaller:
             if self.telemetry:
                 self.telemetry.log_step(current_step, "uncompleted")
                 self.telemetry.finish_session("uncompleted", current_step, "User interrupted")
+            if context:
+                self._cleanup_failed_install(context)
+        except UserAbortError as e:
+            self.printer.warning(f"Installation not completed: {e}")
+            if self.telemetry:
+                self.telemetry.log_step(current_step, "uncompleted", str(e))
+                self.telemetry.finish_session("uncompleted", current_step, str(e))
             if context:
                 self._cleanup_failed_install(context)
         except Exception as e:
@@ -951,7 +962,7 @@ class PlexInstaller:
         if not self.dns_checker.check(domain):
             proceed = input("DNS check failed. Proceed anyway? (y/n): ").strip().lower()
             if proceed != "y":
-                raise ValueError("Installation aborted due to DNS issues")
+                raise UserAbortError("Installation aborted due to DNS issues")
 
         # Setup nginx
         self.nginx.setup(domain, port, instance_name, install_path)

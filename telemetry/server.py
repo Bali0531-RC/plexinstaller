@@ -83,7 +83,11 @@ def _file_lock():
 def _load_stats() -> dict[str, Any]:
     if STATS_FILE.exists():
         try:
-            return json.loads(STATS_FILE.read_text())
+            data = json.loads(STATS_FILE.read_text())
+            # Migrate legacy "other" counter to "uncompleted"
+            if "other" in data:
+                data["uncompleted"] = data.pop("other") + data.get("uncompleted", 0)
+            return data
         except json.JSONDecodeError:
             pass
     return {
