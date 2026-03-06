@@ -4,7 +4,6 @@ Plex CLI Management Tool
 Command-line interface for managing PlexDevelopment applications
 """
 
-import ctypes
 import json
 import logging
 import os
@@ -59,9 +58,8 @@ except Exception:  # pragma: no cover
     _SHARED_VERSION_CHECK_URL = None  # type: ignore[assignment]
 
 # Configuration
-_PROGRAMDATA = Path(os.environ.get("ProgramData", r"C:\ProgramData"))
-INSTALL_DIR = _PROGRAMDATA / "plex" / "apps"
-INSTALLER_DIR = _SHARED_INSTALLER_DIR or (_PROGRAMDATA / "plexinstaller")
+INSTALL_DIR = Path("/var/www/plex")
+INSTALLER_DIR = _SHARED_INSTALLER_DIR or Path("/opt/plexinstaller")
 VERSION_CHECK_URL = (
     _SHARED_VERSION_CHECK_URL or "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/version.json"
 )
@@ -138,7 +136,7 @@ def show_help():
     print("  plex config plexstore")
     print("  plex debug plextickets")
     print("  plex addon list plextickets")
-    print("  plex addon install plextickets C:\\Users\\Admin\\Downloads\\MyAddon.zip")
+    print("  plex addon install plextickets /tmp/MyAddon.zip")
     print("  plex addon remove plextickets MyAddon")
     print("  plex addon config plextickets MyAddon")
 
@@ -173,21 +171,25 @@ def _read_local_installer_version() -> str:
 
 
 def _ensure_cli_entrypoints():
-    """Ensure `plexinstaller` and `plex` commands are available on PATH."""
+    """Ensure `/usr/local/bin/plex` and `/usr/local/bin/plexinstaller` point at the bundle."""
     if ensure_cli_entrypoints is not None:
         return ensure_cli_entrypoints()
     # Fallback if shared module not available
-    if not ctypes.windll.shell32.IsUserAnAdmin():
+    if os.geteuid() != 0:
         return
     try:
+        bin_dir = Path("/usr/local/bin")
+        bin_dir.mkdir(parents=True, exist_ok=True)
         for name, target in {
             "plexinstaller": INSTALLER_DIR / "installer.py",
             "plex": INSTALLER_DIR / "plex_cli.py",
         }.items():
-            wrapper = INSTALLER_DIR / f"{name}.cmd"
+            link_path = bin_dir / name
             if not target.exists():
                 continue
-            wrapper.write_text(f'@echo off\npython "{target}" %*\n')
+            if link_path.is_symlink() or link_path.exists():
+                link_path.unlink()
+            link_path.symlink_to(target)
     except Exception:
         return
 
@@ -315,21 +317,13 @@ def get_service_name(app: str) -> str:
 
 
 def get_service_status(service_name: str) -> dict[str, object]:
-    """Get detailed service status using sc query"""
+    """Get detailed service status"""
     try:
-        result = subprocess.run(
-            ["sc", "query", service_name],
-            capture_output=True, text=True,
-        )
-        output = result.stdout
-        is_active = "RUNNING" in output
+        result = subprocess.run(["systemctl", "is-active", service_name], capture_output=True, text=True)
+        is_active = result.stdout.strip() == "active"
 
-        # Check if service is set to auto-start
-        cfg_result = subprocess.run(
-            ["sc", "qc", service_name],
-            capture_output=True, text=True,
-        )
-        is_enabled = "AUTO_START" in cfg_result.stdout
+        result = subprocess.run(["systemctl", "is-enabled", service_name], capture_output=True, text=True)
+        is_enabled = result.stdout.strip() == "enabled"
 
         if is_active:
             status = "Running"
@@ -397,7 +391,7 @@ def start_app(app: str):
     print_info(f"Starting {instance}...")
 
     try:
-        subprocess.run(["nssm", "start", service_name], check=True, capture_output=True)
+        subprocess.run(["systemctl", "start", service_name], check=True)
         print_success(f"{instance} started successfully")
 
         # Wait a moment and check if it's actually running
@@ -430,7 +424,7 @@ def stop_app(app: str):
     print_info(f"Stopping {instance}...")
 
     try:
-        subprocess.run(["nssm", "stop", service_name], check=True, capture_output=True)
+        subprocess.run(["systemctl", "stop", service_name], check=True)
         print_success(f"{instance} stopped successfully")
         return 0
     except subprocess.CalledProcessError:
@@ -449,7 +443,7 @@ def restart_app(app: str):
     print_info(f"Restarting {instance}...")
 
     try:
-        subprocess.run(["nssm", "restart", service_name], check=True, capture_output=True)
+        subprocess.run(["systemctl", "restart", service_name], check=True)
         print_success(f"{instance} restarted successfully")
 
         # Wait a moment and check if it's running
@@ -483,8 +477,7 @@ def show_status(app: str):
     print()
 
     try:
-        result = subprocess.run(["sc", "query", service_name], capture_output=True, text=True)
-        print(result.stdout)
+        subprocess.run(["systemctl", "status", service_name, "--no-pager", "-l"])
         return 0
     except subprocess.CalledProcessError:
         return 1
@@ -498,38 +491,18 @@ def view_logs(app: str):
         return 1
 
     service_name = get_service_name(instance)
-    print_info(f"Showing logs for {instance}...")
+    print_info(f"Showing logs for {instance} (Press Ctrl+C to exit)...")
     print()
 
-    # Try to find application log files first
-    app_dir = INSTALL_DIR / instance
-    log_files = list(app_dir.glob("*.log")) + list(app_dir.glob("logs/*.log"))
-
-    if log_files:
-        log_file = log_files[0]
-        print_info(f"Reading from: {log_file}")
-        try:
-            content = log_file.read_text(encoding="utf-8", errors="replace")
-            lines = content.splitlines()
-            for line in lines[-100:]:
-                print(line)
-            return 0
-        except Exception as e:
-            print_error(f"Failed to read log file: {e}")
-            return 1
-    else:
-        print_info("No log files found. Checking Windows Event Log...")
-        try:
-            subprocess.run(
-                ["powershell", "-Command",
-                 f"Get-EventLog -LogName Application -Source '{service_name}' -Newest 50 | Format-List"],
-                check=False,
-            )
-            return 0
-        except Exception:
-            print_warning("Could not retrieve event logs.")
-            print_info(f"Check for log files in: {app_dir}")
-            return 1
+    try:
+        subprocess.run(["journalctl", "-u", service_name, "-f", "--no-pager"])
+        return 0
+    except KeyboardInterrupt:
+        print()
+        return 0
+    except subprocess.CalledProcessError:
+        print_error(f"Failed to view logs for {instance}")
+        return 1
 
 
 def edit_config(app: str):
@@ -558,8 +531,10 @@ def edit_config(app: str):
     print_info("Remember to restart the application after making changes!")
     print()
 
-    # Use notepad as default editor
-    editor = os.environ.get("EDITOR", "notepad")
+    # Use nano as default editor, fall back to vi
+    editor = os.environ.get("EDITOR", "nano")
+    if not subprocess.run(["which", editor], capture_output=True).returncode == 0:
+        editor = "nano" if subprocess.run(["which", "nano"], capture_output=True).returncode == 0 else "vi"
 
     try:
         subprocess.run([editor, str(config_file)])
@@ -583,7 +558,7 @@ def enable_app(app: str):
     print_info(f"Enabling {instance} to start on boot...")
 
     try:
-        subprocess.run(["sc", "config", service_name, "start=", "auto"], check=True, capture_output=True)
+        subprocess.run(["systemctl", "enable", service_name], check=True)
         print_success(f"{instance} will now start automatically on boot")
         return 0
     except subprocess.CalledProcessError:
@@ -602,7 +577,7 @@ def disable_app(app: str):
     print_info(f"Disabling {instance} from starting on boot...")
 
     try:
-        subprocess.run(["sc", "config", service_name, "start=", "demand"], check=True, capture_output=True)
+        subprocess.run(["systemctl", "disable", service_name], check=True)
         print_success(f"{instance} will no longer start automatically on boot")
         return 0
     except subprocess.CalledProcessError:
@@ -635,29 +610,19 @@ def debug_app(app: str) -> int:
 
     service_name = get_service_name(instance)
     try:
-        # Try to read application log files
-        app_dir = INSTALL_DIR / instance
-        log_files = list(app_dir.glob("*.log")) + list(app_dir.glob("logs/*.log"))
-
-        if log_files:
-            logs_contents = log_files[0].read_text(encoding="utf-8", errors="replace")
-            lines = logs_contents.splitlines()
-            logs_contents = "\n".join(lines[-500:])
-        else:
-            # Fallback to Event Log
-            result = subprocess.run(
-                ["powershell", "-Command",
-                 f"Get-EventLog -LogName Application -Source '{service_name}' -Newest 500 | Format-List"],
-                capture_output=True, text=True,
-            )
-            logs_contents = result.stdout if result.stdout else "<No event log entries found>"
+        result = subprocess.run(
+            ["journalctl", "-u", service_name, "-n", "500", "--no-pager"],
+            capture_output=True,
+            text=True,
+        )
+        logs_contents = result.stdout if result.stdout else result.stderr
     except Exception as exc:
-        logs_contents = f"<Could not retrieve logs: {exc}>\n"
+        logs_contents = f"<Could not run journalctl: {exc}>\n"
 
     bundle = (
         f"===== instance =====\n{instance}\n\n"
         f"===== config.yml =====\n{config_contents}\n\n"
-        f"===== logs (last 500 lines) =====\n{logs_contents}\n"
+        f"===== journalctl (last 500 lines) =====\n{logs_contents}\n"
     )
 
     if redact_sensitive_yaml is not None:
@@ -886,8 +851,10 @@ def addon_config(app: str, addon_name: str) -> int:
     print_info("Remember to restart the application after making changes!")
     print()
 
-    # Use notepad as default editor
-    editor = os.environ.get("EDITOR", "notepad")
+    # Use nano as default editor
+    editor = os.environ.get("EDITOR", "nano")
+    if not subprocess.run(["which", editor], capture_output=True).returncode == 0:
+        editor = "nano" if subprocess.run(["which", "nano"], capture_output=True).returncode == 0 else "vi"
 
     try:
         subprocess.run([editor, str(config_path)])
@@ -967,8 +934,8 @@ def tool_setupdomain(app: str) -> int:
         print_error(f"Application '{app}' not found. Use 'plex list' to see installed apps.")
         return 1
 
-    if not ctypes.windll.shell32.IsUserAnAdmin():
-        print_error("This command must be run as Administrator.")
+    if os.geteuid() != 0:
+        print_error("This command must be run as root (use sudo).")
         return 1
 
     app_dir = INSTALL_DIR / instance
@@ -1084,7 +1051,7 @@ def tool_setupdomain(app: str) -> int:
         print_success("SSL certificate obtained successfully")
     except Exception as e:
         print_error(f"SSL setup failed: {e}")
-        print_warning("Nginx is configured but without SSL. You can retry SSL with: certbot --nginx -d " + domain)
+        print_warning("Nginx is configured but without SSL. You can retry SSL with: sudo certbot --nginx -d " + domain)
         return 1
 
     print()

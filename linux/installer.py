@@ -5,11 +5,10 @@ Modular, maintainable installer for Plex products
 """
 
 import atexit
-import ctypes
+import fcntl
 import hashlib
 import io
 import json
-import msvcrt
 import os
 import re
 import shlex
@@ -64,7 +63,7 @@ except ImportError:
     _shared_perform_update = None  # type: ignore[assignment]
     _shared_ensure_cli = None  # type: ignore[assignment]
     _shared_download_missing = None  # type: ignore[assignment]
-    INSTALLER_DIR = Path(os.environ.get("ProgramData", r"C:\ProgramData")) / "plexinstaller"
+    INSTALLER_DIR = Path("/opt/plexinstaller")
     UPDATE_FILE_MAP = {
         "installer": "installer.py",
         "config": "config.py",
@@ -95,7 +94,7 @@ from utils import setup_logging
 # Current installer version
 INSTALLER_VERSION = "3.2.0"
 VERSION_CHECK_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/version.json"
-LOCK_FILE = str(Path(os.environ.get("TEMP", r"C:\Windows\Temp")) / "plexinstaller.lock")
+LOCK_FILE = "/var/run/plexinstaller.lock"
 
 
 class UserAbortError(Exception):
@@ -133,9 +132,9 @@ class PlexInstaller:
         self.printer = ColorPrinter()
         self._lock_fd: io.TextIOWrapper | None = None
 
-        # Check admin FIRST before any file operations
-        if not ctypes.windll.shell32.IsUserAnAdmin():
-            self.printer.error("This installer must be run as Administrator")
+        # Check root FIRST before any file operations
+        if os.geteuid() != 0:
+            self.printer.error("This installer must be run as root (use sudo)")
             sys.exit(1)
 
         # Acquire lock to prevent concurrent runs
@@ -156,6 +155,7 @@ class PlexInstaller:
                 printer=self.printer,
                 system=self.system,
                 mongodb_version=self.config.MONGODB_VERSION,
+                mongodb_repo_version_bookworm=self.config.MONGODB_REPO_VERSION_BOOKWORM,
             )
             if MongoDBManager is not None
             else None
@@ -196,7 +196,7 @@ class PlexInstaller:
         """Acquire exclusive lock to prevent concurrent installer runs"""
         try:
             self._lock_fd = open(LOCK_FILE, "w")
-            msvcrt.locking(self._lock_fd.fileno(), msvcrt.LK_NBLCK, 1)
+            fcntl.flock(self._lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
             self._lock_fd.write(str(os.getpid()))
             self._lock_fd.flush()
             return True
@@ -210,7 +210,7 @@ class PlexInstaller:
         """Release the lock file"""
         if self._lock_fd:
             try:
-                msvcrt.locking(self._lock_fd.fileno(), msvcrt.LK_UNLCK, 1)
+                fcntl.flock(self._lock_fd.fileno(), fcntl.LOCK_UN)
                 self._lock_fd.close()
                 self._lock_fd = None
                 # Remove lock file
@@ -223,7 +223,7 @@ class PlexInstaller:
 
     def run(self):
         """Main entry point"""
-        os.system("cls")
+        os.system("clear" if os.name != "nt" else "cls")
         self._display_banner()
 
         if not self.telemetry_enabled:
@@ -379,6 +379,7 @@ class PlexInstaller:
                     continue
 
                 target.write_bytes(content)
+                os.chmod(target, 0o755 if filename.endswith(".py") else 0o644)
                 self.printer.success(f"Installed missing file {filename}")
             except Exception as e:
                 self.printer.error(f"Failed to download {filename}: {e}")
@@ -433,7 +434,7 @@ class PlexInstaller:
     def _show_main_menu(self):
         """Display main menu and handle user choice"""
         while True:
-            os.system("cls")
+            os.system("clear" if os.name != "nt" else "cls")
             self._display_banner()
             self.printer.header("Main Menu")
 
@@ -763,13 +764,7 @@ class PlexInstaller:
         """Find product archive file"""
         self.printer.step(f"Searching for {product} archive...")
 
-        search_dirs = [
-            Path.home(),
-            Path(os.environ.get("USERPROFILE", "")),
-            Path(os.environ.get("TEMP", "")),
-            Path.home() / "Downloads",
-            Path.cwd(),
-        ]
+        search_dirs = [Path.home(), Path("/root"), Path("/tmp"), Path("/var/tmp"), Path.cwd()]
 
         archives = []
         seen_paths = set()
@@ -848,7 +843,7 @@ class PlexInstaller:
 
         try:
             subprocess.run(
-                ["npm.cmd", "install", "--loglevel=error"], cwd=install_path, check=True, capture_output=True, timeout=300
+                ["npm", "install", "--loglevel=error"], cwd=install_path, check=True, capture_output=True, timeout=300
             )
             self.printer.success("NPM dependencies installed")
             return True
@@ -911,6 +906,7 @@ class PlexInstaller:
 </html>"""
 
         error_page.write_text(html_content)
+        os.chmod(error_page, 0o644)
         self.printer.success("Created 502 error page")
 
     def _setup_web(
@@ -999,12 +995,12 @@ class PlexInstaller:
             self.printer.success("Dashboard addon installed")
 
     def _setup_systemd(self, instance_name: str, install_path: Path) -> bool:
-        """Setup Windows service"""
+        """Setup systemd service"""
         choice = input(f"Set up '{instance_name}' to auto-start on boot? (y/n): ").strip().lower()
 
         if choice == "y":
             self.systemd.create_service(instance_name, install_path)
-            self.printer.success("Windows service configured")
+            self.printer.success("Systemd service configured")
             return True
         else:
             self.printer.warning("Auto-start not configured")
@@ -1021,9 +1017,9 @@ class PlexInstaller:
 
             choice = input("Edit configuration now? (y/n): ").strip().lower()
             if choice == "y":
-                editor = os.environ.get("EDITOR", "notepad")
+                editor = os.environ.get("EDITOR", "nano")
                 subprocess.run([*shlex.split(editor), str(config_file)])
-                self.printer.step(f"Restart service: nssm restart plex-{instance_name}")
+                self.printer.step(f"Restart service: sudo systemctl restart plex-{instance_name}")
 
         # Display access information
         if needs_web and domain:
@@ -1032,8 +1028,8 @@ class PlexInstaller:
             self.printer.warning("No domain configured. The app is accessible on its port directly.")
             self.printer.step(f"Set up a domain later with: plex tool setupdomain {instance_name}")
 
-        print(f"\nManage service: nssm [start|stop|restart] plex-{instance_name}")
-        print(f"View logs: Check Windows Event Viewer or application log files")
+        print(f"\nManage service: sudo systemctl [start|stop|restart|status] plex-{instance_name}")
+        print(f"View logs: sudo journalctl -u plex-{instance_name} -f")
 
     def _cleanup_failed_install(self, context: InstallationContext):
         """Attempt to roll back artifacts from a failed installation."""
@@ -1078,15 +1074,15 @@ class PlexInstaller:
                 self.printer.warning(f"Failed to remove nginx config: {exc}")
 
         try:
-            subprocess.run(["nginx", "-t"], check=False, capture_output=True)
-            subprocess.run(["nginx", "-s", "reload"], check=False)
+            subprocess.run(["sudo", "nginx", "-t"], check=False, capture_output=True)
+            subprocess.run(["sudo", "systemctl", "reload", "nginx"], check=False)
         except Exception:
             pass
 
     def _remove_ssl_certificate(self, domain: str):
         try:
             subprocess.run(
-                ["certbot", "delete", "--cert-name", domain, "--non-interactive"],
+                ["sudo", "certbot", "delete", "--cert-name", domain, "--non-interactive"],
                 check=True,
                 capture_output=True,
             )
@@ -1169,9 +1165,9 @@ class PlexInstaller:
         config_files = list(install_path.glob("config.y*ml")) + list(install_path.glob("config.json"))
 
         if config_files:
-            editor = os.environ.get("EDITOR", "notepad")
+            editor = os.environ.get("EDITOR", "nano")
             subprocess.run([*shlex.split(editor), str(config_files[0])])
-            self.printer.step(f"Restart service: nssm restart plex-{product}")
+            self.printer.step(f"Restart service: sudo systemctl restart plex-{product}")
         else:
             self.printer.warning("No configuration file found")
 
@@ -1199,7 +1195,7 @@ class PlexInstaller:
     def _ssl_management_menu(self):
         """SSL certificate management menu"""
         while True:
-            os.system("cls")
+            os.system("clear" if os.name != "nt" else "cls")
             self.printer.header("SSL Certificate Management")
 
             print("\n1) View SSL Certificate Status")
@@ -1236,15 +1232,11 @@ class PlexInstaller:
 
     def _view_ssl_logs(self):
         """View SSL renewal logs"""
-        log_dir = Path(os.environ.get("ProgramData", r"C:\ProgramData")) / "certbot" / "log"
-        log_file = log_dir / "letsencrypt.log"
+        log_file = Path("/var/log/letsencrypt/letsencrypt.log")
         if log_file.exists():
-            content = log_file.read_text()
-            lines = content.splitlines()
-            for line in lines[-50:]:
-                print(line)
+            subprocess.run(["tail", "-n", "50", str(log_file)])
         else:
-            self.printer.warning(f"SSL log file not found at {log_file}")
+            self.printer.warning("SSL log file not found")
 
     def _force_ssl_renewal(self):
         """Force SSL certificate renewal"""
@@ -1257,7 +1249,7 @@ class PlexInstaller:
                 subprocess.run(["certbot", "renew", "--force-renewal"], check=True)
                 self.printer.success("SSL certificates renewed successfully!")
                 self.printer.step("Reloading Nginx...")
-                subprocess.run(["nginx", "-s", "reload"])
+                subprocess.run(["systemctl", "reload", "nginx"])
             except subprocess.CalledProcessError:
                 self.printer.error("SSL certificate renewal failed")
         else:
@@ -1285,7 +1277,7 @@ class PlexInstaller:
             return
 
         while True:
-            os.system("cls")
+            os.system("clear" if os.name != "nt" else "cls")
             self.printer.header("Addon Management")
             print("Manage addons for PlexTickets and PlexStaff installations\n")
 
@@ -1342,7 +1334,7 @@ class PlexInstaller:
     def _manage_product_addons(self, product_name: str, product_path: Path):
         """Manage addons for a specific product"""
         while True:
-            os.system("cls")
+            os.system("clear" if os.name != "nt" else "cls")
             self.printer.header(f"Addons for {product_name}")
 
             addons = self.addon_manager.list_addons(product_path)
@@ -1460,7 +1452,7 @@ class PlexInstaller:
                     self.systemd.restart(service_name)
                     self.printer.success(f"Service {service_name} restarted")
                 else:
-                    self.printer.step(f"Remember to restart the service: nssm restart {service_name}")
+                    self.printer.step(f"Remember to restart the service: sudo systemctl restart {service_name}")
         else:
             self.printer.error(message)
 
@@ -1553,7 +1545,7 @@ class PlexInstaller:
                 self.printer.warning("Save and exit the editor when done")
 
                 # Open in editor
-                editor = os.environ.get("EDITOR", "notepad")
+                editor = os.environ.get("EDITOR", "nano")
                 subprocess.run([*shlex.split(editor), str(config_path)])
 
                 # Validate YAML after editing
@@ -1584,7 +1576,7 @@ class PlexInstaller:
                         self.systemd.restart(service_name)
                         self.printer.success(f"Service {service_name} restarted")
                     else:
-                        self.printer.step(f"Remember to restart: nssm restart {service_name}")
+                        self.printer.step(f"Remember to restart: sudo systemctl restart {service_name}")
             else:
                 self.printer.error("Invalid choice")
         except ValueError:

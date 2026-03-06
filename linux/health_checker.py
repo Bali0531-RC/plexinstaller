@@ -7,7 +7,6 @@ Extracted from PlexInstaller to keep diagnostic logic isolated and testable.
 import http.client
 import logging
 import os
-import shutil
 import socket
 import ssl
 import subprocess
@@ -180,19 +179,19 @@ class HealthChecker:
             is_active = False
             for _ in range(20):
                 status = self.systemd.get_status(service_name)
-                if status.strip().lower() in ("active", "running"):
+                if status.strip() == "active":
                     is_active = True
                     break
                 time.sleep(1)
 
             results.append(
                 SelfTestResult(
-                    name="Windows service active",
+                    name="systemd service active",
                     status="pass" if is_active else "warn",
                     detail=f"{service_name} is {self.systemd.get_status(service_name)}",
                     hint=(
                         f"The service may have crashed because config.yml is not yet filled in. "
-                        f"Edit the config, then: nssm restart {service_name}"
+                        f"Edit the config, then: systemctl restart {service_name}"
                         if not is_active
                         else ""
                     ),
@@ -201,10 +200,10 @@ class HealthChecker:
         else:
             results.append(
                 SelfTestResult(
-                    name="Windows service auto-start",
+                    name="systemd auto-start",
                     status="warn",
                     detail="not configured",
-                    hint=f"Enable it later with: sc config {service_name} start= auto",
+                    hint=f"Enable it later with: systemctl enable --now {service_name}",
                 )
             )
 
@@ -218,7 +217,7 @@ class HealthChecker:
                     status="pass" if port_ready else "fail",
                     detail=f"127.0.0.1:{context.port}",
                     hint=(
-                        f"Check the service logs or event viewer for {service_name}"
+                        f"Check the service logs: journalctl -u {service_name} -n 200 --no-pager"
                         if not port_ready
                         else ""
                     ),
@@ -317,14 +316,14 @@ class HealthChecker:
 
     def system_health_check(self):
         """Comprehensive system health check (disk, services, nginx, mongo, SSL, mem, load)."""
-        os.system("cls")
+        os.system("clear" if os.name != "nt" else "cls")
         self.printer.header("System Health Check")
 
         # Disk space
-        disk_path = self.install_dir if self.install_dir.exists() else Path("C:\\")
-        usage = shutil.disk_usage(disk_path)
-        free_gb = usage.free / (1024**3)
-        total_gb = usage.total / (1024**3)
+        disk_path = self.install_dir if self.install_dir.exists() else Path("/")
+        stat = os.statvfs(disk_path)
+        free_gb = (stat.f_bavail * stat.f_frsize) / (1024**3)
+        total_gb = (stat.f_blocks * stat.f_frsize) / (1024**3)
         used_percent = ((total_gb - free_gb) / total_gb) * 100
 
         logger.info("=== Disk Space ===")
@@ -334,11 +333,11 @@ class HealthChecker:
         logger.info("Used: %.1f%%", used_percent)
 
         if used_percent > 90:
-            self.printer.error("WARNING: Disk usage above 90%!")
+            self.printer.error("⚠ WARNING: Disk usage above 90%!")
         elif used_percent > 80:
-            self.printer.warning("Disk usage above 80%")
+            self.printer.warning("⚠ Disk usage above 80%")
         else:
-            self.printer.success("Disk space healthy")
+            self.printer.success("✓ Disk space healthy")
 
         # Services
         logger.info("=== Services Status ===")
@@ -350,19 +349,19 @@ class HealthChecker:
                     status = self.systemd.get_status(service_name)
 
                     normalized = status.strip().lower()
-                    if normalized in ("active", "running"):
-                        logger.info("  OK %s: Running", product_dir.name)
-                    elif normalized in ("inactive", "stopped"):
-                        logger.warning("  -- %s: Stopped", product_dir.name)
+                    if normalized == "active":
+                        logger.info("  ✓ %s: Running", product_dir.name)
+                    elif normalized == "inactive":
+                        logger.warning("  ○ %s: Stopped", product_dir.name)
                         all_running = False
                     else:
-                        logger.error("  !! %s: Not Found", product_dir.name)
+                        logger.error("  ✗ %s: Not Found", product_dir.name)
                         all_running = False
 
             if all_running:
-                self.printer.success("\nAll services are running")
+                self.printer.success("\n✓ All services are running")
             else:
-                self.printer.warning("\nSome services are not running")
+                self.printer.warning("\n⚠ Some services are not running")
         else:
             self.printer.warning("No installations found")
 
@@ -370,107 +369,89 @@ class HealthChecker:
         logger.info("=== Web Server Status ===")
         try:
             result = subprocess.run(
-                ["sc", "query", "nginx"],
+                ["systemctl", "is-active", "nginx"],
                 capture_output=True,
                 text=True,
             )
-            if "RUNNING" in result.stdout:
-                self.printer.success("Nginx is running")
+            if result.stdout.strip() == "active":
+                self.printer.success("✓ Nginx is running")
             else:
-                self.printer.error("Nginx is not running")
+                self.printer.error("✗ Nginx is not running")
         except Exception:
-            self.printer.warning("Could not check Nginx status")
+            self.printer.warning("⚠ Could not check Nginx status")
 
         # MongoDB
         logger.info("=== Database Status ===")
         try:
             result = subprocess.run(
-                ["sc", "query", "MongoDB"],
+                ["systemctl", "is-active", "mongod"],
                 capture_output=True,
                 text=True,
             )
-            if "RUNNING" in result.stdout:
-                self.printer.success("MongoDB is running")
+            if result.stdout.strip() == "active":
+                self.printer.success("✓ MongoDB is running")
             else:
-                self.printer.warning("MongoDB is not running")
+                self.printer.warning("○ MongoDB is not running")
         except Exception:
-            self.printer.step("MongoDB not installed or not registered as a service")
+            self.printer.step("ℹ MongoDB not installed or not using systemd")
 
         # SSL certificates
         logger.info("=== SSL Certificates ===")
-        certbot_available = shutil.which("certbot") is not None
-        if certbot_available:
+        certbot_installed = subprocess.run(["which", "certbot"], capture_output=True).returncode == 0
+        if certbot_installed:
             try:
                 result = subprocess.run(["certbot", "certificates"], capture_output=True, text=True)
                 if "No certificates found" in result.stdout:
-                    self.printer.step("No SSL certificates found")
+                    self.printer.step("ℹ No SSL certificates found")
                 else:
                     cert_count = result.stdout.count("Certificate Name:")
-                    self.printer.success(f"Found {cert_count} SSL certificate(s)")
+                    self.printer.success(f"✓ Found {cert_count} SSL certificate(s)")
             except Exception:
-                self.printer.warning("Could not check SSL certificates")
+                self.printer.warning("⚠ Could not check SSL certificates")
         else:
-            self.printer.step("Certbot not installed")
+            self.printer.step("ℹ Certbot not installed")
 
         # Memory
         logger.info("=== Memory Usage ===")
         try:
-            import ctypes
-            class MEMORYSTATUSEX(ctypes.Structure):
-                _fields_ = [
-                    ("dwLength", ctypes.c_ulong),
-                    ("dwMemoryLoad", ctypes.c_ulong),
-                    ("ullTotalPhys", ctypes.c_ulonglong),
-                    ("ullAvailPhys", ctypes.c_ulonglong),
-                    ("ullTotalPageFile", ctypes.c_ulonglong),
-                    ("ullAvailPageFile", ctypes.c_ulonglong),
-                    ("ullTotalVirtual", ctypes.c_ulonglong),
-                    ("ullAvailVirtual", ctypes.c_ulonglong),
-                    ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
-                ]
-            stat = MEMORYSTATUSEX()
-            stat.dwLength = ctypes.sizeof(stat)
-            ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat))
+            with open("/proc/meminfo") as f:
+                lines = f.readlines()
+                mem_total = int([line for line in lines if "MemTotal" in line][0].split()[1]) / 1024
+                mem_available = int([line for line in lines if "MemAvailable" in line][0].split()[1]) / 1024
+                mem_used = mem_total - mem_available
+                mem_percent = (mem_used / mem_total) * 100
 
-            mem_total = stat.ullTotalPhys / (1024 * 1024)
-            mem_available = stat.ullAvailPhys / (1024 * 1024)
-            mem_used = mem_total - mem_available
-            mem_percent = (mem_used / mem_total) * 100
+                logger.info("Total: %.0f MB", mem_total)
+                logger.info("Used: %.0f MB (%.1f%%)", mem_used, mem_percent)
+                logger.info("Available: %.0f MB", mem_available)
 
-            logger.info("Total: %.0f MB", mem_total)
-            logger.info("Used: %.0f MB (%.1f%%)", mem_used, mem_percent)
-            logger.info("Available: %.0f MB", mem_available)
-
-            if mem_percent > 90:
-                self.printer.error("WARNING: Memory usage above 90%!")
-            elif mem_percent > 80:
-                self.printer.warning("Memory usage above 80%")
-            else:
-                self.printer.success("Memory usage healthy")
+                if mem_percent > 90:
+                    self.printer.error("⚠ WARNING: Memory usage above 90%!")
+                elif mem_percent > 80:
+                    self.printer.warning("⚠ Memory usage above 80%")
+                else:
+                    self.printer.success("✓ Memory usage healthy")
         except Exception:
-            self.printer.warning("Could not check memory usage")
+            self.printer.warning("⚠ Could not check memory usage")
 
-        # CPU usage
-        logger.info("=== CPU Usage ===")
+        # System load
+        logger.info("=== System Load ===")
         try:
-            result = subprocess.run(
-                ["powershell", "-Command",
-                 "Get-CimInstance Win32_Processor | Select-Object -ExpandProperty LoadPercentage"],
-                capture_output=True, text=True, timeout=10,
-            )
-            cpu_load = int(result.stdout.strip())
+            load1, load5, load15 = os.getloadavg()
             cpu_count = os.cpu_count() or 1
-            logger.info("CPU Load: %d%%", cpu_load)
+            logger.info("1 min: %.2f", load1)
+            logger.info("5 min: %.2f", load5)
+            logger.info("15 min: %.2f", load15)
             logger.info("CPU cores: %d", cpu_count)
 
-            if cpu_load > 90:
-                self.printer.error("WARNING: High CPU usage!")
-            elif cpu_load > 70:
-                self.printer.warning("CPU usage is elevated")
+            if load5 > cpu_count * 2:
+                self.printer.error("⚠ WARNING: High system load!")
+            elif load5 > cpu_count:
+                self.printer.warning("⚠ System load is elevated")
             else:
-                self.printer.success("CPU usage normal")
+                self.printer.success("✓ System load normal")
         except Exception:
-            self.printer.warning("Could not check CPU usage")
+            self.printer.warning("⚠ Could not check system load")
 
     # ------------------------------------------------------------------
     # Summary printer
@@ -510,19 +491,18 @@ class HealthChecker:
     def _check_nginx_ssl(self, context, results: list[SelfTestResult]):
         """Append nginx/SSL/DNS/HTTPS self-test results."""
         try:
-            nginx_result = subprocess.run(
-                ["sc", "query", "nginx"],
+            nginx_active = subprocess.run(
+                ["systemctl", "is-active", "nginx"],
                 capture_output=True,
                 text=True,
                 timeout=10,
             )
-            is_running = "RUNNING" in nginx_result.stdout
             results.append(
                 SelfTestResult(
                     name="nginx service active",
-                    status="pass" if is_running else "fail",
-                    detail="running" if is_running else "not running",
-                    hint=("Run: sc query nginx" if not is_running else ""),
+                    status="pass" if nginx_active.stdout.strip() == "active" else "fail",
+                    detail=nginx_active.stdout.strip() or nginx_active.stderr.strip(),
+                    hint=("Run: systemctl status nginx --no-pager" if nginx_active.stdout.strip() != "active" else ""),
                 )
             )
         except Exception as exc:
@@ -536,7 +516,7 @@ class HealthChecker:
             )
 
         config_file = self.nginx_available / f"{context.domain}.conf"
-        enabled_file = self.nginx_enabled / f"{context.domain}.conf"
+        enabled_link = self.nginx_enabled / f"{context.domain}.conf"
         results.append(
             SelfTestResult(
                 name="nginx site config present",
@@ -548,9 +528,9 @@ class HealthChecker:
         results.append(
             SelfTestResult(
                 name="nginx site enabled",
-                status="pass" if enabled_file.exists() else "fail",
-                detail=str(enabled_file) if enabled_file.exists() else "missing",
-                hint="Copy config to sites-enabled and reload nginx",
+                status="pass" if (enabled_link.exists() or enabled_link.is_symlink()) else "fail",
+                detail=(str(enabled_link) if (enabled_link.exists() or enabled_link.is_symlink()) else "missing"),
+                hint="Create symlink in sites-enabled and reload nginx",
             )
         )
 
@@ -561,7 +541,7 @@ class HealthChecker:
                     name="nginx config test",
                     status="pass" if t.returncode == 0 else "fail",
                     detail=(t.stdout or t.stderr or "").strip()[-200:],
-                    hint=("Fix nginx errors then reload: nginx -s reload" if t.returncode != 0 else ""),
+                    hint=("Fix nginx errors then reload: systemctl reload nginx" if t.returncode != 0 else ""),
                 )
             )
         except Exception as exc:
@@ -574,9 +554,7 @@ class HealthChecker:
                 )
             )
 
-        # Check for cert files in common Windows certbot location
-        cert_dir = Path(os.environ.get("ProgramData", r"C:\ProgramData")) / "certbot" / "live" / context.domain
-        cert_path = cert_dir / "fullchain.pem"
+        cert_path = Path(f"/etc/letsencrypt/live/{context.domain}/fullchain.pem")
         results.append(
             SelfTestResult(
                 name="SSL certificate present",

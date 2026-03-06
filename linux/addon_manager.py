@@ -4,7 +4,6 @@ Addon Manager for PlexDevelopment Products
 Handles addon installation, removal, configuration, and backup for PlexTickets/PlexStaff
 """
 
-import os
 import shutil
 import tarfile
 from datetime import datetime
@@ -128,7 +127,7 @@ class AddonManager:
                 zip_ref.extractall(target_dir)
         elif archive_path.suffix.lower() == ".rar":
             if not shutil.which("unrar"):
-                raise FileNotFoundError("unrar command not found. Install 7-Zip or unrar and ensure it is in your PATH.")
+                raise FileNotFoundError("unrar command not found. Install it with: apt install unrar")
             subprocess.run(["unrar", "x", "-o+", str(archive_path), str(target_dir) + "/"], check=True, timeout=300)
         else:
             raise ValueError(f"Unsupported archive format: {archive_path.suffix}")
@@ -203,8 +202,15 @@ class AddonManager:
             pass  # Best effort cleanup
 
     def _set_permissions(self, addon_path: Path):
-        """No-op on Windows (permissions handled by NTFS ACLs)"""
-        pass
+        """Set proper permissions on addon files"""
+        import subprocess
+
+        try:
+            subprocess.run(["chown", "-R", "root:root", str(addon_path)], timeout=60)
+            subprocess.run(["find", str(addon_path), "-type", "d", "-exec", "chmod", "755", "{}", ";"], timeout=60)
+            subprocess.run(["find", str(addon_path), "-type", "f", "-exec", "chmod", "644", "{}", ";"], timeout=60)
+        except Exception:
+            pass  # Best effort
 
     def addon_exists(self, addon_name: str, product_path: Path) -> bool:
         """Check if an addon with the given name already exists"""
@@ -313,13 +319,7 @@ class AddonManager:
         Returns list of found archive paths.
         """
         if search_dirs is None:
-            search_dirs = [
-                Path.home(),
-                Path.home() / "Downloads",
-                Path(os.environ.get("TEMP", "")),
-                Path(os.environ.get("USERPROFILE", "")),
-                Path.cwd(),
-            ]
+            search_dirs = [Path.home(), Path("/root"), Path("/tmp"), Path("/var/tmp"), Path.cwd()]
 
         archives = []
         seen_paths = set()

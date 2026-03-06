@@ -25,10 +25,12 @@ class MongoDBManager:
         printer: ColorPrinter,
         system: SystemDetector,
         mongodb_version: str,
+        mongodb_repo_version_bookworm: str,
     ):
         self.printer = printer
         self.system = system
         self.mongodb_version = mongodb_version
+        self.mongodb_repo_version_bookworm = mongodb_repo_version_bookworm
 
     # ------------------------------------------------------------------
     # Public API
@@ -121,10 +123,20 @@ class MongoDBManager:
         return False
 
     def install(self) -> bool:
-        """Install MongoDB on Windows via winget or manual download."""
+        """Install MongoDB for the detected distro."""
         self.printer.step("Installing MongoDB...")
+        distro = (self.system.distribution or "").lower()
         try:
-            return self._install_windows()
+            if "ubuntu" in distro or "debian" in distro:
+                return self._install_debian()
+            elif "centos" in distro or "rhel" in distro or "fedora" in distro:
+                return self._install_rhel()
+            elif "arch" in distro:
+                return self._install_arch()
+            else:
+                self.printer.error(f"Unsupported distribution for automatic MongoDB install: {distro}")
+                self.printer.step("Please install MongoDB manually: https://docs.mongodb.com/manual/installation/")
+                return False
         except Exception as e:
             self.printer.error(f"MongoDB installation failed: {e}")
             return False
@@ -135,31 +147,30 @@ class MongoDBManager:
 
     def ensure_running(self) -> str:
         """Ensure MongoDB service is running; returns the detected service name."""
-        for service in ("MongoDB", "mongod"):
+        for service in ("mongod", "mongodb"):
             try:
                 result = subprocess.run(
-                    ["sc", "query", service],
+                    ["systemctl", "is-active", service],
                     capture_output=True,
                     text=True,
                     timeout=10,
                 )
-                if "RUNNING" in result.stdout:
+                if result.stdout.strip() == "active":
                     return service
 
-                subprocess.run(["sc", "start", service], check=True, capture_output=True, timeout=60)
-                time.sleep(3)
+                subprocess.run(["systemctl", "start", service], check=True, timeout=60)
                 result2 = subprocess.run(
-                    ["sc", "query", service],
+                    ["systemctl", "is-active", service],
                     capture_output=True,
                     text=True,
                     timeout=10,
                 )
-                if "RUNNING" in result2.stdout:
+                if result2.stdout.strip() == "active":
                     return service
             except Exception:
                 continue
 
-        raise RuntimeError("Could not start MongoDB service (tried 'MongoDB' and 'mongod')")
+        raise RuntimeError("Could not start MongoDB service (tried 'mongod' and 'mongodb')")
 
     # ------------------------------------------------------------------
     # Shell helper
@@ -260,18 +271,24 @@ class MongoDBManager:
     # ------------------------------------------------------------------
 
     def save_credentials(self, instance_name: str, creds: dict):
-        """Append credentials to ProgramData/plex/mongodb_credentials."""
-        creds_dir = Path(os.environ.get("ProgramData", r"C:\ProgramData")) / "plex"
+        """Append credentials to /etc/plex/mongodb_credentials."""
+        creds_dir = Path("/etc/plex")
         creds_dir.mkdir(parents=True, exist_ok=True)
 
         creds_file = creds_dir / "mongodb_credentials"
 
-        with open(creds_file, "a", encoding="utf-8") as f:
-            f.write(f"\n# {instance_name}\n")
-            f.write(f"DATABASE={creds['database']}\n")
-            f.write(f"USERNAME={creds['username']}\n")
-            f.write(f"PASSWORD={creds['password']}\n")
-            f.write(f"URI={creds['uri']}\n")
+        # Open with restrictive permissions from the start (O_CREAT|O_APPEND|O_WRONLY, mode 0600)
+        fd = os.open(str(creds_file), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        try:
+            with os.fdopen(fd, "a") as f:
+                f.write(f"\n# {instance_name}\n")
+                f.write(f"DATABASE={creds['database']}\n")
+                f.write(f"USERNAME={creds['username']}\n")
+                f.write(f"PASSWORD={creds['password']}\n")
+                f.write(f"URI={creds['uri']}\n")
+        except Exception:
+            os.close(fd)
+            raise
 
         self.printer.success(f"Credentials saved to {creds_file}")
 
@@ -386,49 +403,179 @@ class MongoDBManager:
     # Private: distro-specific installers
     # ------------------------------------------------------------------
 
-    def _install_windows(self) -> bool:
-        """Install MongoDB on Windows via winget or choco."""
+    def _install_debian(self) -> bool:
+        """Install MongoDB on Debian/Ubuntu."""
         try:
-            # Try winget first
-            try:
-                result = subprocess.run(
-                    ["winget", "--version"],
-                    capture_output=True, text=True, timeout=10,
-                )
-                if result.returncode == 0:
-                    self.printer.step("Installing MongoDB via winget...")
-                    subprocess.run(
-                        ["winget", "install", "--id", "MongoDB.Server",
-                         "--accept-package-agreements", "--accept-source-agreements"],
-                        check=True, timeout=600,
-                    )
-                    self.printer.success("MongoDB installed successfully via winget")
-                    return True
-            except FileNotFoundError:
-                pass
+            self.printer.step("Cleaning up old MongoDB repositories...")
+            old_repo_files = [
+                "/etc/apt/sources.list.d/mongodb-org-7.0.list",
+                "/etc/apt/sources.list.d/mongodb-org-6.0.list",
+                "/etc/apt/sources.list.d/mongodb-org-5.0.list",
+                "/etc/apt/sources.list.d/mongodb-org-4.4.list",
+            ]
+            old_gpg_keys = [
+                "/usr/share/keyrings/mongodb-server-7.0.gpg",
+                "/usr/share/keyrings/mongodb-server-6.0.gpg",
+                "/usr/share/keyrings/mongodb-server-5.0.gpg",
+                "/usr/share/keyrings/mongodb-server-4.4.gpg",
+            ]
 
-            # Try chocolatey
-            try:
-                result = subprocess.run(
-                    ["choco", "--version"],
-                    capture_output=True, text=True, timeout=10,
-                )
-                if result.returncode == 0:
-                    self.printer.step("Installing MongoDB via Chocolatey...")
-                    subprocess.run(
-                        ["choco", "install", "mongodb", "-y"],
-                        check=True, timeout=600,
-                    )
-                    self.printer.success("MongoDB installed successfully via Chocolatey")
-                    return True
-            except FileNotFoundError:
-                pass
+            for repo_file in old_repo_files:
+                if Path(repo_file).exists():
+                    Path(repo_file).unlink()
+            for gpg_key in old_gpg_keys:
+                if Path(gpg_key).exists():
+                    Path(gpg_key).unlink()
 
-            self.printer.error("Neither winget nor Chocolatey found.")
-            self.printer.step(
-                "Please install MongoDB manually: https://www.mongodb.com/try/download/community"
+            self.printer.step("Installing prerequisites (gnupg, curl)...")
+            subprocess.run(
+                ["apt-get", "install", "-y", "gnupg", "curl"],
+                check=True,
+                capture_output=True,
+                timeout=120,
+            )
+
+            mongo_ver = self.mongodb_version
+            mongo_ver_bookworm = self.mongodb_repo_version_bookworm
+            self.printer.step("Adding MongoDB repository...")
+            curl_process = subprocess.Popen(
+                [
+                    "curl",
+                    "-fsSL",
+                    f"https://www.mongodb.org/static/pgp/server-{mongo_ver}.asc",
+                ],
+                stdout=subprocess.PIPE,
+            )
+            subprocess.run(
+                [
+                    "gpg",
+                    "-o",
+                    f"/usr/share/keyrings/mongodb-server-{mongo_ver}.gpg",
+                    "--dearmor",
+                ],
+                stdin=curl_process.stdout,
+                check=True,
+                timeout=30,
+            )
+            curl_process.wait()
+
+            distro = (self.system.distribution or "").lower()
+            distro_codename = subprocess.run(
+                ["lsb_release", "-cs"],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=10,
+            ).stdout.strip()
+
+            if "ubuntu" in distro:
+                repo_line = (
+                    f"deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/"
+                    f"mongodb-server-{mongo_ver}.gpg ] "
+                    f"http://repo.mongodb.org/apt/ubuntu "
+                    f"{distro_codename}/mongodb-org/{mongo_ver} multiverse\n"
+                )
+            elif "debian" in distro:
+                if distro_codename == "bullseye":
+                    repo_line = (
+                        f"deb [ signed-by=/usr/share/keyrings/"
+                        f"mongodb-server-{mongo_ver}.gpg ] "
+                        f"http://repo.mongodb.org/apt/debian "
+                        f"bullseye/mongodb-org/{mongo_ver} main\n"
+                    )
+                else:
+                    # Bookworm and newer (trixie, etc.) use the bookworm repo
+                    repo_line = (
+                        f"deb [ signed-by=/usr/share/keyrings/"
+                        f"mongodb-server-{mongo_ver}.gpg ] "
+                        f"http://repo.mongodb.org/apt/debian "
+                        f"bookworm/mongodb-org/{mongo_ver_bookworm} main\n"
+                    )
+            else:
+                repo_line = (
+                    f"deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/"
+                    f"mongodb-server-{mongo_ver}.gpg ] "
+                    f"http://repo.mongodb.org/apt/ubuntu "
+                    f"focal/mongodb-org/{mongo_ver} multiverse\n"
+                )
+
+            with open(f"/etc/apt/sources.list.d/mongodb-org-{mongo_ver}.list", "w") as f:
+                f.write(repo_line)
+
+            self.printer.step("Updating package database...")
+            subprocess.run(["apt-get", "update"], check=True, timeout=120)
+
+            self.printer.step("Installing MongoDB packages...")
+            subprocess.run(["apt-get", "install", "-y", "mongodb-org"], check=True, timeout=300)
+
+            self.printer.step("Starting MongoDB service...")
+            subprocess.run(["systemctl", "start", "mongod"], check=True, timeout=60)
+            subprocess.run(["systemctl", "enable", "mongod"], check=True, timeout=30)
+
+            self.printer.success("MongoDB installed successfully")
+            return True
+
+        except Exception as e:
+            self.printer.error(f"Failed to install MongoDB: {e}")
+            return False
+
+    def _install_rhel(self) -> bool:
+        """Install MongoDB on RHEL/CentOS/Fedora."""
+        try:
+            mongo_ver = self.mongodb_version
+            repo_content = (
+                f"[mongodb-org-{mongo_ver}]\n"
+                f"name=MongoDB Repository\n"
+                f"baseurl=https://repo.mongodb.org/yum/redhat/"
+                f"$releasever/mongodb-org/{mongo_ver}/x86_64/\n"
+                f"gpgcheck=1\n"
+                f"enabled=1\n"
+                f"gpgkey=https://www.mongodb.org/static/pgp/server-{mongo_ver}.asc\n"
+            )
+            with open(f"/etc/yum.repos.d/mongodb-org-{mongo_ver}.repo", "w") as f:
+                f.write(repo_content)
+
+            if "fedora" in (self.system.distribution or "").lower():
+                subprocess.run(["dnf", "install", "-y", "mongodb-org"], check=True, timeout=300)
+            else:
+                subprocess.run(["yum", "install", "-y", "mongodb-org"], check=True, timeout=300)
+
+            subprocess.run(["systemctl", "start", "mongod"], check=True, timeout=60)
+            subprocess.run(["systemctl", "enable", "mongod"], check=True, timeout=30)
+
+            self.printer.success("MongoDB installed successfully")
+            return True
+
+        except Exception as e:
+            self.printer.error(f"Failed to install MongoDB: {e}")
+            return False
+
+    def _install_arch(self) -> bool:
+        """Install MongoDB on Arch Linux via AUR helper."""
+        # mongodb-bin is an AUR package; stock pacman cannot install it.
+        aur_helper = None
+        for helper in ("yay", "paru"):
+            if shutil.which(helper):
+                aur_helper = helper
+                break
+
+        if aur_helper is None:
+            self.printer.error(
+                "mongodb-bin is an AUR package. Install an AUR helper (yay or paru) first, then re-run the installer."
             )
             return False
+
+        try:
+            subprocess.run(
+                [aur_helper, "-S", "--noconfirm", "mongodb-bin"],
+                check=True,
+                timeout=300,
+            )
+            subprocess.run(["systemctl", "start", "mongodb"], check=True, timeout=60)
+            subprocess.run(["systemctl", "enable", "mongodb"], check=True, timeout=30)
+
+            self.printer.success("MongoDB installed successfully")
+            return True
 
         except Exception as e:
             self.printer.error(f"Failed to install MongoDB: {e}")

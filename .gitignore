@@ -69,3 +69,13 @@ __pycache__/
 
 # Improvement plan (local only)
 plan.txt
+
+# Linux reference (original source for Windows port)
+# linux/
+web2/
+telemetry/
+
+# Temp files
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/

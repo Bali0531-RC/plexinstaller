@@ -6,7 +6,6 @@ Contains update logic, GPG verification, version comparison, and CLI entrypoint
 management that were previously duplicated between installer.py and plex_cli.py.
 """
 
-import ctypes
 import hashlib
 import json
 import os
@@ -18,7 +17,7 @@ import urllib.request
 from collections.abc import Callable
 from pathlib import Path
 
-INSTALLER_DIR = Path(os.environ.get("ProgramData", r"C:\ProgramData")) / "plexinstaller"
+INSTALLER_DIR = Path("/opt/plexinstaller")
 VERSION_CHECK_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/version.json"
 
 # Files managed by the auto-update system
@@ -106,6 +105,7 @@ def download_missing_files(
 
             target = install_dir / filename
             target.write_bytes(content)
+            os.chmod(target, 0o755 if filename.endswith(".py") else 0o644)
             print_success(f"Installed {filename}")
         except Exception as e:
             print_error(f"Failed to download {filename}: {e}")
@@ -208,39 +208,38 @@ def verify_gpg_signature(
 
 
 def ensure_cli_entrypoints() -> None:
-    """Ensure ``plexinstaller`` and ``plex`` commands are available on PATH.
-
-    On Windows we create small .cmd wrapper scripts in the installer directory
-    and add it to the user PATH if necessary.
-    """
-    if not ctypes.windll.shell32.IsUserAnAdmin():
+    """Ensure ``/usr/local/bin/plex`` and ``/usr/local/bin/plexinstaller`` point
+    at the current installer bundle."""
+    if os.geteuid() != 0:
         return
 
     try:
-        _create_cmd_wrapper(INSTALLER_DIR / "plexinstaller.cmd", INSTALLER_DIR / "installer.py")
-        _create_cmd_wrapper(INSTALLER_DIR / "plex.cmd", INSTALLER_DIR / "plex_cli.py")
+        bin_dir = Path("/usr/local/bin")
+        bin_dir.mkdir(parents=True, exist_ok=True)
 
-        # Try to add INSTALLER_DIR to system PATH if not already there
-        installer_str = str(INSTALLER_DIR)
-        path_env = os.environ.get("PATH", "")
-        if installer_str.lower() not in path_env.lower():
-            try:
-                subprocess.run(
-                    ["setx", "/M", "PATH", f"{path_env};{installer_str}"],
-                    capture_output=True,
-                    timeout=15,
-                )
-            except Exception:
-                pass
+        _force_symlink(bin_dir / "plexinstaller", INSTALLER_DIR / "installer.py")
+        _force_symlink(bin_dir / "plex", INSTALLER_DIR / "plex_cli.py")
     except Exception:
         pass
 
 
-def _create_cmd_wrapper(wrapper_path: Path, target: Path) -> None:
-    """Create a .cmd wrapper that invokes *target* with Python."""
+def _force_symlink(link_path: Path, target: Path) -> None:
+    """Force *link_path* to be a symlink pointing at *target*."""
     if not target.exists():
         return
-    wrapper_path.write_text(f'@echo off\npython "{target}" %*\n')
+    try:
+        if link_path.is_symlink():
+            if link_path.resolve() == target.resolve():
+                return
+            link_path.unlink(missing_ok=True)
+        elif link_path.exists():
+            link_path.unlink(missing_ok=True)
+        link_path.symlink_to(target)
+    except TypeError:
+        # Python < 3.8 missing_ok fallback
+        if link_path.is_symlink() or link_path.exists():
+            link_path.unlink()
+        link_path.symlink_to(target)
 
 
 def perform_update(
@@ -256,8 +255,8 @@ def perform_update(
 
     On failure the previous files are restored from backup.
     """
-    if not ctypes.windll.shell32.IsUserAnAdmin():
-        print_warning("Auto-update requires Administrator. Re-run the command as Administrator.")
+    if os.geteuid() != 0:
+        print_warning("Auto-update requires root. Re-run the command with sudo.")
         return
 
     # Verify GPG signature
@@ -305,12 +304,12 @@ def perform_update(
                 raise ValueError(f"No checksum provided for {filename}. Aborting update for security.")
 
             target.write_bytes(content)
+            os.chmod(target, 0o755 if filename.endswith(".py") else 0o644)
 
         ensure_cli_entrypoints()
 
         print_success("Update completed successfully. Restarting...")
-        subprocess.Popen([sys.executable] + sys.argv)
-        sys.exit(0)
+        os.execv(sys.executable, [sys.executable] + sys.argv)
 
     except Exception as e:
         print_error(f"Update failed: {e}")

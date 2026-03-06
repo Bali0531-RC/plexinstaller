@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-Utility functions for PlexDevelopment Installer
+Utility functions for PlexDevelopment Installer — Windows version
+
+All Linux-specific code (systemd, apt, ufw, certbot, chown, etc.) has been
+replaced with Windows equivalents (NSSM / sc.exe, winget / choco, netsh,
+win-acme, etc.).
 """
 
 import logging
@@ -12,6 +16,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import urllib.request
 import zipfile
 from pathlib import Path
 
@@ -47,14 +52,12 @@ def setup_logging(level: int = logging.INFO, log_file: str | None = None):
             fh.setFormatter(fmt)
             root.addHandler(fh)
         else:
-            # No log file — add a NullHandler to suppress "No handlers" warning
             root.addHandler(logging.NullHandler())
 
 
 class ColorPrinter:
     """Colored output printer"""
 
-    # Color constants (using colorama instead of raw ANSI)
     RED = Fore.RED
     GREEN = Fore.GREEN
     YELLOW = Fore.YELLOW
@@ -62,81 +65,59 @@ class ColorPrinter:
     PURPLE = Fore.MAGENTA
     CYAN = Fore.CYAN
     BOLD = Style.BRIGHT
-    NC = Style.RESET_ALL  # No Color
+    NC = Style.RESET_ALL
 
     def header(self, message: str):
-        """Print header"""
         print(f"\n{self.BOLD}{self.PURPLE}#----- {message} -----#{self.NC}\n", file=sys.stderr)
         logger.info(message)
 
     def step(self, message: str):
-        """Print step"""
         print(f"{self.BLUE}[+] {self.CYAN}{message}{self.NC}", file=sys.stderr)
         logger.info(message)
 
     def success(self, message: str):
-        """Print success"""
         print(f"{self.GREEN}[✓] {message}{self.NC}", file=sys.stderr)
         logger.info(message)
 
     def error(self, message: str):
-        """Print error"""
         print(f"{self.RED}[✗] {message}{self.NC}", file=sys.stderr)
         logger.error(message)
 
     def warning(self, message: str):
-        """Print warning"""
         print(f"{self.YELLOW}[!] {message}{self.NC}", file=sys.stderr)
         logger.warning(message)
 
 
 class SystemDetector:
-    """System detection and package management"""
+    """Windows system detection and package management"""
 
     def __init__(self):
         self.printer = ColorPrinter()
-        self.distribution = None
+        self.distribution = "windows"
         self.pkg_manager = None
 
     def detect(self):
-        """Detect Linux distribution and package manager"""
+        """Detect Windows version and available package manager"""
         self.printer.header("System Detection")
 
-        # Read /etc/os-release
-        try:
-            with open("/etc/os-release") as f:
-                for line in f:
-                    if line.startswith("ID="):
-                        self.distribution = line.split("=")[1].strip().strip('"')
-                        break
-        except FileNotFoundError:
-            self.printer.error("Cannot detect distribution (/etc/os-release not found)")
-            sys.exit(1)
+        import platform as _plat
 
-        self.printer.step(f"Detected distribution: {self.distribution}")
+        self.printer.step(f"Detected OS: Windows {_plat.version()}")
 
-        # Detect package manager
-        pkg_managers = {
-            "apt": ["apt", "apt-get"],
-            "dnf": ["dnf"],
-            "yum": ["yum"],
-            "pacman": ["pacman"],
-            "zypper": ["zypper"],
-        }
+        # Prefer winget, fall back to choco
+        if shutil.which("winget"):
+            self.pkg_manager = "winget"
+        elif shutil.which("choco"):
+            self.pkg_manager = "choco"
+        else:
+            self.printer.warning("No package manager found (winget or chocolatey)")
+            self.printer.step("Install winget from the Microsoft Store or chocolatey from https://chocolatey.org")
 
-        for name, commands in pkg_managers.items():
-            if any(shutil.which(cmd) for cmd in commands):
-                self.pkg_manager = name
-                break
-
-        if not self.pkg_manager:
-            self.printer.error("Cannot determine package manager")
-            sys.exit(1)
-
-        self.printer.success(f"Using package manager: {self.pkg_manager}")
+        if self.pkg_manager:
+            self.printer.success(f"Using package manager: {self.pkg_manager}")
 
     def install_dependencies(self):
-        """Install system dependencies"""
+        """Install system dependencies via winget or choco"""
         from config import Config
 
         self.printer.header("Installing Dependencies")
@@ -149,91 +130,40 @@ class SystemDetector:
         packages = config.SYSTEM_PACKAGES.get(self.pkg_manager, [])
 
         if not packages:
-            self.printer.warning("No package list for this package manager")
+            self.printer.warning(f"No package list for {self.pkg_manager}")
             return
 
-        # Update package lists
-        self.printer.step("Updating package lists...")
+        self.printer.step(f"Installing {len(packages)} packages via {self.pkg_manager}...")
 
-        update_cmds = {
-            "apt": ["apt", "update", "-y"],
-            "dnf": ["dnf", "update", "-y"],
-            "yum": ["yum", "update", "-y"],
-            "pacman": ["pacman", "-Syu", "--noconfirm"],
-            "zypper": ["zypper", "refresh"],
-        }
-
-        cmd = update_cmds.get(self.pkg_manager)
-        if cmd:
+        for pkg in packages:
             try:
-                subprocess.run(["sudo"] + cmd, check=False)
-            except Exception as e:
-                self.printer.warning(f"Update failed: {e}")
+                if self.pkg_manager == "winget":
+                    subprocess.run(
+                        [
+                            "winget", "install", "--id", pkg,
+                            "--accept-package-agreements", "--accept-source-agreements",
+                        ],
+                        check=True,
+                        capture_output=True,
+                    )
+                elif self.pkg_manager == "choco":
+                    subprocess.run(["choco", "install", pkg, "-y"], check=True, capture_output=True)
+                self.printer.success(f"Installed {pkg}")
+            except subprocess.CalledProcessError:
+                self.printer.warning(f"Failed to install {pkg} (may already be installed)")
 
-        # Install packages
-        self.printer.step(f"Installing {len(packages)} packages...")
+        # Verify Node.js
+        self._verify_nodejs()
 
-        install_cmds = {
-            "apt": ["apt", "install", "-y"] + packages,
-            "dnf": ["dnf", "install", "-y"] + packages,
-            "yum": ["yum", "install", "-y"] + packages,
-            "pacman": ["pacman", "-S", "--noconfirm", "--needed"] + packages,
-            "zypper": ["zypper", "install", "-y"] + packages,
-        }
-
-        cmd = install_cmds.get(self.pkg_manager)
-        if cmd:
-            try:
-                subprocess.run(["sudo"] + cmd, check=True)
-                self.printer.success("System dependencies installed")
-            except subprocess.CalledProcessError as e:
-                self.printer.error(f"Package installation failed: {e}")
-
-        # Install Node.js
-        self._install_nodejs()
-
-    def _install_nodejs(self):
-        """Install Node.js 20+"""
-        self.printer.step("Installing Node.js 20+...")
-
-        if self.pkg_manager in ["apt", "dnf", "yum"]:
-            # Use NodeSource repository
-            script_url = {
-                "apt": "https://deb.nodesource.com/setup_20.x",
-                "dnf": "https://rpm.nodesource.com/setup_20.x",
-                "yum": "https://rpm.nodesource.com/setup_20.x",
-            }[self.pkg_manager]
-
-            try:
-                # Download and run setup script
-                subprocess.run(f"curl -fsSL {script_url} | sudo -E bash -", shell=True, check=True)
-
-                # Install nodejs
-                install_cmd = {
-                    "apt": ["apt", "install", "-y", "nodejs"],
-                    "dnf": ["dnf", "install", "-y", "nodejs"],
-                    "yum": ["yum", "install", "-y", "nodejs"],
-                }[self.pkg_manager]
-
-                subprocess.run(["sudo"] + install_cmd, check=True)
-                self.printer.success("Node.js installed")
-            except subprocess.CalledProcessError as e:
-                self.printer.error(f"Node.js installation failed: {e}")
-
-        elif self.pkg_manager == "pacman":
-            try:
-                subprocess.run(["sudo", "pacman", "-S", "--noconfirm", "--needed", "nodejs", "npm"], check=True)
-                self.printer.success("Node.js installed")
-            except subprocess.CalledProcessError as e:
-                self.printer.error(f"Node.js installation failed: {e}")
-
-        # Verify installation
+    def _verify_nodejs(self):
+        """Verify Node.js is installed and reachable."""
+        node_cmd = shutil.which("node") or "node"
         try:
-            result = subprocess.run(["node", "-v"], capture_output=True, text=True)
+            result = subprocess.run([node_cmd, "-v"], capture_output=True, text=True)
             version = result.stdout.strip()
             self.printer.step(f"Node.js version: {version}")
         except FileNotFoundError:
-            self.printer.error("Node.js not found after installation")
+            self.printer.error("Node.js not found. Install it via winget or from https://nodejs.org")
 
 
 class DNSChecker:
@@ -246,7 +176,6 @@ class DNSChecker:
         """Check if domain points to this server"""
         self.printer.step(f"Checking DNS for: {domain}")
 
-        # Get server's public IP
         server_ip = self._get_public_ip()
         if not server_ip:
             self.printer.error("Cannot determine server IP")
@@ -254,7 +183,6 @@ class DNSChecker:
 
         self.printer.step(f"Server IP: {server_ip}")
 
-        # Resolve domain
         try:
             domain_ip = socket.gethostbyname(domain)
             self.printer.step(f"Domain resolves to: {domain_ip}")
@@ -270,19 +198,23 @@ class DNSChecker:
             return False
 
     def _get_public_ip(self) -> str | None:
-        """Get server's public IP address"""
-        services = ["https://ifconfig.me", "https://api.ipify.org", "https://icanhazip.com"]
+        """Get server's public IP address via HTTP"""
+        services = ["https://api.ipify.org", "https://ifconfig.me", "https://icanhazip.com"]
 
         for service in services:
             try:
-                result = subprocess.run(["curl", "-s", "-m", "5", service], capture_output=True, text=True, timeout=10)
-                if result.returncode == 0 and result.stdout.strip():
-                    return result.stdout.strip()
-            except (subprocess.TimeoutExpired, Exception):
+                req = urllib.request.Request(service, headers={"User-Agent": "curl/7.0"})
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    ip = resp.read().decode().strip()
+                    if ip:
+                        return ip
+            except Exception:
                 continue
 
         return None
 
+
+# ===== Sensitive-value redaction (unchanged from Linux) =====
 
 SENSITIVE_YAML_KEYS = {
     "token",
@@ -300,7 +232,6 @@ def redact_mongo_uri_credentials(value: str) -> str:
         host_part = match.group("host")
         return f"{scheme}://<REDACTED>:<REDACTED>@{host_part}"
 
-    # mongodb+srv://user:pass@host/...
     return re.sub(
         r"(?P<scheme>mongodb(?:\+srv)?)://(?P<user>[^:@/\s]+):(?P<pw>[^@/\s]+)@(?P<host>[^/\s]+)",
         _repl,
@@ -313,17 +244,14 @@ def redact_sensitive_yaml(text: str) -> str:
     """Redact known sensitive values in YAML-ish files without parsing YAML."""
     lines: list[str] = []
     for line in text.splitlines():
-        # Preserve comments/empty lines
         if not line.strip() or line.lstrip().startswith("#"):
             lines.append(line)
             continue
 
-        # Match: <indent><key><sep><value><optional comment>
         match = re.match(r"^(?P<indent>\s*)(?P<key>[A-Za-z0-9_\-]+)\s*:\s*(?P<value>.*)$", line)
         if match:
             key = match.group("key")
             if key.lower() in SENSITIVE_YAML_KEYS:
-                # Keep inline comment if present
                 value_part = match.group("value")
                 comment = ""
                 if "#" in value_part:
@@ -335,21 +263,22 @@ def redact_sensitive_yaml(text: str) -> str:
                 lines.append(redacted)
                 continue
 
-            # Always redact mongo credentials if it's a MongoURI-like value
             value_part = match.group("value")
             redacted_value = redact_mongo_uri_credentials(value_part)
             if redacted_value != value_part:
                 lines.append(f"{match.group('indent')}{key}: {redacted_value}")
                 continue
 
-        # Fallback: redact mongo URI credentials even if it appears in non-YAML lines.
         lines.append(redact_mongo_uri_credentials(line))
 
     return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
 
 
+# ===== Windows Firewall =====
+
+
 class FirewallManager:
-    """Firewall port management"""
+    """Windows Firewall management via netsh advfirewall"""
 
     def __init__(self):
         self.printer = ColorPrinter()
@@ -358,92 +287,44 @@ class FirewallManager:
         """Open firewall port"""
         self.printer.step(f"Opening port {port} for {description}")
 
-        # Check which firewall is in use
-        if shutil.which("ufw"):
-            self._open_ufw(port, description)
-        elif shutil.which("firewall-cmd"):
-            self._open_firewalld(port)
-        elif shutil.which("iptables"):
-            self._open_iptables(port)
-        else:
-            self.printer.warning("No supported firewall found")
+        rule_name = f"Plex-{description}-{port}"
+        try:
+            subprocess.run(
+                [
+                    "netsh", "advfirewall", "firewall", "add", "rule",
+                    f"name={rule_name}", "dir=in", "action=allow",
+                    "protocol=tcp", f"localport={port}",
+                ],
+                check=True,
+                capture_output=True,
+            )
+            self.printer.success(f"Port {port} opened in Windows Firewall")
+        except subprocess.CalledProcessError:
+            self.printer.warning("Failed to open port in Windows Firewall (run as Administrator)")
 
     def close_port(self, port: int):
-        """Close firewall port that was previously opened."""
+        """Remove firewall rule for port"""
         self.printer.step(f"Reverting firewall rule on port {port}")
 
-        if shutil.which("ufw"):
-            self._close_ufw(port)
-        elif shutil.which("firewall-cmd"):
-            self._close_firewalld(port)
-        elif shutil.which("iptables"):
-            self._close_iptables(port)
-
-    def _open_ufw(self, port: int, description: str):
-        """Open port in UFW"""
         try:
             subprocess.run(
-                ["sudo", "ufw", "allow", f"{port}/tcp", "comment", description], check=True, capture_output=True
-            )
-            self.printer.success(f"Port {port} opened in UFW")
-        except subprocess.CalledProcessError:
-            self.printer.warning("Failed to open port in UFW")
-
-    def _open_firewalld(self, port: int):
-        """Open port in firewalld"""
-        try:
-            subprocess.run(
-                ["sudo", "firewall-cmd", "--permanent", f"--add-port={port}/tcp"], check=True, capture_output=True
-            )
-            subprocess.run(["sudo", "firewall-cmd", "--reload"], check=True, capture_output=True)
-            self.printer.success(f"Port {port} opened in firewalld")
-        except subprocess.CalledProcessError:
-            self.printer.warning("Failed to open port in firewalld")
-
-    def _open_iptables(self, port: int):
-        """Open port in iptables"""
-        try:
-            subprocess.run(
-                ["sudo", "iptables", "-A", "INPUT", "-p", "tcp", "--dport", str(port), "-j", "ACCEPT"],
+                [
+                    "netsh", "advfirewall", "firewall", "delete", "rule",
+                    "protocol=tcp", f"localport={port}",
+                ],
                 check=True,
                 capture_output=True,
             )
-            self.printer.success(f"Port {port} opened in iptables")
-            self.printer.warning("iptables rule may not persist after reboot")
+            self.printer.success(f"Port {port} rule removed from Windows Firewall")
         except subprocess.CalledProcessError:
-            self.printer.warning("Failed to open port in iptables")
+            self.printer.warning("Failed to remove Windows Firewall rule")
 
-    def _close_ufw(self, port: int):
-        try:
-            subprocess.run(["sudo", "ufw", "delete", "allow", f"{port}/tcp"], check=True, capture_output=True)
-            self.printer.success(f"Port {port} rule removed from UFW")
-        except subprocess.CalledProcessError:
-            self.printer.warning("Failed to remove UFW rule")
 
-    def _close_firewalld(self, port: int):
-        try:
-            subprocess.run(
-                ["sudo", "firewall-cmd", "--permanent", f"--remove-port={port}/tcp"], check=True, capture_output=True
-            )
-            subprocess.run(["sudo", "firewall-cmd", "--reload"], check=True, capture_output=True)
-            self.printer.success(f"Port {port} removed from firewalld")
-        except subprocess.CalledProcessError:
-            self.printer.warning("Failed to remove firewalld rule")
-
-    def _close_iptables(self, port: int):
-        try:
-            subprocess.run(
-                ["sudo", "iptables", "-D", "INPUT", "-p", "tcp", "--dport", str(port), "-j", "ACCEPT"],
-                check=True,
-                capture_output=True,
-            )
-            self.printer.success(f"Port {port} rule removed from iptables")
-        except subprocess.CalledProcessError:
-            self.printer.warning("Failed to remove iptables rule")
+# ===== Nginx (Windows portable build) =====
 
 
 class NginxManager:
-    """Nginx configuration management"""
+    """Nginx configuration management — Windows portable nginx"""
 
     def __init__(self):
         self.printer = ColorPrinter()
@@ -457,7 +338,9 @@ class NginxManager:
 
         config_file = self.config.nginx_available / f"{domain}.conf"
 
-        # Create nginx config
+        # Use forward slashes for nginx config compatibility
+        install_path_str = str(install_path).replace("\\", "/")
+
         nginx_config = f"""server {{
     listen 80;
     server_name {domain};
@@ -479,187 +362,234 @@ class NginxManager:
     # Custom 502 error page
     error_page 502 /502.html;
     location = /502.html {{
-        root {install_path};
+        root {install_path_str};
         internal;
     }}
 }}
 """
 
-        # Write config
+        # Ensure dirs exist
+        config_file.parent.mkdir(parents=True, exist_ok=True)
         config_file.write_text(nginx_config)
-        os.chmod(config_file, 0o644)
 
-        # Enable site
-        enabled_link = self.config.nginx_enabled / f"{domain}.conf"
-        if enabled_link.exists():
-            enabled_link.unlink()
-        enabled_link.symlink_to(config_file)
+        # Copy to enabled dir (no symlinks on Windows)
+        enabled_file = self.config.nginx_enabled / f"{domain}.conf"
+        enabled_file.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(str(config_file), str(enabled_file))
 
-        # Test and reload nginx
-        try:
-            subprocess.run(["sudo", "nginx", "-t"], check=True, capture_output=True)
-            subprocess.run(["sudo", "systemctl", "reload", "nginx"], check=True)
-            self.printer.success("Nginx configured")
-        except subprocess.CalledProcessError as e:
-            self.printer.error(f"Nginx configuration failed: {e.stderr.decode()}")
-            raise
+        # Reload nginx if running
+        nginx_exe = shutil.which("nginx")
+        if nginx_exe:
+            try:
+                subprocess.run([nginx_exe, "-t"], check=True, capture_output=True)
+                subprocess.run([nginx_exe, "-s", "reload"], check=True, capture_output=True)
+                self.printer.success("Nginx configured and reloaded")
+            except subprocess.CalledProcessError as e:
+                self.printer.error(f"Nginx configuration failed: {e}")
+                raise
+        else:
+            self.printer.warning("Nginx not found in PATH — config written but not reloaded")
+            self.printer.step("Download nginx for Windows: https://nginx.org/en/docs/windows.html")
+
+
+# ===== SSL (win-acme / certbot) =====
 
 
 class SSLManager:
-    """SSL certificate management"""
+    """SSL certificate management — Windows"""
 
     def __init__(self):
         self.printer = ColorPrinter()
 
     def setup(self, domain: str, email: str):
-        """Setup SSL certificate with certbot"""
+        """Setup SSL certificate using win-acme or certbot"""
         self.printer.step(f"Setting up SSL for {domain}")
 
-        try:
-            subprocess.run(
-                [
-                    "sudo",
-                    "certbot",
-                    "--nginx",
-                    "-d",
-                    domain,
-                    "--non-interactive",
-                    "--agree-tos",
-                    "--email",
-                    email,
-                    "--redirect",
-                    "--keep-until-expiring",
-                ],
-                check=True,
-            )
+        wacs = shutil.which("wacs") or shutil.which("wacs.exe")
+        certbot = shutil.which("certbot") or shutil.which("certbot.exe")
 
-            self.printer.success("SSL certificate obtained")
-        except subprocess.CalledProcessError:
-            self.printer.error("SSL setup failed")
-            self.printer.error("Check: DNS records, firewall ports 80/443")
-            raise
+        if wacs:
+            try:
+                subprocess.run(
+                    [
+                        wacs, "--target", "manual", "--host", domain,
+                        "--emailaddress", email, "--accepttos",
+                    ],
+                    check=True,
+                )
+                self.printer.success("SSL certificate obtained via win-acme")
+            except subprocess.CalledProcessError:
+                self.printer.error("SSL setup via win-acme failed")
+                raise
+        elif certbot:
+            try:
+                subprocess.run(
+                    [
+                        certbot, "certonly", "--standalone",
+                        "-d", domain,
+                        "--non-interactive", "--agree-tos",
+                        "--email", email,
+                    ],
+                    check=True,
+                )
+                self.printer.success("SSL certificate obtained via certbot")
+            except subprocess.CalledProcessError:
+                self.printer.error("SSL setup via certbot failed")
+                raise
+        else:
+            self.printer.error("No SSL tool found.")
+            self.printer.step("Install win-acme: https://www.win-acme.com/")
+            self.printer.step("Or certbot: https://certbot.eff.org/")
+            raise FileNotFoundError("No SSL tool available")
 
     def setup_auto_renewal(self):
-        """Setup automatic SSL renewal with cron"""
-        self.printer.step("Setting up SSL auto-renewal")
-
-        cron_entry = "0 2 * * * /usr/bin/certbot renew --quiet --deploy-hook 'systemctl reload nginx'\n"
-
-        try:
-            # Get current crontab
-            result = subprocess.run(["sudo", "crontab", "-l"], capture_output=True, text=True)
-            current_cron = result.stdout if result.returncode == 0 else ""
-
-            # Add renewal entry if not present
-            if "certbot renew" not in current_cron:
-                new_cron = current_cron + cron_entry
-                subprocess.run(["sudo", "crontab", "-"], input=new_cron, text=True, check=True)
-                self.printer.success("SSL auto-renewal configured")
-            else:
-                self.printer.step("SSL auto-renewal already configured")
-        except subprocess.CalledProcessError as e:
-            self.printer.error(f"Failed to setup auto-renewal: {e}")
+        """On Windows, win-acme handles auto-renewal via a scheduled task."""
+        self.printer.step("On Windows, win-acme handles auto-renewal via a scheduled task.")
+        self.printer.step("If using certbot, create a scheduled task to run 'certbot renew'.")
 
 
-class SystemdManager:
-    """Systemd service management"""
+# ===== Service Management (NSSM / sc.exe) =====
+
+
+class ServiceManager:
+    """Windows service management using NSSM (preferred) or sc.exe"""
 
     def __init__(self):
         self.printer = ColorPrinter()
 
     def create_service(self, service_name: str, install_path: Path):
-        """Create systemd service file"""
-        service_file = Path(f"/etc/systemd/system/plex-{service_name}.service")
+        """Create and start a Windows service for the application."""
+        win_svc = f"plex-{service_name}"
+        node_exe = shutil.which("node") or "node.exe"
+        nssm = shutil.which("nssm")
 
-        service_content = f"""[Unit]
-Description=PlexDevelopment - {service_name} Service
-After=network.target nginx.service
-
-[Service]
-Type=simple
-User=root
-Group=root
-WorkingDirectory={install_path}
-ExecStart=/usr/bin/node .
-Restart=on-failure
-RestartSec=10
-TimeoutStartSec=30s
-StandardOutput=syslog
-StandardError=syslog
-SyslogIdentifier=plex-{service_name}
-
-[Install]
-WantedBy=multi-user.target
-"""
-
-        service_file.write_text(service_content)
-        os.chmod(service_file, 0o644)
-
-        # Reload systemd and enable service
-        subprocess.run(["sudo", "systemctl", "daemon-reload"], check=True, timeout=30)
-        subprocess.run(["sudo", "systemctl", "enable", f"plex-{service_name}"], check=True, timeout=30)
-        subprocess.run(["sudo", "systemctl", "start", f"plex-{service_name}"], check=True, timeout=60)
-
-        self.printer.success(f"Service plex-{service_name} created and started")
+        if nssm:
+            try:
+                subprocess.run(
+                    [nssm, "install", win_svc, node_exe, "."],
+                    check=True, capture_output=True,
+                )
+                subprocess.run(
+                    [nssm, "set", win_svc, "AppDirectory", str(install_path)],
+                    check=True, capture_output=True,
+                )
+                subprocess.run(
+                    [nssm, "set", win_svc, "Description", f"PlexDevelopment - {service_name}"],
+                    check=True, capture_output=True,
+                )
+                subprocess.run(
+                    [nssm, "set", win_svc, "Start", "SERVICE_AUTO_START"],
+                    check=True, capture_output=True,
+                )
+                subprocess.run([nssm, "start", win_svc], check=True, capture_output=True)
+                self.printer.success(f"Service {win_svc} created and started (via NSSM)")
+            except subprocess.CalledProcessError as e:
+                self.printer.error(f"NSSM service creation failed: {e}")
+                self.printer.step("Ensure NSSM is installed and you're running as Administrator")
+        else:
+            bin_path = f'"{node_exe}" "{install_path}"'
+            try:
+                subprocess.run(
+                    [
+                        "sc", "create", win_svc,
+                        f"binPath={bin_path}", "start=auto",
+                        f"DisplayName=PlexDevelopment - {service_name}",
+                    ],
+                    check=True, capture_output=True,
+                )
+                subprocess.run(["sc", "start", win_svc], check=True, capture_output=True)
+                self.printer.success(f"Service {win_svc} created and started (via sc.exe)")
+                self.printer.warning("sc.exe services have limited features. Install NSSM for better management.")
+                self.printer.step("Download NSSM: https://nssm.cc/")
+            except subprocess.CalledProcessError as e:
+                self.printer.error(f"Service creation failed: {e}")
+                self.printer.step("Run as Administrator to create Windows services")
 
     def start(self, service_name: str):
         """Start service"""
-        try:
-            subprocess.run(["sudo", "systemctl", "start", service_name], check=True, timeout=60)
-            self.printer.success(f"{service_name} started")
-        except subprocess.CalledProcessError:
-            self.printer.error(f"Failed to start {service_name}")
+        self._svc_action("start", service_name)
 
     def stop(self, service_name: str):
         """Stop service"""
-        try:
-            subprocess.run(["sudo", "systemctl", "stop", service_name], check=True, timeout=60)
-            self.printer.success(f"{service_name} stopped")
-        except subprocess.CalledProcessError:
-            self.printer.error(f"Failed to stop {service_name}")
+        self._svc_action("stop", service_name)
 
     def restart(self, service_name: str):
-        """Restart service"""
-        try:
-            subprocess.run(["sudo", "systemctl", "restart", service_name], check=True, timeout=60)
-            self.printer.success(f"{service_name} restarted")
-        except subprocess.CalledProcessError:
-            self.printer.error(f"Failed to restart {service_name}")
+        """Restart service (stop + start)"""
+        self.stop(service_name)
+        import time
+        time.sleep(2)
+        self.start(service_name)
 
     def get_status(self, service_name: str) -> str:
-        """Get service status"""
+        """Get service status via sc query"""
         try:
             result = subprocess.run(
-                ["systemctl", "is-active", service_name], capture_output=True, text=True, timeout=10
+                ["sc", "query", service_name],
+                capture_output=True, text=True, timeout=10,
             )
-            return result.stdout.strip() or "unknown"
+            if "RUNNING" in result.stdout:
+                return "active"
+            elif "STOPPED" in result.stdout:
+                return "inactive"
+            return "unknown"
         except Exception:
             return "unknown"
 
     def view_logs(self, service_name: str):
-        """View service logs"""
+        """View service logs from Windows Event Log"""
+        self.printer.step(f"Querying Windows Event Log for {service_name}...")
         try:
-            subprocess.run(["sudo", "journalctl", "-u", service_name, "-n", "50", "-f"])
-        except KeyboardInterrupt:
-            pass
+            subprocess.run(
+                [
+                    "powershell", "-Command",
+                    f"Get-EventLog -LogName Application -Source '{service_name}' -Newest 50 "
+                    f"| Format-List",
+                ],
+                timeout=30,
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            self.printer.warning("Could not query Event Log. Check Windows Event Viewer manually.")
 
     def remove_service(self, service_name: str):
-        """Remove systemd service"""
+        """Remove (delete) a Windows service"""
+        nssm = shutil.which("nssm")
         try:
-            subprocess.run(["sudo", "systemctl", "stop", service_name], check=False, timeout=60)
-            subprocess.run(["sudo", "systemctl", "disable", service_name], check=False, timeout=30)
-
-            service_file = Path(f"/etc/systemd/system/{service_name}.service")
-            # Use try/except instead of check-then-act to avoid race condition
-            try:
-                service_file.unlink()
-            except FileNotFoundError:
-                pass
-
-            subprocess.run(["sudo", "systemctl", "daemon-reload"], check=True, timeout=30)
+            self.stop(service_name)
+        except Exception:
+            pass
+        try:
+            if nssm:
+                subprocess.run(
+                    [nssm, "remove", service_name, "confirm"],
+                    check=True, capture_output=True,
+                )
+            else:
+                subprocess.run(
+                    ["sc", "delete", service_name],
+                    check=True, capture_output=True,
+                )
             self.printer.success(f"Service {service_name} removed")
         except subprocess.CalledProcessError as e:
             self.printer.error(f"Failed to remove service: {e}")
+
+    def _svc_action(self, action: str, service_name: str):
+        """Execute a start/stop action on a Windows service."""
+        nssm = shutil.which("nssm")
+        try:
+            if nssm:
+                subprocess.run([nssm, action, service_name], check=True, capture_output=True, timeout=60)
+            else:
+                subprocess.run(["sc", action, service_name], check=True, capture_output=True, timeout=60)
+            self.printer.success(f"{service_name} {action}ed")
+        except subprocess.CalledProcessError:
+            self.printer.error(f"Failed to {action} {service_name}")
+
+
+# Alias so existing code that imports SystemdManager still works
+SystemdManager = ServiceManager
+
+
+# ===== Archive Extraction =====
 
 
 class ArchiveExtractor:
@@ -672,21 +602,17 @@ class ArchiveExtractor:
         """Extract archive to target directory"""
         self.printer.step(f"Extracting {archive_path.name}")
 
-        # Verify archive exists and is readable
         if not archive_path.exists():
             raise FileNotFoundError(f"Archive not found: {archive_path}")
 
-        # Create target directory
         try:
             target_dir.mkdir(parents=True, exist_ok=True)
         except PermissionError as exc:
             raise PermissionError(f"Cannot create directory {target_dir}: permission denied") from exc
 
-        # Create temporary extraction directory
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
 
-            # Extract based on file type with improved error handling
             try:
                 if archive_path.suffix == ".zip":
                     self._extract_zip(archive_path, temp_path)
@@ -703,10 +629,8 @@ class ArchiveExtractor:
             except PermissionError as exc:
                 raise PermissionError(f"Cannot read archive {archive_path.name}: permission denied") from exc
 
-            # Find actual product directory
             source_dir = self._find_product_dir(temp_path, target_dir.name)
 
-            # Move contents to target
             for item in source_dir.iterdir():
                 dest = target_dir / item.name
                 if dest.exists():
@@ -716,14 +640,7 @@ class ArchiveExtractor:
                         dest.unlink()
                 shutil.move(str(item), str(target_dir))
 
-            # Set permissions
-            subprocess.run(["sudo", "chown", "-R", "root:root", str(target_dir)], timeout=60)
-            subprocess.run(
-                ["sudo", "find", str(target_dir), "-type", "d", "-exec", "chmod", "755", "{}", ";"], timeout=60
-            )
-            subprocess.run(
-                ["sudo", "find", str(target_dir), "-type", "f", "-exec", "chmod", "644", "{}", ";"], timeout=60
-            )
+            # No chown/chmod needed on Windows — files inherit parent ACLs
 
         self.printer.success(f"Extracted to {target_dir}")
         return target_dir
@@ -732,7 +649,6 @@ class ArchiveExtractor:
         """Extract ZIP file with path traversal protection"""
         with zipfile.ZipFile(archive_path, "r") as zip_ref:
             for member in zip_ref.namelist():
-                # Validate each path before extraction
                 member_path = (target_path / member).resolve()
                 if not str(member_path).startswith(str(target_path.resolve())):
                     raise ValueError(f"Path traversal attempt detected: {member}")
@@ -742,47 +658,62 @@ class ArchiveExtractor:
         """Extract TAR file with path traversal protection"""
         with tarfile.open(archive_path, "r:*") as tar_ref:
             for member in tar_ref.getmembers():
-                # Validate each path before extraction
                 member_path = (target_path / member.name).resolve()
                 if not str(member_path).startswith(str(target_path.resolve())):
                     raise ValueError(f"Path traversal attempt detected: {member.name}")
             tar_ref.extractall(target_path)
 
     def _extract_rar(self, archive_path: Path, target_path: Path):
-        """Extract RAR file with path traversal protection"""
-        # Check if unrar is available
-        if not shutil.which("unrar"):
-            raise FileNotFoundError("unrar command not found. Install it with: apt install unrar")
+        """Extract RAR file — requires unrar or 7z in PATH"""
+        unrar = shutil.which("unrar")
+        sevenz = shutil.which("7z")
 
-        subprocess.run(["unrar", "x", "-o+", str(archive_path), str(target_path) + "/"], check=True, timeout=300)
+        if unrar:
+            subprocess.run(
+                ["unrar", "x", "-o+", str(archive_path), str(target_path) + "\\"],
+                check=True, timeout=300,
+            )
+        elif sevenz:
+            subprocess.run(
+                ["7z", "x", str(archive_path), f"-o{target_path}", "-y"],
+                check=True, timeout=300,
+            )
+        else:
+            raise FileNotFoundError(
+                "No RAR extractor found. Install 7-Zip (winget install 7zip.7zip) "
+                "or WinRAR and ensure it's in your PATH."
+            )
 
-        # Post-extraction validation: ensure all files are within target
+        # Post-extraction validation
         target_resolved = target_path.resolve()
         for item in target_path.rglob("*"):
             if not str(item.resolve()).startswith(str(target_resolved)):
-                # Remove the offending file and raise error
                 if item.is_file():
                     item.unlink()
                 raise ValueError(f"Path traversal attempt detected in RAR archive: {item}")
 
     def _find_product_dir(self, temp_path: Path, product_name: str) -> Path:
         """Find actual product directory within extracted archive"""
-        # Check if there's a single subdirectory
         subdirs = [d for d in temp_path.iterdir() if d.is_dir()]
 
         if len(subdirs) == 1 and not list(temp_path.glob("*.[jt]s")):
-            # Single subdirectory and no JS/TS files in root
             return subdirs[0]
 
-        # Check for directory matching product name
         for subdir in subdirs:
             if subdir.name.lower() == product_name.lower():
                 return subdir
 
-        # Check for package.json
         package_json = list(temp_path.rglob("package.json"))
         if package_json:
             return package_json[0].parent
 
-        # Default to temp_path itself
         return temp_path
+
+
+def is_admin() -> bool:
+    """Check if the current process is running as Administrator."""
+    try:
+        import ctypes
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except Exception:
+        return False

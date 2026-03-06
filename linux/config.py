@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 """
-Configuration module for PlexDevelopment Installer — Windows version
+Configuration module for PlexDevelopment Installer
 """
 
 import os
 from dataclasses import dataclass
 from pathlib import Path
-
-_PROGRAMDATA = Path(os.environ.get("ProgramData", r"C:\ProgramData"))
 
 
 @dataclass
@@ -23,26 +21,22 @@ class ProductConfig:
 
 
 class Config:
-    """Global configuration — Windows paths"""
+    """Global configuration"""
 
     # Installation paths
-    INSTALL_DIR = _PROGRAMDATA / "plex" / "apps"
-    NGINX_AVAILABLE = _PROGRAMDATA / "plex" / "nginx" / "sites-available"
-    NGINX_ENABLED = _PROGRAMDATA / "plex" / "nginx" / "sites-enabled"
-    PLEX_SETUP_FILE = _PROGRAMDATA / "plex" / "setup"
+    INSTALL_DIR = Path("/var/www/plex")
+    NGINX_AVAILABLE = Path("/etc/nginx/sites-available")
+    NGINX_ENABLED = Path("/etc/nginx/sites-enabled")
+    PLEX_SETUP_FILE = Path("/etc/plex/setup")
     TELEMETRY_ENDPOINT = os.environ.get("PLEX_TELEMETRY_URL", "https://plexdev.xyz/tel")
-    TELEMETRY_LOG_DIR = Path(
-        os.environ.get("PLEX_TELEMETRY_LOG_DIR", str(_PROGRAMDATA / "plexinstaller" / "telemetry" / "logs"))
-    )
+    TELEMETRY_LOG_DIR = Path(os.environ.get("PLEX_TELEMETRY_LOG_DIR", "/opt/plexinstaller/telemetry/logs"))
     PASTE_ENDPOINT = os.environ.get("PLEX_INSTALLER_PASTE_URL", "https://paste.plexdev.xyz/documents")
-    TELEMETRY_PREF_FILE = Path(
-        os.environ.get("PLEX_TELEMETRY_PREF_FILE", str(_PROGRAMDATA / "plex" / "telemetry_pref"))
-    )
+    TELEMETRY_PREF_FILE = Path(os.environ.get("PLEX_TELEMETRY_PREF_FILE", "/etc/plex/telemetry_pref"))
 
     # Node.js
     NODE_MIN_VERSION = 20
 
-    # Products configuration
+    # Products configuration (from beta.sh)
     PRODUCTS: dict[str, ProductConfig] = {
         "plextickets": ProductConfig(
             name="plextickets",
@@ -79,22 +73,103 @@ class Config:
         ),
     }
 
-    # System packages — Windows package managers
+    # System packages by package manager
     SYSTEM_PACKAGES = {
-        "winget": [
-            "Git.Git",
-            "OpenJS.NodeJS.LTS",
-            "7zip.7zip",
-        ],
-        "choco": [
+        "apt": [
+            "curl",
+            "wget",
             "git",
-            "nodejs-lts",
-            "7zip",
+            "unzip",
+            "nginx",
+            "certbot",
+            "python3-certbot-nginx",
+            "dnsutils",
+            "net-tools",
+            "nano",
+            "zip",
+            "tar",
+            "ca-certificates",
+            "gnupg",
+            "sudo",
+            "coreutils",
+            "python3-pip",
+        ],
+        "dnf": [
+            "curl",
+            "wget",
+            "git",
+            "unzip",
+            "nginx",
+            "certbot",
+            "python3-certbot-nginx",
+            "bind-utils",
+            "net-tools",
+            "nano",
+            "zip",
+            "tar",
+            "dnf-plugins-core",
+            "sudo",
+            "coreutils",
+            "python3-pip",
+        ],
+        "yum": [
+            "curl",
+            "wget",
+            "git",
+            "unzip",
+            "nginx",
+            "certbot",
+            "python3-certbot-nginx",
+            "bind-utils",
+            "net-tools",
+            "nano",
+            "zip",
+            "tar",
+            "yum-utils",
+            "sudo",
+            "coreutils",
+            "python3-pip",
+        ],
+        "pacman": [
+            "curl",
+            "wget",
+            "git",
+            "unzip",
+            "nginx",
+            "certbot",
+            "certbot-nginx",
+            "bind",
+            "dnsutils",
+            "net-tools",
+            "nano",
+            "zip",
+            "tar",
+            "sudo",
+            "coreutils",
+            "python-pip",
+        ],
+        "zypper": [
+            "curl",
+            "wget",
+            "git",
+            "unzip",
+            "nginx",
+            "certbot",
+            "python3-certbot-nginx",
+            "bind-utils",
+            "net-tools",
+            "nano",
+            "zip",
+            "tar",
+            "sudo",
+            "coreutils",
+            "python3-pip",
         ],
     }
 
     # MongoDB installation
     MONGODB_VERSION = "8.0"
+    MONGODB_REPO_VERSION_BOOKWORM = "8.2"  # Bookworm uses 8.2 repo per MongoDB official docs
 
     def __init__(self):
         """Initialize configuration"""

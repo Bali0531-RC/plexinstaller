@@ -6,6 +6,7 @@ Extracted from PlexInstaller to keep domain logic isolated and testable.
 
 import os
 import shutil
+import subprocess
 import tarfile
 from datetime import datetime
 from pathlib import Path
@@ -34,7 +35,7 @@ class BackupManager:
     def menu(self):
         """Interactive backup management menu."""
         while True:
-            os.system("cls")
+            os.system("clear" if os.name != "nt" else "cls")
             self.printer.header("Backup Management")
             print(f"Backup Location: {self.backup_dir}")
             print("---")
@@ -101,7 +102,7 @@ class BackupManager:
         self.printer.step(f"Creating backup of {product}...")
 
         service_name = f"plex-{product}"
-        was_running = self.systemd.get_status(service_name).strip().lower() in ("active", "running")
+        was_running = self.systemd.get_status(service_name).strip().lower() == "active"
 
         if was_running:
             self.printer.step("Stopping service...")
@@ -219,6 +220,37 @@ class BackupManager:
 
             with tarfile.open(backup_file, "r:gz") as tar:
                 tar.extractall(self.install_dir)
+
+            self.printer.step("Setting permissions...")
+            subprocess.run(["chown", "-R", "root:root", str(install_path)], check=True)
+            subprocess.run(
+                [
+                    "find",
+                    str(install_path),
+                    "-type",
+                    "d",
+                    "-exec",
+                    "chmod",
+                    "755",
+                    "{}",
+                    ";",
+                ],
+                check=True,
+            )
+            subprocess.run(
+                [
+                    "find",
+                    str(install_path),
+                    "-type",
+                    "f",
+                    "-exec",
+                    "chmod",
+                    "644",
+                    "{}",
+                    ";",
+                ],
+                check=True,
+            )
 
             # Remove temp backup on success
             temp_backup2 = install_path.parent / f"{product}.backup.tmp"
