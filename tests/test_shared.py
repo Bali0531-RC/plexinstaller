@@ -254,3 +254,180 @@ class TestDownloadMissingFiles:
         with mock.patch("shared.INSTALLER_DIR", tmp_path):
             with mock.patch("shared.urllib.request.urlopen", side_effect=Exception("offline")):
                 download_missing_files(**_PRINTER_KWARGS)  # should not raise
+
+
+# ---------------------------------------------------------------------------
+# Additional is_newer_version cases
+# ---------------------------------------------------------------------------
+
+
+class TestIsNewerVersionExtra:
+    def test_two_component_versions(self):
+        assert is_newer_version("2.1", "2.0") is True
+
+    def test_four_component_versions(self):
+        assert is_newer_version("1.2.3.4", "1.2.3.3") is True
+
+    def test_zero_versions(self):
+        assert is_newer_version("0.0.1", "0.0.0") is True
+
+    def test_single_component(self):
+        assert is_newer_version("2", "1") is True
+
+    def test_single_component_equal(self):
+        assert is_newer_version("1", "1") is False
+
+    def test_padding_works_correctly(self):
+        """'3.1' and '3.1.0' should be equal."""
+        assert is_newer_version("3.1", "3.1.0") is False
+        assert is_newer_version("3.1.0", "3.1") is False
+
+
+# ---------------------------------------------------------------------------
+# Additional verify_gpg_signature cases
+# ---------------------------------------------------------------------------
+
+
+class TestVerifyGpgSignatureExtra:
+    def test_returns_true_on_good_signature(self):
+        """gpg --verify returns 0 → verification passes."""
+        fake_resp = mock.MagicMock()
+        fake_resp.__enter__ = mock.MagicMock(return_value=fake_resp)
+        fake_resp.__exit__ = mock.MagicMock(return_value=False)
+        fake_resp.read.return_value = b"sig-bytes"
+
+        good_result = subprocess.CompletedProcess(args=[], returncode=0, stderr="Good signature")
+
+        def _mock_run(cmd, **kw):
+            if cmd[0] == "gpg" and "--verify" in cmd:
+                return good_result
+            return subprocess.CompletedProcess(args=cmd, returncode=0)
+
+        with mock.patch("shared.urllib.request.urlopen", return_value=fake_resp):
+            with mock.patch("shared.subprocess.run", side_effect=_mock_run):
+                with mock.patch("shared.os.write"):
+                    with mock.patch("shared.os.close"):
+                        with mock.patch("shared.os.unlink"):
+                            assert verify_gpg_signature(b"{}", **_PRINTER_KWARGS) is True
+
+    def test_returns_false_on_unexpected_error(self):
+        """Generic exception during verification → returns False (fail-closed)."""
+        fake_resp = mock.MagicMock()
+        fake_resp.__enter__ = mock.MagicMock(return_value=fake_resp)
+        fake_resp.__exit__ = mock.MagicMock(return_value=False)
+        fake_resp.read.return_value = b"sig-bytes"
+
+        def _mock_run(cmd, **kw):
+            if cmd[0] == "gpg" and "--verify" in cmd:
+                raise RuntimeError("unexpected gpg crash")
+            return subprocess.CompletedProcess(args=cmd, returncode=0)
+
+        with mock.patch("shared.urllib.request.urlopen", return_value=fake_resp):
+            with mock.patch("shared.subprocess.run", side_effect=_mock_run):
+                with mock.patch("shared.os.write"):
+                    with mock.patch("shared.os.close"):
+                        with mock.patch("shared.os.unlink"):
+                            assert verify_gpg_signature(b"{}", **_PRINTER_KWARGS) is False
+
+    def test_temp_files_cleaned_up(self):
+        """Temp sig/data files are always cleaned up."""
+        fake_resp = mock.MagicMock()
+        fake_resp.__enter__ = mock.MagicMock(return_value=fake_resp)
+        fake_resp.__exit__ = mock.MagicMock(return_value=False)
+        fake_resp.read.return_value = b"sig-bytes"
+
+        good_result = subprocess.CompletedProcess(args=[], returncode=0, stderr="Good signature")
+
+        def _mock_run(cmd, **kw):
+            if cmd[0] == "gpg" and "--verify" in cmd:
+                return good_result
+            return subprocess.CompletedProcess(args=cmd, returncode=0)
+
+        with mock.patch("shared.urllib.request.urlopen", return_value=fake_resp):
+            with mock.patch("shared.subprocess.run", side_effect=_mock_run):
+                with mock.patch("shared.os.write"):
+                    with mock.patch("shared.os.close"):
+                        with mock.patch("shared.os.unlink") as mock_unlink:
+                            verify_gpg_signature(b"{}", **_PRINTER_KWARGS)
+                            assert mock_unlink.call_count == 2  # sig and data files
+
+
+# ---------------------------------------------------------------------------
+# Additional _force_symlink cases
+# ---------------------------------------------------------------------------
+
+
+class TestForceSymlinkExtra:
+    def test_replaces_regular_file_with_symlink(self, tmp_path: Path):
+        target = tmp_path / "target.py"
+        target.write_text("code\n")
+
+        link = tmp_path / "link"
+        link.write_text("I'm a regular file, not a symlink")
+
+        _force_symlink(link, target)
+
+        assert link.is_symlink()
+        assert link.resolve() == target.resolve()
+
+
+# ---------------------------------------------------------------------------
+# Additional download_missing_files cases
+# ---------------------------------------------------------------------------
+
+
+class TestDownloadMissingFilesExtra:
+    def test_skips_file_without_download_url(self, tmp_path: Path):
+        """File missing from download_urls is skipped."""
+        from shared import UPDATE_FILE_MAP
+
+        for fn in set(UPDATE_FILE_MAP.values()) - {"utils.py"}:
+            (tmp_path / fn).write_text("")
+
+        # version.json has no download URL for utils
+        version_data = {
+            "download_urls": {},
+            "checksums": {"utils": "abc"},
+        }
+
+        def fake_urlopen(url, **kw):
+            import json
+
+            resp = mock.MagicMock()
+            resp.__enter__ = mock.MagicMock(return_value=resp)
+            resp.__exit__ = mock.MagicMock(return_value=False)
+            resp.read.return_value = json.dumps(version_data).encode()
+            return resp
+
+        with mock.patch("shared.INSTALLER_DIR", tmp_path):
+            with mock.patch("shared.urllib.request.urlopen", side_effect=fake_urlopen):
+                download_missing_files(**_PRINTER_KWARGS)
+
+        assert not (tmp_path / "utils.py").exists()
+
+    def test_skips_file_without_checksum(self, tmp_path: Path):
+        """File missing from checksums is skipped for security."""
+        from shared import UPDATE_FILE_MAP
+
+        for fn in set(UPDATE_FILE_MAP.values()) - {"utils.py"}:
+            (tmp_path / fn).write_text("")
+
+        version_data = {
+            "download_urls": {"utils": "https://example.com/utils.py"},
+            "checksums": {},
+        }
+
+        def fake_urlopen(url, **kw):
+            import json
+
+            resp = mock.MagicMock()
+            resp.__enter__ = mock.MagicMock(return_value=resp)
+            resp.__exit__ = mock.MagicMock(return_value=False)
+            resp.read.return_value = json.dumps(version_data).encode()
+            return resp
+
+        with mock.patch("shared.INSTALLER_DIR", tmp_path):
+            with mock.patch("shared.urllib.request.urlopen", side_effect=fake_urlopen):
+                download_missing_files(**_PRINTER_KWARGS)
+
+        assert not (tmp_path / "utils.py").exists()

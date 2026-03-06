@@ -8,6 +8,7 @@ import json
 import os
 import re
 import secrets
+import shutil
 import string
 import subprocess
 import time
@@ -105,26 +106,21 @@ class MongoDBManager:
 
     def check_installed(self) -> bool:
         """Return True if mongosh or mongo is on PATH."""
-        try:
-            result = subprocess.run(
-                ["mongosh", "--version"],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            if result.returncode == 0:
-                return True
-            result = subprocess.run(
-                ["mongo", "--version"],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            return result.returncode == 0
-        except FileNotFoundError:
-            return False
-        except subprocess.TimeoutExpired:
-            return False
+        for shell in ("mongosh", "mongo"):
+            try:
+                result = subprocess.run(
+                    [shell, "--version"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                if result.returncode == 0:
+                    return True
+            except FileNotFoundError:
+                continue
+            except subprocess.TimeoutExpired:
+                continue
+        return False
 
     def install(self) -> bool:
         """Install MongoDB for the detected distro."""
@@ -281,14 +277,19 @@ class MongoDBManager:
 
         creds_file = creds_dir / "mongodb_credentials"
 
-        with open(creds_file, "a") as f:
-            f.write(f"\n# {instance_name}\n")
-            f.write(f"DATABASE={creds['database']}\n")
-            f.write(f"USERNAME={creds['username']}\n")
-            f.write(f"PASSWORD={creds['password']}\n")
-            f.write(f"URI={creds['uri']}\n")
+        # Open with restrictive permissions from the start (O_CREAT|O_APPEND|O_WRONLY, mode 0600)
+        fd = os.open(str(creds_file), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        try:
+            with os.fdopen(fd, "a") as f:
+                f.write(f"\n# {instance_name}\n")
+                f.write(f"DATABASE={creds['database']}\n")
+                f.write(f"USERNAME={creds['username']}\n")
+                f.write(f"PASSWORD={creds['password']}\n")
+                f.write(f"URI={creds['uri']}\n")
+        except Exception:
+            os.close(fd)
+            raise
 
-        os.chmod(creds_file, 0o600)
         self.printer.success(f"Credentials saved to {creds_file}")
 
     # ------------------------------------------------------------------
@@ -340,19 +341,19 @@ class MongoDBManager:
             escaped_uri = mongo_uri.replace("\\", "\\\\").replace('"', '\\"')
             patterns = [
                 (
-                    r'(mongoURI\s*:\s*)["\']?.*?["\']?\s*$',
+                    r'^(\s*mongoURI\s*:\s*)["\']?.*?["\']?\s*$',
                     r'\1"' + escaped_uri + '"',
                 ),
                 (
-                    r'(mongodb_uri\s*:\s*)["\']?.*?["\']?\s*$',
+                    r'^(\s*mongodb_uri\s*:\s*)["\']?.*?["\']?\s*$',
                     r'\1"' + escaped_uri + '"',
                 ),
                 (
-                    r'(database_url\s*:\s*)["\']?.*?["\']?\s*$',
+                    r'^(\s*database_url\s*:\s*)["\']?.*?["\']?\s*$',
                     r'\1"' + escaped_uri + '"',
                 ),
                 (
-                    r'(MongoURI\s*:\s*)["\']?.*?["\']?\s*$',
+                    r'^(\s*MongoURI\s*:\s*)["\']?.*?["\']?\s*$',
                     r'\1"' + escaped_uri + '"',
                 ),
             ]
@@ -550,10 +551,24 @@ class MongoDBManager:
             return False
 
     def _install_arch(self) -> bool:
-        """Install MongoDB on Arch Linux."""
+        """Install MongoDB on Arch Linux via AUR helper."""
+        # mongodb-bin is an AUR package; stock pacman cannot install it.
+        aur_helper = None
+        for helper in ("yay", "paru"):
+            if shutil.which(helper):
+                aur_helper = helper
+                break
+
+        if aur_helper is None:
+            self.printer.error(
+                "mongodb-bin is an AUR package. Install an AUR helper "
+                "(yay or paru) first, then re-run the installer."
+            )
+            return False
+
         try:
             subprocess.run(
-                ["pacman", "-S", "--noconfirm", "mongodb-bin"],
+                [aur_helper, "-S", "--noconfirm", "mongodb-bin"],
                 check=True,
                 timeout=300,
             )

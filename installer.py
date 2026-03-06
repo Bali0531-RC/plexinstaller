@@ -11,6 +11,7 @@ import io
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -529,9 +530,10 @@ class PlexInstaller:
                     pass
 
             status_display = status
-            if "active" in status.lower():
+            normalized = status.strip().lower()
+            if normalized == "active":
                 status_display = f"{ColorPrinter.GREEN}{status}{ColorPrinter.NC}"
-            elif "inactive" in status.lower():
+            elif normalized == "inactive":
                 status_display = f"{ColorPrinter.YELLOW}{status}{ColorPrinter.NC}"
             else:
                 status_display = f"{ColorPrinter.RED}{status}{ColorPrinter.NC}"
@@ -1016,7 +1018,7 @@ class PlexInstaller:
             choice = input("Edit configuration now? (y/n): ").strip().lower()
             if choice == "y":
                 editor = os.environ.get("EDITOR", "nano")
-                subprocess.run([editor, str(config_file)])
+                subprocess.run([*shlex.split(editor), str(config_file)])
                 self.printer.step(f"Restart service: sudo systemctl restart plex-{instance_name}")
 
         # Display access information
@@ -1164,7 +1166,7 @@ class PlexInstaller:
 
         if config_files:
             editor = os.environ.get("EDITOR", "nano")
-            subprocess.run([editor, str(config_files[0])])
+            subprocess.run([*shlex.split(editor), str(config_files[0])])
             self.printer.step(f"Restart service: sudo systemctl restart plex-{product}")
         else:
             self.printer.warning("No configuration file found")
@@ -1444,7 +1446,7 @@ class PlexInstaller:
             service_name = f"plex-{product_name}"
             status = self.systemd.get_status(service_name)
 
-            if "active" in status.lower():
+            if status.strip().lower() == "active":
                 restart = input("\nRestart service now to apply addon? (y/n): ").strip().lower()
                 if restart == "y":
                     self.systemd.restart(service_name)
@@ -1498,7 +1500,7 @@ class PlexInstaller:
                         service_name = f"plex-{product_name}"
                         status = self.systemd.get_status(service_name)
 
-                        if "active" in status.lower():
+                        if status.strip().lower() == "active":
                             restart = input("\nRestart service now? (y/n): ").strip().lower()
                             if restart == "y":
                                 self.systemd.restart(service_name)
@@ -1544,9 +1546,7 @@ class PlexInstaller:
 
                 # Open in editor
                 editor = os.environ.get("EDITOR", "nano")
-                import subprocess
-
-                subprocess.run([editor, str(config_path)])
+                subprocess.run([*shlex.split(editor), str(config_path)])
 
                 # Validate YAML after editing
                 is_valid, error = self.addon_manager.validate_yaml(config_path)
@@ -1559,7 +1559,7 @@ class PlexInstaller:
 
                     fix_choice = input("Open editor again to fix? (y/n): ").strip().lower()
                     if fix_choice == "y":
-                        subprocess.run([editor, str(config_path)])
+                        subprocess.run([*shlex.split(editor), str(config_path)])
                         is_valid, error = self.addon_manager.validate_yaml(config_path)
                         if is_valid:
                             self.printer.success("Configuration file is now valid YAML")
@@ -1570,7 +1570,7 @@ class PlexInstaller:
                 service_name = f"plex-{product_name}"
                 status = self.systemd.get_status(service_name)
 
-                if "active" in status.lower():
+                if status.strip().lower() == "active":
                     restart = input("\nRestart service to apply changes? (y/n): ").strip().lower()
                     if restart == "y":
                         self.systemd.restart(service_name)
@@ -1659,7 +1659,7 @@ class PlexInstaller:
             service_name = f"plex-{product_name}"
             status = self.systemd.get_status(service_name)
 
-            if "active" in status.lower():
+            if status.strip().lower() == "active":
                 restart = input("\nRestart service now? (y/n): ").strip().lower()
                 if restart == "y":
                     self.systemd.restart(service_name)

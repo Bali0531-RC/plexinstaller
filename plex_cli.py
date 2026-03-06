@@ -5,12 +5,16 @@ Command-line interface for managing PlexDevelopment applications
 """
 
 import json
+import logging
 import os
 import re
 import subprocess
 import sys
 import urllib.request
 from pathlib import Path
+
+from colorama import Fore, Style
+from colorama import init as colorama_init
 
 try:
     from config import Config
@@ -59,11 +63,6 @@ INSTALLER_DIR = _SHARED_INSTALLER_DIR or Path("/opt/plexinstaller")
 VERSION_CHECK_URL = (
     _SHARED_VERSION_CHECK_URL or "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/version.json"
 )
-
-import logging  # noqa: E402
-
-from colorama import Fore, Style  # noqa: E402
-from colorama import init as colorama_init  # noqa: E402
 
 # Initialize colorama
 colorama_init(autoreset=False)
@@ -628,6 +627,8 @@ def debug_app(app: str) -> int:
 
     if redact_sensitive_yaml is not None:
         bundle = redact_sensitive_yaml(bundle)
+    else:
+        print_warning("Redaction helper unavailable — sensitive values may not be masked")
 
     paste_endpoint = "https://paste.plexdev.xyz/documents"
     if Config is not None:
@@ -946,7 +947,7 @@ def tool_setupdomain(app: str) -> int:
         if config_file.exists():
             try:
                 content = config_file.read_text()
-                match = re.search(r"port[:\s]+(\d+)", content, re.IGNORECASE)
+                match = re.search(r"^\s*port\s*:\s*(\d+)", content, re.IGNORECASE | re.MULTILINE)
                 if match:
                     port = int(match.group(1))
                     break

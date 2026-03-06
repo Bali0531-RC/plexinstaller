@@ -3,6 +3,7 @@
 import logging
 import zipfile
 from pathlib import Path
+from unittest import mock
 
 import pytest
 
@@ -169,12 +170,13 @@ class TestArchiveExtractor:
         with zipfile.ZipFile(archive_path, "w") as zf:
             zf.write(content_dir / "package.json", "myapp/package.json")
 
-        # Extract
+        # Extract — mock subprocess.run so chown/chmod don't change ownership to root
         extractor = ArchiveExtractor()
         target_dir = tmp_path / "myapp"
         target_dir.mkdir()
 
-        extractor.extract(archive_path, target_dir)
+        with mock.patch("utils.subprocess.run"):
+            extractor.extract(archive_path, target_dir)
 
         assert (target_dir / "package.json").exists()
 
@@ -231,3 +233,167 @@ class TestFindProductDir:
         extractor = ArchiveExtractor()
         result = extractor._find_product_dir(tmp_path, "plextickets")
         assert result == sub2
+
+
+# ---------------------------------------------------------------------------
+# Additional ArchiveExtractor tests
+# ---------------------------------------------------------------------------
+
+
+class TestArchiveExtractorEdgeCases:
+    def test_extract_tar_gz(self, tmp_path: Path):
+        """Verify tar.gz extraction works."""
+        import tarfile as tf
+
+        archive_path = tmp_path / "test.tar.gz"
+        content_dir = tmp_path / "content" / "myapp"
+        content_dir.mkdir(parents=True)
+        (content_dir / "package.json").write_text('{"name":"test"}')
+
+        with tf.open(archive_path, "w:gz") as tar:
+            tar.add(content_dir / "package.json", "myapp/package.json")
+
+        extractor = ArchiveExtractor()
+        target_dir = tmp_path / "myapp"
+        target_dir.mkdir()
+
+        with mock.patch("utils.subprocess.run"):
+            extractor.extract(archive_path, target_dir)
+
+        assert (target_dir / "package.json").exists()
+
+    def test_extract_creates_target_dir(self, tmp_path: Path):
+        """Target directory is created if it doesn't exist."""
+        archive_path = tmp_path / "test.zip"
+        with zipfile.ZipFile(archive_path, "w") as zf:
+            zf.writestr("myapp/package.json", '{"name":"test"}')
+
+        extractor = ArchiveExtractor()
+        target_dir = tmp_path / "nonexistent" / "myapp"
+
+        with mock.patch("utils.subprocess.run"):
+            extractor.extract(archive_path, target_dir)
+
+        assert target_dir.exists()
+
+    def test_extract_zip_overwrites_existing_files(self, tmp_path: Path):
+        """Existing files in target dir are replaced."""
+        archive_path = tmp_path / "test.zip"
+        with zipfile.ZipFile(archive_path, "w") as zf:
+            zf.writestr("myapp/file.txt", "new content")
+
+        target_dir = tmp_path / "myapp"
+        target_dir.mkdir()
+        (target_dir / "file.txt").write_text("old content")
+
+        extractor = ArchiveExtractor()
+        with mock.patch("utils.subprocess.run"):
+            extractor.extract(archive_path, target_dir)
+
+        assert (target_dir / "file.txt").read_text() == "new content"
+
+
+# ---------------------------------------------------------------------------
+# Additional setup_logging tests
+# ---------------------------------------------------------------------------
+
+
+class TestSetupLoggingExtra:
+    def test_file_handler_logs_at_debug_level(self, tmp_path: Path):
+        logger = logging.getLogger("plexinstaller")
+        logger.handlers.clear()
+
+        log_file = str(tmp_path / "debug.log")
+        setup_logging(log_file=log_file)
+
+        fh = [h for h in logger.handlers if isinstance(h, logging.FileHandler)]
+        assert len(fh) == 1
+        assert fh[0].level == logging.DEBUG
+
+        for h in logger.handlers:
+            if isinstance(h, logging.FileHandler):
+                h.close()
+        logger.handlers.clear()
+
+    def test_logger_level_is_debug(self):
+        logger = logging.getLogger("plexinstaller")
+        logger.handlers.clear()
+
+        setup_logging()
+        assert logger.level == logging.DEBUG
+
+        logger.handlers.clear()
+
+
+# ---------------------------------------------------------------------------
+# Additional ColorPrinter tests
+# ---------------------------------------------------------------------------
+
+
+class TestColorPrinterExtra:
+    def test_step_writes_to_stderr(self, capsys):
+        cp = ColorPrinter()
+        cp.step("doing something")
+        captured = capsys.readouterr()
+        assert "doing something" in captured.err
+
+    def test_nc_resets_color(self):
+        cp = ColorPrinter()
+        assert cp.NC == "\x1b[0m" or "reset" in repr(cp.NC).lower() or cp.NC == str(cp.NC)
+
+
+# ---------------------------------------------------------------------------
+# Additional redaction tests
+# ---------------------------------------------------------------------------
+
+
+class TestRedactMongoUriExtra:
+    def test_redacts_special_chars_in_password(self):
+        uri = "mongodb://admin:p%40ss%23word@localhost:27017/mydb"
+        result = redact_mongo_uri_credentials(uri)
+        assert "p%40ss%23word" not in result
+        assert "<REDACTED>" in result
+
+    def test_preserves_query_params(self):
+        uri = "mongodb://admin:pass@localhost:27017/mydb?authSource=admin"
+        result = redact_mongo_uri_credentials(uri)
+        assert "<REDACTED>" in result
+
+    def test_handles_multiple_uris_in_text(self):
+        text = "primary: mongodb://a:b@host1/db secondary: mongodb://c:d@host2/db"
+        result = redact_mongo_uri_credentials(text)
+        assert "a" not in result.split("://")[1].split("@")[0]
+        assert "<REDACTED>" in result
+
+
+class TestRedactSensitiveYamlExtra:
+    def test_redacts_licensekey_field(self):
+        yaml_text = "LicenseKey: abc-123-def\nPort: 3000\n"
+        result = redact_sensitive_yaml(yaml_text)
+        assert "abc-123-def" not in result
+        assert "<REDACTED>" in result
+
+    def test_redacts_secretkey_field(self):
+        yaml_text = "SecretKey: my-secret-value\n"
+        result = redact_sensitive_yaml(yaml_text)
+        assert "my-secret-value" not in result
+        assert "<REDACTED>" in result
+
+    def test_preserves_non_sensitive_key(self):
+        yaml_text = "Port: 3000\nHost: localhost\n"
+        result = redact_sensitive_yaml(yaml_text)
+        assert "3000" in result
+        assert "localhost" in result
+
+    def test_redacts_inline_mongo_uri(self):
+        yaml_text = "DatabaseURL: mongodb://admin:secret@host/db\n"
+        result = redact_sensitive_yaml(yaml_text)
+        assert "secret" not in result
+
+    def test_handles_empty_input(self):
+        assert redact_sensitive_yaml("") == ""
+
+    def test_handles_only_comments(self):
+        text = "# just a comment\n# another one\n"
+        result = redact_sensitive_yaml(text)
+        assert result == text

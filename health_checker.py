@@ -320,7 +320,8 @@ class HealthChecker:
         self.printer.header("System Health Check")
 
         # Disk space
-        stat = os.statvfs(self.install_dir)
+        disk_path = self.install_dir if self.install_dir.exists() else Path("/")
+        stat = os.statvfs(disk_path)
         free_gb = (stat.f_bavail * stat.f_frsize) / (1024**3)
         total_gb = (stat.f_blocks * stat.f_frsize) / (1024**3)
         used_percent = ((total_gb - free_gb) / total_gb) * 100
@@ -347,9 +348,10 @@ class HealthChecker:
                     service_name = f"plex-{product_dir.name}"
                     status = self.systemd.get_status(service_name)
 
-                    if "active" in status.lower():
+                    normalized = status.strip().lower()
+                    if normalized == "active":
                         logger.info("  ✓ %s: Running", product_dir.name)
-                    elif "inactive" in status.lower():
+                    elif normalized == "inactive":
                         logger.warning("  ○ %s: Stopped", product_dir.name)
                         all_running = False
                     else:

@@ -197,8 +197,8 @@ def verify_gpg_signature(
         print_warning("gpg not installed — skipping signature verification")
         return True
     except Exception as e:
-        print_warning(f"GPG verification error: {e} — skipping")
-        return True
+        print_error(f"GPG verification error: {e}")
+        return False
     finally:
         for p in (sig_path, data_path):
             try:

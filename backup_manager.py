@@ -102,7 +102,7 @@ class BackupManager:
         self.printer.step(f"Creating backup of {product}...")
 
         service_name = f"plex-{product}"
-        was_running = "active" in self.systemd.get_status(service_name).lower()
+        was_running = self.systemd.get_status(service_name).strip().lower() == "active"
 
         if was_running:
             self.printer.step("Stopping service...")
@@ -222,7 +222,7 @@ class BackupManager:
                 tar.extractall(self.install_dir)
 
             self.printer.step("Setting permissions...")
-            subprocess.run(["chown", "-R", "root:root", str(install_path)])
+            subprocess.run(["chown", "-R", "root:root", str(install_path)], check=True)
             subprocess.run(
                 [
                     "find",
@@ -234,7 +234,8 @@ class BackupManager:
                     "755",
                     "{}",
                     ";",
-                ]
+                ],
+                check=True,
             )
             subprocess.run(
                 [
@@ -247,7 +248,8 @@ class BackupManager:
                     "644",
                     "{}",
                     ";",
-                ]
+                ],
+                check=True,
             )
 
             # Remove temp backup on success
@@ -269,6 +271,8 @@ class BackupManager:
                 if install_path.exists():
                     shutil.rmtree(install_path)
                 shutil.move(str(rollback), str(install_path))
+                self.printer.step("Starting service with previous installation...")
+                self.systemd.start(service_name)
 
     # ------------------------------------------------------------------
     # Delete

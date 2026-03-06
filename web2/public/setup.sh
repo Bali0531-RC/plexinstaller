@@ -164,13 +164,6 @@ for file in "${FILES_TO_DOWNLOAD[@]}"; do
     fi
 done
 
-# If using the dev branch, rewrite download URLs in version.json from main to dev
-if [ "$GITHUB_BRANCH" = "dev" ] && [ -f "$INSTALL_DIR/version.json" ]; then
-    print_step "Patching version.json download URLs for dev branch..."
-    sed -i 's|/plexinstaller/main/|/plexinstaller/dev/|g' "$INSTALL_DIR/version.json"
-    print_success "Download URLs updated to use dev branch"
-fi
-
 # Verify GPG signature of version.json
 print_header "Verifying GPG Signature"
 
@@ -187,16 +180,12 @@ if command -v gpg &> /dev/null; then
         else
             print_error "GPG signature verification FAILED"
             print_error "The downloaded files may have been tampered with!"
-            if [ "$VERSION" = "Beta" ]; then
-                print_warning "Dev/beta branch — GPG mismatch is expected. Continuing..."
-            else
-                read -p "Continue anyway? (y/n): " continue_anyway
-                if [ "$continue_anyway" != "y" ] && [ "$continue_anyway" != "Y" ]; then
-                    print_error "Installation aborted."
-                    exit 1
-                fi
-                print_warning "Continuing without verified signature..."
+            read -p "Continue anyway? (y/n): " continue_anyway
+            if [ "$continue_anyway" != "y" ] && [ "$continue_anyway" != "Y" ]; then
+                print_error "Installation aborted."
+                exit 1
             fi
+            print_warning "Continuing without verified signature..."
         fi
     else
         print_warning "Signature files not found — skipping GPG verification"
@@ -274,12 +263,21 @@ else
     print_warning "version.json not found — skipping checksum verification"
 fi
 
+# Rewrite download URLs for dev branch AFTER integrity checks
+if [ "$GITHUB_BRANCH" = "dev" ] && [ -f "$INSTALL_DIR/version.json" ]; then
+    print_step "Patching version.json download URLs for dev branch..."
+    sed -i 's|/plexinstaller/main/|/plexinstaller/dev/|g' "$INSTALL_DIR/version.json"
+    print_success "Download URLs updated to use dev branch"
+fi
+
 # Install Python dependencies
 print_step "Installing Python dependencies..."
 if [ -f "${INSTALL_DIR}/requirements.txt" ]; then
-    pip3 install -r "${INSTALL_DIR}/requirements.txt" --quiet 2>/dev/null \
-        || pip3 install -r "${INSTALL_DIR}/requirements.txt" --break-system-packages --quiet 2>/dev/null \
-        || print_warning "Could not install Python dependencies from requirements.txt"
+    if ! pip3 install -r "${INSTALL_DIR}/requirements.txt" --quiet 2>/dev/null \
+        && ! pip3 install -r "${INSTALL_DIR}/requirements.txt" --break-system-packages --quiet 2>/dev/null; then
+        print_error "Failed to install Python dependencies from requirements.txt"
+        exit 1
+    fi
 else
     print_warning "requirements.txt not found — skipping dependency installation"
 fi

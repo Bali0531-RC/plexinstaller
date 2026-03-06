@@ -32,14 +32,14 @@
   },
   "checksums": {
     "addon_manager": "5d5cf5f3224caa4bdb14d80c3d546eefb74db7c8677d2a693e5a075ede3eb8f5",
-    "backup_manager": "f1cfd9a9dcee16f09af19076075226a1fac1915641766f5a1411a745ecc4daed",
+    "backup_manager": "4e5c1fd955f38aeb790a2310a3dc5b9a9921fa21a34b6fd581a4194dbcc58425",
     "config": "8be596365d26dbb345aeec44ddf2fe701ce8bc85c6959189a949c5aba7bf163c",
-    "health_checker": "6ffcca9021e697d022ebeeedf29679624e8777f8e544ab7905f867c4e59aa591",
-    "installer": "6fba758f914f763c36692d02b9eab7f88a874008b9b2abe7666cc199682c92e5",
-    "mongodb_manager": "cd39b85465323a62f7d223813998cdc739b12e909e6d051ca37f89ade2d20561",
-    "plex_cli": "5e2259185deb9fa2fe922c11735009f2f7ecffbf67ef839471a8eda860a2568f",
-    "shared": "36f3fce1413f2b2603bab2bef9351962ed9f6b3551e22d22d2ed27068aab45c2",
-    "telemetry_client": "5b694f1fddc03db3c75029fd9bb5eba32c2a4a5e9d483dd935c6fea6eef72b4c",
+    "health_checker": "4975e3ea6fa9b63674f366336fc6161979f49b1bc94fec2b949386cc2d01906f",
+    "installer": "5945228a30a7eb1e680c0e4ac982fa694319d04ff37978eaf840cd0287e9c927",
+    "mongodb_manager": "17cb16c8378eff4213d36f57be762e6bd78461bb918a5f8a5a412403cbf5847c",
+    "plex_cli": "0979a10bdb0a962b80392d7de13eac35a084f5951154aa087d530e75deb145ff",
+    "shared": "a7724337cc90d8a95c3c822563a47d6d4f0bc06fbe6639bad144445bb7f78e25",
+    "telemetry_client": "a2a20fa5110a2bc2d1137354c3b6c1943cf932d297a22a640219cc4acfab7cd5",
     "utils": "c73efc77f6a60754a682cc04db2b39ed6430027c5cc2b78a7c8733dfcd1e5294"
   }
 }
