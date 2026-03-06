@@ -475,14 +475,7 @@ class MongoDBManager:
                     f"{distro_codename}/mongodb-org/{mongo_ver} multiverse\n"
                 )
             elif "debian" in distro:
-                if distro_codename == "bookworm":
-                    repo_line = (
-                        f"deb [ signed-by=/usr/share/keyrings/"
-                        f"mongodb-server-{mongo_ver}.gpg ] "
-                        f"http://repo.mongodb.org/apt/debian "
-                        f"bookworm/mongodb-org/{mongo_ver_bookworm} main\n"
-                    )
-                elif distro_codename == "bullseye":
+                if distro_codename == "bullseye":
                     repo_line = (
                         f"deb [ signed-by=/usr/share/keyrings/"
                         f"mongodb-server-{mongo_ver}.gpg ] "
@@ -490,11 +483,12 @@ class MongoDBManager:
                         f"bullseye/mongodb-org/{mongo_ver} main\n"
                     )
                 else:
+                    # Bookworm and newer (trixie, etc.) use the bookworm repo
                     repo_line = (
                         f"deb [ signed-by=/usr/share/keyrings/"
                         f"mongodb-server-{mongo_ver}.gpg ] "
                         f"http://repo.mongodb.org/apt/debian "
-                        f"bullseye/mongodb-org/{mongo_ver} main\n"
+                        f"bookworm/mongodb-org/{mongo_ver_bookworm} main\n"
                     )
             else:
                 repo_line = (
