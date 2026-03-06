@@ -154,12 +154,23 @@ class HealthChecker:
 
         # Config file existence
         config_files = list(context.install_path.glob("config.y*ml")) + list(context.install_path.glob("config.json"))
+        if config_files:
+            cfg_detail = config_files[0].name
+            cfg_hint = (
+                "Fill in the required values (tokens, secrets, etc.) in "
+                f"{config_files[0]} before the service will run correctly"
+            )
+            cfg_status = "warn"
+        else:
+            cfg_detail = "no config.yml/config.json found"
+            cfg_hint = "You may need to create/configure the app config manually"
+            cfg_status = "warn"
         results.append(
             SelfTestResult(
                 name="Config file present",
-                status="pass" if bool(config_files) else "warn",
-                detail=(config_files[0].name if config_files else "no config.yml/config.json found"),
-                hint=("You may need to create/configure the app config manually" if not config_files else ""),
+                status=cfg_status,
+                detail=cfg_detail,
+                hint=cfg_hint,
             )
         )
 
@@ -176,9 +187,14 @@ class HealthChecker:
             results.append(
                 SelfTestResult(
                     name="systemd service active",
-                    status="pass" if is_active else "fail",
+                    status="pass" if is_active else "warn",
                     detail=f"{service_name} is {self.systemd.get_status(service_name)}",
-                    hint=(f"Run: systemctl status {service_name} --no-pager" if not is_active else ""),
+                    hint=(
+                        f"The service may have crashed because config.yml is not yet filled in. "
+                        f"Edit the config, then: systemctl restart {service_name}"
+                        if not is_active
+                        else ""
+                    ),
                 )
             )
         else:
@@ -191,8 +207,9 @@ class HealthChecker:
                 )
             )
 
-        # App port checks
-        if context.service_created:
+        # App port checks — only meaningful when a dashboard/web UI is installed.
+        # Without a dashboard the product is a headless bot; nothing listens on the port.
+        if context.service_created and getattr(context, "has_dashboard", False):
             port_ready = self.wait_for_tcp_port("127.0.0.1", context.port, timeout_seconds=45)
             results.append(
                 SelfTestResult(
@@ -217,6 +234,15 @@ class HealthChecker:
                         hint=("The app may not expose /; verify the configured bind/port" if not http_ok else ""),
                     )
                 )
+        elif context.service_created and not getattr(context, "has_dashboard", False):
+            results.append(
+                SelfTestResult(
+                    name="Local TCP port check",
+                    status="warn",
+                    detail=f"skipped — no dashboard installed (port {context.port} unused)",
+                    hint="Install with a dashboard if you need a web UI on this port",
+                )
+            )
 
         # Mongo validation
         if mongo_creds and mongo_creds.get("uri"):
