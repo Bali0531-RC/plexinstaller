@@ -20,9 +20,9 @@ PlexInstaller is the unified Python-based installer and management tool for the 
 ## Quick Start
 1. **Open an elevated Command Prompt or PowerShell** (Run as Administrator).
 
-2. **Clone the repository** (or download the ZIP from the `Bindoj-experimental` branch):
+2. **Clone the repository** (or download the ZIP from the `windows-experimental` branch):
    ```cmd
-   git clone -b Bindoj-experimental https://github.com/Bali0531-RC/plexinstaller.git
+   git clone -b windows-experimental https://github.com/Bali0531-RC/plexinstaller.git
    cd plexinstaller
    ```
 
