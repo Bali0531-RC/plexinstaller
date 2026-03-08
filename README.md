@@ -1,28 +1,28 @@
-# PlexInstaller — Bindoj Edition
+# PlexInstaller — Windows Edition
 
-> **Branch:** `Bindoj-experimental` — a standalone Bindoj-only port of PlexInstaller. This branch will **not** be merged into `main`; the Linux version lives in the `dev` and `main` branches.
+> **Branch:** `windows-experimental` — a standalone windows-only port of PlexInstaller. This branch will **not** be merged into `main`; the Linux version lives in the `dev` and `main` branches.
 
-PlexInstaller is the unified Python-based installer and management tool for the PlexDevelopment product line (Tickets, Staff, Status, Store, Forms, Links, Paste, Tracker, and supporting dashboards). This Bindoj edition handles archive discovery, extraction, dependency installation, MongoDB/user provisioning, nginx configuration, firewall rules, telemetry, and post-install management from a single interactive CLI workflow — all on Windows.
+PlexInstaller is the unified Python-based installer and management tool for the PlexDevelopment product line (Tickets, Staff, Status, Store, Forms, Links, Paste, Tracker, and supporting dashboards). This Windows edition handles archive discovery, extraction, dependency installation, MongoDB/user provisioning, nginx configuration, firewall rules, telemetry, and post-install management from a single interactive CLI workflow — all on Windows.
 
 ## Highlights
-- **Bindoj-native** — uses NSSM/sc.exe for services, netsh for firewall, winget/choco for packages, and ProgramData for all system paths.
+- **Windows-native** — uses NSSM/sc.exe for services, netsh for firewall, winget/choco for packages, and ProgramData for all system paths.
 - **Product-aware flows** covering MongoDB provisioning, port/domain validation, custom 502 page generation, dashboard add-ons, and backup/restore tooling.
-- **Bindoj services** with NSSM (Non-Sucking Service Manager) for registering and managing product instances as background services.
+- **Windows services** with NSSM (Non-Sucking Service Manager) for registering and managing product instances as background services.
 - **Telemetry pipeline** (client + remote API) capturing anonymized install steps, failures, and installer health while respecting user opt-out.
 - **Multi-instance ready** with automatic instance naming, unique Mongo credentials, and per-service firewall openings.
 
 ## Prerequisites
-- **Bindoj 10/11** or **Bindoj Server 2019+**
+- **Windows 10/11** or **Windows Server 2019+**
 - **Python 3.10+** — [python.org](https://www.python.org/downloads/) (make sure to check "Add to PATH" during install)
 - **Administrator privileges** — required for service management, firewall rules, and PATH configuration
-- **Package manager** — [winget](https://learn.microsoft.com/en-us/Bindoj/package-manager/) (built-in on Win 11) or [Chocolatey](https://chocolatey.org/install)
+- **Package manager** — [winget](https://learn.microsoft.com/en-us/windows/package-manager/) (built-in on Win 11) or [Chocolatey](https://chocolatey.org/install)
 
 ## Quick Start
 1. **Open an elevated Command Prompt or PowerShell** (Run as Administrator).
 
-2. **Clone the repository** (or download the ZIP from the `Bindoj-experimental` branch):
+2. **Clone the repository** (or download the ZIP from the `windows-experimental` branch):
    ```cmd
-   git clone -b Bindoj-experimental https://github.com/Bali0531-RC/plexinstaller.git
+   git clone -b windows-experimental https://github.com/Bali0531-RC/plexinstaller.git
    cd plexinstaller
    ```
 
@@ -54,8 +54,8 @@ plex health
 
 The CLI creates `.cmd` wrapper scripts and adds them to the system PATH via `setx /M`.
 
-## Bindoj Service Management
-Products are registered as Bindoj services using [NSSM](https://nssm.cc/). Common operations:
+## Windows Service Management
+Products are registered as Windows services using [NSSM](https://nssm.cc/). Common operations:
 
 | Action | Command |
 | --- | --- |
@@ -65,7 +65,7 @@ Products are registered as Bindoj services using [NSSM](https://nssm.cc/). Commo
 | Query service status | `sc query <service>` or `plex status` |
 | Enable auto-start | `sc config <service> start= auto` |
 | Disable auto-start | `sc config <service> start= demand` |
-| View logs | Check `C:\ProgramData\plex\apps\<product>\logs\` or Bindoj Event Viewer |
+| View logs | Check `C:\ProgramData\plex\apps\<product>\logs\` or Windows Event Viewer |
 
 ## Key Paths
 | Path | Purpose |
