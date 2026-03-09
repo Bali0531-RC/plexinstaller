@@ -112,6 +112,8 @@ def _derive_stats(stats: dict[str, Any]) -> dict[str, Any]:
     total = counted + uncompleted
     stats["total"] = total
     stats["success_rate"] = round((success / counted) * 100, 2) if counted else 0.0
+    # Fraction of all attempts that reached a completed state (success or failure)
+    stats["completion_rate"] = round((counted / total) * 100, 2) if total else 0.0
     return stats
 
 

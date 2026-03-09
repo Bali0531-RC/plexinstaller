@@ -24,13 +24,14 @@ PlexInstaller is the unified Python-based installer and management tool for the 
 
 ## Telemetry Snapshot
 These badges hit `https://plexdev.xyz/tel/stats` live, so the README always reflects fresh telemetry without manual edits.
-Success rate is calculated from completed installs only — uncompleted sessions (user cancellations, interruptions) are excluded.
+Success rate is calculated from completed installs only — uncompleted sessions (user cancellations, interruptions) are excluded. Completion rate shows what fraction of all attempts reached a completed state.
 
 ![Total installs](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fplexdev.xyz%2Ftel%2Fstats&query=%24.total&label=Install%20attempts&style=for-the-badge)
 ![Successes](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fplexdev.xyz%2Ftel%2Fstats&query=%24.success&label=Successful&color=4caf50&style=for-the-badge)
 ![Failures](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fplexdev.xyz%2Ftel%2Fstats&query=%24.failure&label=Failed&color=ef5350&style=for-the-badge)
 ![Uncompleted](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fplexdev.xyz%2Ftel%2Fstats&query=%24.uncompleted&label=Uncompleted&color=ff9800&style=for-the-badge)
 ![Success rate](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fplexdev.xyz%2Ftel%2Fstats&query=%24.success_rate&suffix=%25&label=Success%20rate&color=2196f3&style=for-the-badge)
+![Completion rate](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fplexdev.xyz%2Ftel%2Fstats&query=%24.completion_rate&suffix=%25&label=Completion%20rate&color=9c27b0&style=for-the-badge)
 
 Need to dig deeper? Grab the structured stats and recent sessions straight from the API:
 ```sh
