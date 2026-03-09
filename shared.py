@@ -308,6 +308,13 @@ def perform_update(
 
         ensure_cli_entrypoints()
 
+        # Clean up backup directory after a successful update
+        try:
+            if backup_dir.exists():
+                shutil.rmtree(backup_dir)
+        except Exception:
+            print_warning("Could not remove backup directory after update.")
+
         print_success("Update completed successfully. Restarting...")
         os.execv(sys.executable, [sys.executable] + sys.argv)
 
@@ -321,6 +328,10 @@ def perform_update(
                     target = install_dir / filename
                     if backup.exists():
                         shutil.copy2(backup, target)
+                try:
+                    shutil.rmtree(backup_dir)
+                except Exception:
+                    print_warning("Could not remove backup directory after restore.")
                 print_success("Backup restored successfully")
             else:
                 print_warning("No backup directory found; nothing to restore.")
