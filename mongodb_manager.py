@@ -280,16 +280,17 @@ class MongoDBManager:
         # Open with restrictive permissions from the start (O_CREAT|O_APPEND|O_WRONLY, mode 0600)
         fd = os.open(str(creds_file), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
         try:
-            with os.fdopen(fd, "a") as f:
-                f.write(f"\n# {instance_name}\n")
-                f.write(f"DATABASE={creds['database']}\n")
-                f.write(f"USERNAME={creds['username']}\n")
-                f.write(f"PASSWORD={creds['password']}\n")
-                f.write(f"URI={creds['uri']}\n")
+            f = os.fdopen(fd, "a")
         except Exception:
             os.close(fd)
             raise
 
+        with f:
+            f.write(f"\n# {instance_name}\n")
+            f.write(f"DATABASE={creds['database']}\n")
+            f.write(f"USERNAME={creds['username']}\n")
+            f.write(f"PASSWORD={creds['password']}\n")
+            f.write(f"URI={creds['uri']}\n")
         self.printer.success(f"Credentials saved to {creds_file}")
 
     # ------------------------------------------------------------------
