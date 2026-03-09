@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { CommandBlock } from "./components/CommandBlock";
 import { ProductGrid } from "./components/ProductGrid";
 import { ReleaseTimeline } from "./components/ReleaseTimeline";
@@ -18,6 +18,17 @@ const installerTabs: { id: InstallerTab; label: string }[] = [
 export const App = () => {
   const [activeTab, setActiveTab] = useState<InstallerTab>("quick");
   const content = installerContent[activeTab];
+  const location = useLocation();
+
+  useEffect(() => {
+    if (location.hash) {
+      const id = location.hash.slice(1);
+      const el = document.getElementById(id);
+      if (el) {
+        requestAnimationFrame(() => requestAnimationFrame(() => el.scrollIntoView({ behavior: "smooth" })));
+      }
+    }
+  }, [location.hash]);
 
   return (
     <div className="page">

@@ -1,6 +1,12 @@
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
-const links = [
+type NavLink = {
+  to: string;
+  label: string;
+  download?: boolean;
+};
+
+const links: NavLink[] = [
   { to: "/#install", label: "Installer" },
   { to: "/#platform", label: "Platform" },
   { to: "/#changelog", label: "Changelog" },
@@ -8,10 +14,22 @@ const links = [
   { to: "/faq", label: "FAQ" },
   { to: "/terms", label: "TOS" },
   { to: "/privacy", label: "Privacy" },
+  { to: "/setup.sh", label: "setup.sh", download: true },
 ];
 
 export const SiteNav = ({ sticky = false }: { sticky?: boolean }) => {
   const location = useLocation();
+  const navigate = useNavigate();
+
+  const handleHashClick = (e: React.MouseEvent<HTMLAnchorElement>, to: string) => {
+    e.preventDefault();
+    const id = to.slice(2); // "/#install" -> "install"
+    if (location.pathname === "/") {
+      document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
+    } else {
+      navigate(to);
+    }
+  };
 
   return (
     <nav className={`site-nav${sticky ? " sticky" : ""}`}>
@@ -21,11 +39,19 @@ export const SiteNav = ({ sticky = false }: { sticky?: boolean }) => {
       <div className="nav-links">
         {links.map((link) => {
           const isHash = link.to.startsWith("/#");
-          const isActive = !isHash && location.pathname === link.to;
+          const isActive = !isHash && !link.download && location.pathname === link.to;
+
+          if (link.download) {
+            return (
+              <a key={link.label} href={link.to} download>
+                {link.label}
+              </a>
+            );
+          }
 
           if (isHash) {
             return (
-              <a key={link.label} href={link.to}>
+              <a key={link.label} href={link.to} onClick={(e) => handleHashClick(e, link.to)}>
                 {link.label}
               </a>
             );
@@ -37,9 +63,6 @@ export const SiteNav = ({ sticky = false }: { sticky?: boolean }) => {
             </Link>
           );
         })}
-        <a href="/setup.sh" download="setup.sh">
-          setup.sh
-        </a>
         <a href="https://addons.plexdev.xyz" className="nav-addons" target="_blank" rel="noreferrer">
           🧩 Addons
         </a>
