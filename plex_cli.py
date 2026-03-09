@@ -188,7 +188,7 @@ def _ensure_cli_entrypoints():
             if not target.exists():
                 continue
             if link_path.is_symlink() or link_path.exists():
-                link_path.unlink()
+                link_path.unlink(missing_ok=True)
             link_path.symlink_to(target)
     except Exception:
         return
