@@ -1,6 +1,6 @@
 # PlexInstaller — Windows Edition
 
-> **Branch:** `windows-experimental` — a standalone windows-only port of PlexInstaller. This branch will **not** be merged into `main`; the Linux version lives in the `dev` and `main` branches.
+> **Branch:** `windows-experimental` — a standalone Windows-only port of PlexInstaller. This branch will **not** be merged into `main`; the Linux version lives in the `dev` and `main` branches.
 
 PlexInstaller is the unified Python-based installer and management tool for the PlexDevelopment product line (Tickets, Staff, Status, Store, Forms, Links, Paste, Tracker, and supporting dashboards). This Windows edition handles archive discovery, extraction, dependency installation, MongoDB/user provisioning, nginx configuration, firewall rules, telemetry, and post-install management from a single interactive CLI workflow — all on Windows.
 
