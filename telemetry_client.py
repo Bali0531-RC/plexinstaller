@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import requests
 
@@ -36,10 +35,10 @@ class TelemetrySummary:
 
     session_id: str
     status: str
-    failure_step: Optional[str]
-    error: Optional[str]
-    log_path: Optional[Path]
-    events: List[Dict[str, Any]]
+    failure_step: str | None
+    error: str | None
+    log_path: Path | None
+    events: list[dict[str, Any]]
 
 
 class TelemetryClient:
@@ -54,14 +53,14 @@ class TelemetryClient:
         self.paste_endpoint = paste_endpoint
 
         self._active = False
-        self._session_id: Optional[str] = None
-        self._product: Optional[str] = None
-        self._instance: Optional[str] = None
-        self._current_log_path: Optional[Path] = None
-        self._events: List[Dict[str, Any]] = []
+        self._session_id: str | None = None
+        self._product: str | None = None
+        self._instance: str | None = None
+        self._current_log_path: Path | None = None
+        self._events: list[dict[str, Any]] = []
 
     @property
-    def log_path(self) -> Optional[Path]:
+    def log_path(self) -> Path | None:
         return self._current_log_path
 
     def start_session(self, product: str, instance: str) -> str:
@@ -69,7 +68,7 @@ class TelemetryClient:
         if not self.enabled:
             return ""
 
-        timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
         self._session_id = f"{timestamp}-{product}-{instance}"
         self._product = product
         self._instance = instance
@@ -77,18 +76,16 @@ class TelemetryClient:
         self._events = []
         self._active = True
 
-        self._write_line(
-            f"Session {self._session_id} started for {product} (instance: {instance})"
-        )
+        self._write_line(f"Session {self._session_id} started for {product} (instance: {instance})")
         return self._session_id
 
-    def log_step(self, step: str, status: str, detail: Optional[str] = None):
+    def log_step(self, step: str, status: str, detail: str | None = None):
         """Record a step result inside the session log."""
         if not self.enabled or not self._active or not self._session_id:
             return
 
         entry = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "step": step,
             "status": status,
             "detail": _redact(detail) if detail else "",
@@ -101,9 +98,9 @@ class TelemetryClient:
     def finish_session(
         self,
         status: str,
-        failure_step: Optional[str] = None,
-        error: Optional[str] = None,
-    ) -> Optional[TelemetrySummary]:
+        failure_step: str | None = None,
+        error: str | None = None,
+    ) -> TelemetrySummary | None:
         """Finalize the session and push data to the telemetry API."""
         if not self.enabled or not self._active or not self._session_id:
             return None
@@ -121,7 +118,7 @@ class TelemetryClient:
             self._write_line(f"Session error: {_redact(error)}")
         self._write_line(f"Session completed with status: {status.upper()}")
 
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "session_id": summary.session_id,
             "product": self._product,
             "instance": self._instance,
@@ -130,7 +127,7 @@ class TelemetryClient:
             "error": error,
             "events": self._events,
             "log": self._read_log_contents(),
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
         self._post_payload(payload)
@@ -139,10 +136,14 @@ class TelemetryClient:
         self._session_id = None
         return summary
 
-    def share_log(self) -> Optional[str]:
+    def share_log(self) -> str | None:
         """Upload the current log file to the configured paste service."""
-        if (not self.enabled or not self.paste_endpoint or
-            not self._current_log_path or not self._current_log_path.exists()):
+        if (
+            not self.enabled
+            or not self.paste_endpoint
+            or not self._current_log_path
+            or not self._current_log_path.exists()
+        ):
             return None
 
         try:
@@ -155,7 +156,7 @@ class TelemetryClient:
             )
             response.raise_for_status()
             data = response.json()
-            return data.get("url") or data.get("key")
+            return data.get("url") or data.get("key") or None
         except requests.RequestException:
             return None
 
@@ -164,7 +165,7 @@ class TelemetryClient:
             return self._current_log_path.read_text()
         return ""
 
-    def _post_payload(self, payload: Dict[str, Any]):
+    def _post_payload(self, payload: dict[str, Any]):
         if not self.enabled or not self.endpoint:
             return
         try:
@@ -179,6 +180,6 @@ class TelemetryClient:
     def _write_line(self, message: str):
         if not self.enabled or not self._current_log_path:
             return
-        timestamp = datetime.utcnow().isoformat()
+        timestamp = datetime.now(timezone.utc).isoformat()
         with self._current_log_path.open("a", encoding="utf-8") as handle:
             handle.write(f"{timestamp} :: {message}\n")

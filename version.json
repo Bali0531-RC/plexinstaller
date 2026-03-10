@@ -1,10 +1,21 @@
 {
-  "version": "3.1.17",
-  "release_date": "2026-02-26",
+  "version": "3.2.0",
+  "release_date": "2026-03-06",
   "changelog": [
-    "Domain, reverse proxy, and SSL setup is now optional during installation.",
-    "Users without a domain can skip the web setup and configure it later.",
-    "Added `plex tool setupdomain <app>` CLI command to set up domain, nginx, and SSL for an existing instance."
+    "Extracted shared update/GPG/version logic into shared.py — eliminates duplication between installer.py and plex_cli.py.",
+    "Decomposed the installer god-class into MongoDBManager, BackupManager, and HealthChecker modules.",
+    "Migrated terminal colors from raw ANSI codes to colorama throughout the codebase.",
+    "Added Python logging module with dual output (TUI + structured log file).",
+    "Added 84 automated tests covering utils, config, shared, telemetry, and health_checker.",
+    "Added GitHub Actions CI pipeline with linting (ruff), type checking (mypy), and tests.",
+    "Web frontend converted to single-page app with react-router-dom client-side routing.",
+    "Hero version now derived from changelog data instead of being hardcoded.",
+    "Fixed duplicate changelog entries in the web frontend.",
+    "Adopted pyproject.toml for modern Python packaging with explicit module discovery.",
+    "setup.sh now downloads all managed files (shared.py, health_checker.py, mongodb_manager.py, backup_manager.py) and installs dependencies from requirements.txt.",
+    "Installer auto-detects and downloads missing files on startup for seamless upgrades from older versions.",
+    "Dev/beta branch GPG verification failures no longer block installation.",
+    "Fixed datetime.utcnow() deprecation warnings for Python 3.12+."
   ],
   "download_urls": {
     "installer": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/installer.py",
@@ -13,14 +24,22 @@
     "plex_cli": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/plex_cli.py",
     "setup": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/setup.sh",
     "telemetry_client": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/telemetry_client.py",
-    "addon_manager": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/addon_manager.py"
+    "addon_manager": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/addon_manager.py",
+    "shared": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/shared.py",
+    "health_checker": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/health_checker.py",
+    "mongodb_manager": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/mongodb_manager.py",
+    "backup_manager": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/backup_manager.py"
   },
   "checksums": {
-    "addon_manager": "d0426eb154927a85cdc9eb8aa203d3eb1834b505f695ece1834c967effa50e1b",
-    "config": "ab23aeaea04cf4a9df770f143e4338d7f5dd2ebf89f895dd32db5b316a5041c8",
-    "installer": "80efda34c6b6fa68998fae377be93677b22072f4259f01e9ce40e5c0ff66b412",
-    "plex_cli": "863c7dd4b0b009ea03af4fc603b43327ad124bae02ad83966a3b13873c48627f",
-    "telemetry_client": "e42440fd4aef42c961a7863e033722005ba7fd30bff67875e41f819534057f41",
-    "utils": "aef9149d5272532592807964cb071658daf9a9629a425e7af0da02ddb48037af"
+    "addon_manager": "5d5cf5f3224caa4bdb14d80c3d546eefb74db7c8677d2a693e5a075ede3eb8f5",
+    "backup_manager": "4e5c1fd955f38aeb790a2310a3dc5b9a9921fa21a34b6fd581a4194dbcc58425",
+    "config": "8be596365d26dbb345aeec44ddf2fe701ce8bc85c6959189a949c5aba7bf163c",
+    "health_checker": "4975e3ea6fa9b63674f366336fc6161979f49b1bc94fec2b949386cc2d01906f",
+    "installer": "5945228a30a7eb1e680c0e4ac982fa694319d04ff37978eaf840cd0287e9c927",
+    "mongodb_manager": "f3d2595ad270d8c6996cce554326e3b3db0158dbb78f2b0fd2f1600a3c64266f",
+    "plex_cli": "0979a10bdb0a962b80392d7de13eac35a084f5951154aa087d530e75deb145ff",
+    "shared": "a7724337cc90d8a95c3c822563a47d6d4f0bc06fbe6639bad144445bb7f78e25",
+    "telemetry_client": "a2a20fa5110a2bc2d1137354c3b6c1943cf932d297a22a640219cc4acfab7cd5",
+    "utils": "c73efc77f6a60754a682cc04db2b39ed6430027c5cc2b78a7c8733dfcd1e5294"
   }
 }
