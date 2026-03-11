@@ -72,7 +72,17 @@ plan.txt
 
 # Linux reference (original source for Windows port)
 # linux/
-web2/
+# web2/  — setup.sh is tracked; rest excluded below
+web2/node_modules/
+web2/dist/
+web2/build/
+web2/outputs/
+web2/src/
+web2/package.json
+web2/tsconfig.json
+web2/tsconfig.node.json
+web2/vite.config.ts
+web2/*.html
 telemetry/
 
 # Temp files
