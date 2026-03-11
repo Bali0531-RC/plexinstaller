@@ -179,7 +179,7 @@ if command -v gpg &> /dev/null; then
             GPG_VERIFIED=true
         else
             print_warning "GPG signature could not be verified"
-            print_warning "This can happen with dev/beta builds or if the signing key has changed."
+            print_warning "This may indicate the files were modified, or the signing key has changed."
             echo ""
             read -p "Would you like to continue with the setup? (y/n): " continue_anyway
             if [ "$continue_anyway" != "y" ] && [ "$continue_anyway" != "Y" ]; then
@@ -252,7 +252,7 @@ if [ -f "$INSTALL_DIR/version.json" ]; then
     if [ "$CHECKSUM_FAILED" = true ]; then
         echo ""
         print_warning "Some file checksums did not match version.json."
-        print_warning "This is normal if the installer was updated since the last release."
+        print_warning "This may happen if files were updated after the last release, or if a download was incomplete."
         echo ""
         read -p "Would you like to continue with the setup? (y/n): " continue_checksum
         if [ "$continue_checksum" != "y" ] && [ "$continue_checksum" != "Y" ]; then
