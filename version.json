@@ -1,6 +1,6 @@
 {
   "version": "3.2.0",
-  "release_date": "2026-03-06",
+  "release_date": "2026-03-11",
   "changelog": [
     "Extracted shared update/GPG/version logic into shared.py — eliminates duplication between installer.py and plex_cli.py.",
     "Decomposed the installer god-class into MongoDBManager, BackupManager, and HealthChecker modules.",
@@ -36,9 +36,9 @@
     "config": "8be596365d26dbb345aeec44ddf2fe701ce8bc85c6959189a949c5aba7bf163c",
     "health_checker": "4975e3ea6fa9b63674f366336fc6161979f49b1bc94fec2b949386cc2d01906f",
     "installer": "5945228a30a7eb1e680c0e4ac982fa694319d04ff37978eaf840cd0287e9c927",
-    "mongodb_manager": "f3d2595ad270d8c6996cce554326e3b3db0158dbb78f2b0fd2f1600a3c64266f",
-    "plex_cli": "0979a10bdb0a962b80392d7de13eac35a084f5951154aa087d530e75deb145ff",
-    "shared": "a7724337cc90d8a95c3c822563a47d6d4f0bc06fbe6639bad144445bb7f78e25",
+    "mongodb_manager": "05bebe7850882f9924d06db904fda85e4e961729cd5a08883c366a709dc3f903",
+    "plex_cli": "bc3d5bd01c68f9c729af8744a4af45d1fa8b4821b8dbc201877102fcfd9e0eb9",
+    "shared": "aae5c713f1af6aa29818ca3493e1a285e5b9529fe17759045c1faada3314018a",
     "telemetry_client": "a2a20fa5110a2bc2d1137354c3b6c1943cf932d297a22a640219cc4acfab7cd5",
     "utils": "c73efc77f6a60754a682cc04db2b39ed6430027c5cc2b78a7c8733dfcd1e5294"
   }
