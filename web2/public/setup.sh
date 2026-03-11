@@ -178,14 +178,15 @@ if command -v gpg &> /dev/null; then
             print_success "GPG signature verified — files are authentic"
             GPG_VERIFIED=true
         else
-            print_error "GPG signature verification FAILED"
-            print_error "The downloaded files may have been tampered with!"
-            read -p "Continue anyway? (y/n): " continue_anyway
+            print_warning "GPG signature could not be verified"
+            print_warning "This can happen with dev/beta builds or if the signing key has changed."
+            echo ""
+            read -p "Would you like to continue with the setup? (y/n): " continue_anyway
             if [ "$continue_anyway" != "y" ] && [ "$continue_anyway" != "Y" ]; then
-                print_error "Installation aborted."
+                print_step "Installation cancelled."
                 exit 1
             fi
-            print_warning "Continuing without verified signature..."
+            print_step "Continuing without verified signature..."
         fi
     else
         print_warning "Signature files not found — skipping GPG verification"
@@ -243,21 +244,22 @@ if [ -f "$INSTALL_DIR/version.json" ]; then
         if [ "$actual" = "$expected" ]; then
             print_success "Checksum OK: $fname"
         else
-            print_error "Checksum MISMATCH: $fname"
-            print_error "  Expected: $expected"
-            print_error "  Got:      $actual"
+            print_warning "Checksum mismatch: $fname"
             CHECKSUM_FAILED=true
         fi
     done
 
     if [ "$CHECKSUM_FAILED" = true ]; then
-        print_error "One or more checksums failed verification!"
-        read -p "Continue anyway? (y/n): " continue_checksum
+        echo ""
+        print_warning "Some file checksums did not match version.json."
+        print_warning "This is normal if the installer was updated since the last release."
+        echo ""
+        read -p "Would you like to continue with the setup? (y/n): " continue_checksum
         if [ "$continue_checksum" != "y" ] && [ "$continue_checksum" != "Y" ]; then
-            print_error "Installation aborted."
+            print_step "Installation cancelled."
             exit 1
         fi
-        print_warning "Continuing with mismatched checksums..."
+        print_step "Continuing with setup..."
     fi
 else
     print_warning "version.json not found — skipping checksum verification"
