@@ -64,7 +64,7 @@ jobs:
           architectures: ${{ env.ARCHITECTURES }}
           scan-dir: dist
           import-from-repo-url: |
-            deb-all https://${{ github.repository_owner }}.github.io/${{ env.REPO_NAME }}/ ${{ env.CODENAME }} ${{ env.COMPONENTS }}
+            deb-all https://apt.plexdev.xyz ${{ env.CODENAME }} ${{ env.COMPONENTS }}
           import-from-repo-failure-allow: true
 
       - name: Upload Pages artifact
@@ -92,10 +92,10 @@ jobs:
           echo '' >> $GITHUB_STEP_SUMMARY
           echo '```bash' >> $GITHUB_STEP_SUMMARY
           echo '# Add the signing key' >> $GITHUB_STEP_SUMMARY
-          echo 'curl -fsSL ${{ steps.deployment.outputs.page_url }}gpg.key | sudo tee /etc/apt/trusted.gpg.d/${{ needs.build.outputs.keyring }}.asc > /dev/null' >> $GITHUB_STEP_SUMMARY
+          echo 'curl -fsSL https://apt.plexdev.xyz/gpg.key | sudo tee /etc/apt/trusted.gpg.d/${{ needs.build.outputs.keyring }}.asc > /dev/null' >> $GITHUB_STEP_SUMMARY
           echo '' >> $GITHUB_STEP_SUMMARY
           echo '# Add the repository' >> $GITHUB_STEP_SUMMARY
-          echo 'echo "deb ${{ steps.deployment.outputs.page_url }} stable main" | sudo tee /etc/apt/sources.list.d/plexinstaller.list' >> $GITHUB_STEP_SUMMARY
+          echo 'echo "deb https://apt.plexdev.xyz stable main" | sudo tee /etc/apt/sources.list.d/plexinstaller.list' >> $GITHUB_STEP_SUMMARY
           echo '' >> $GITHUB_STEP_SUMMARY
           echo '# Install' >> $GITHUB_STEP_SUMMARY
           echo 'sudo apt update && sudo apt install plexinstaller' >> $GITHUB_STEP_SUMMARY
