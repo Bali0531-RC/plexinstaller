@@ -55,6 +55,7 @@ web2/dist
 web2/build
 web2/outputs   
 build/
+dist/
 plexinstaller.egg-info/
 .pytest_cache/
 
