@@ -1,6 +1,6 @@
 # Build .deb package and publish APT repository to GitHub Pages
 # Triggers on releases or manual dispatch
-name: APT Repository Build
+name: APT Repository Build 2
 
 on:
   release:
