@@ -20,7 +20,7 @@ env:
   REPO_NAME: plexinstaller
   CODENAME: stable
   COMPONENTS: main
-  ARCHITECTURES: all
+  ARCHITECTURES: amd64
 
 jobs:
   build:
@@ -64,7 +64,7 @@ jobs:
           architectures: ${{ env.ARCHITECTURES }}
           scan-dir: dist
           import-from-repo-url: |
-            deb-all https://apt.plexdev.xyz ${{ env.CODENAME }} ${{ env.COMPONENTS }}
+            deb https://apt.plexdev.xyz ${{ env.CODENAME }} ${{ env.COMPONENTS }}
           import-from-repo-failure-allow: true
 
       - name: Add CNAME and public key to output
