@@ -67,6 +67,12 @@ jobs:
             deb-all https://apt.plexdev.xyz ${{ env.CODENAME }} ${{ env.COMPONENTS }}
           import-from-repo-failure-allow: true
 
+      - name: Add CNAME and public key to output
+        run: |
+          cp CNAME ${{ steps.create-apt-repo.outputs.dir }}/CNAME
+          echo "${{ secrets.APT_SIGNING_KEY }}" | gpg --batch --import 2>/dev/null
+          gpg --armor --export apt@plexdev.xyz > ${{ steps.create-apt-repo.outputs.dir }}/key.gpg
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
