@@ -1,0 +1,16 @@
+Package: plexinstaller
+Version: __VERSION__
+Section: admin
+Priority: optional
+Architecture: all
+Depends: python3 (>= 3.10), python3-requests, python3-yaml, python3-colorama, curl, git, jq
+Recommends: gnupg, nodejs (>= 20), npm
+Maintainer: Bali0531-RC <contact@bali0531.hu>
+Homepage: https://github.com/Bali0531-RC/plexinstaller
+Description: Unified installer for PlexDevelopment products
+ PlexInstaller is the unified Python-based installer and management
+ tool for the PlexDevelopment product line (Tickets, Staff, Status,
+ Store, Forms, Links, Paste, Tracker). It handles archive discovery,
+ extraction, dependency installation, MongoDB/user provisioning,
+ nginx + SSL wiring, firewall rules, telemetry, and post-install
+ management from a single interactive CLI workflow.
