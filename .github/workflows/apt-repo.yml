@@ -50,6 +50,8 @@ jobs:
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
+        with:
+          enablement: true
 
       - name: Create APT repository
         uses: morph027/apt-repo-action@v3
