@@ -25,8 +25,6 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    outputs:
-      keyring: ${{ steps.create-apt-repo.outputs.keyring }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -48,36 +46,65 @@ jobs:
           chmod +x debian/build-deb.sh
           debian/build-deb.sh
 
+      - name: Install reprepro
+        run: sudo apt-get update && sudo apt-get install -y reprepro
+
+      - name: Import GPG key
+        run: |
+          echo "${{ secrets.APT_SIGNING_KEY }}" | gpg --batch --import
+
+      - name: Get GPG fingerprint
+        id: gpg
+        run: |
+          FINGERPRINT=$(gpg --list-secret-keys --with-colons | grep '^fpr' | head -1 | cut -d: -f10)
+          echo "fingerprint=${FINGERPRINT}" >> "$GITHUB_OUTPUT"
+
+      - name: Create APT repository
+        run: |
+          REPO_DIR=$(mktemp -d)
+          mkdir -p "${REPO_DIR}/conf"
+
+          # Create distributions config
+          cat > "${REPO_DIR}/conf/distributions" <<EOF
+          Origin: ${{ env.REPO_NAME }}
+          Label: ${{ env.REPO_NAME }}
+          Suite: ${{ env.CODENAME }}
+          Codename: ${{ env.CODENAME }}
+          Components: ${{ env.COMPONENTS }}
+          Architectures: ${{ env.ARCHITECTURES }}
+          SignWith: ${{ steps.gpg.outputs.fingerprint }}
+          EOF
+          # Remove leading whitespace from heredoc
+          sed -i 's/^          //' "${REPO_DIR}/conf/distributions"
+
+          echo "=== distributions config ==="
+          cat "${REPO_DIR}/conf/distributions"
+
+          # Include all .deb packages
+          for deb in dist/*.deb; do
+            echo "Including ${deb}..."
+            reprepro -b "${REPO_DIR}" -C ${{ env.COMPONENTS }} includedeb ${{ env.CODENAME }} "${deb}"
+          done
+
+          # Export public key
+          gpg --armor --export ${{ steps.gpg.outputs.fingerprint }} > "${REPO_DIR}/gpg.key"
+
+          # Copy CNAME for custom domain
+          cp CNAME "${REPO_DIR}/CNAME"
+
+          echo "repo_dir=${REPO_DIR}" >> "$GITHUB_OUTPUT"
+        id: repo
+
       - name: Setup Pages
         uses: actions/configure-pages@v4
         with:
           enablement: true
 
-      - name: Create APT repository
-        uses: morph027/apt-repo-action@v3
-        id: create-apt-repo
-        with:
-          repo-name: ${{ env.REPO_NAME }}
-          signing-key: ${{ secrets.APT_SIGNING_KEY }}
-          codename: ${{ env.CODENAME }}
-          components: ${{ env.COMPONENTS }}
-          architectures: ${{ env.ARCHITECTURES }}
-          scan-dir: dist
-          import-from-repo-url: |
-            deb https://apt.plexdev.xyz ${{ env.CODENAME }} ${{ env.COMPONENTS }}
-          import-from-repo-failure-allow: true
-
-      - name: Add CNAME and public key to output
-        run: |
-          cp CNAME ${{ steps.create-apt-repo.outputs.dir }}/CNAME
-          echo "${{ secrets.APT_SIGNING_KEY }}" | gpg --batch --import 2>/dev/null
-          gpg --armor --export apt@plexdev.xyz > ${{ steps.create-apt-repo.outputs.dir }}/key.gpg
-
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
           name: github-pages
-          path: ${{ steps.create-apt-repo.outputs.dir }}
+          path: ${{ steps.repo.outputs.repo_dir }}
 
   deploy:
     environment:
@@ -98,7 +125,7 @@ jobs:
           echo '' >> $GITHUB_STEP_SUMMARY
           echo '```bash' >> $GITHUB_STEP_SUMMARY
           echo '# Add the signing key' >> $GITHUB_STEP_SUMMARY
-          echo 'curl -fsSL https://apt.plexdev.xyz/gpg.key | sudo tee /etc/apt/trusted.gpg.d/${{ needs.build.outputs.keyring }}.asc > /dev/null' >> $GITHUB_STEP_SUMMARY
+          echo 'curl -fsSL https://apt.plexdev.xyz/gpg.key | sudo tee /etc/apt/trusted.gpg.d/plexinstaller.asc > /dev/null' >> $GITHUB_STEP_SUMMARY
           echo '' >> $GITHUB_STEP_SUMMARY
           echo '# Add the repository' >> $GITHUB_STEP_SUMMARY
           echo 'echo "deb https://apt.plexdev.xyz stable main" | sudo tee /etc/apt/sources.list.d/plexinstaller.list' >> $GITHUB_STEP_SUMMARY
