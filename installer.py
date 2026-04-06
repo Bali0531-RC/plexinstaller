@@ -617,6 +617,8 @@ class PlexInstaller:
 
             # MongoDB setup
             current_step = "mongodb"
+            assert self.mongo_manager is not None, "MongoDBManager module is required but not available"
+            assert self.health is not None, "HealthChecker module is required but not available"
             product_config = self.config.get_product(product) if hasattr(self.config, "get_product") else None
             requires_mongo = bool(getattr(product_config, "requires_mongodb", False))
             mongo_creds = self.mongo_manager.setup(
@@ -676,6 +678,7 @@ class PlexInstaller:
 
             # Post-install self-tests
             current_step = "self_tests"
+            assert self.health is not None, "HealthChecker module is required but not available"
             results = self.health.run_post_install_self_tests(
                 context,
                 mongo_creds=mongo_creds,
@@ -1333,6 +1336,7 @@ class PlexInstaller:
 
     def _manage_product_addons(self, product_name: str, product_path: Path):
         """Manage addons for a specific product"""
+        assert self.addon_manager is not None, "AddonManager module is required but not available"
         while True:
             os.system("clear" if os.name != "nt" else "cls")
             self.printer.header(f"Addons for {product_name}")
@@ -1376,6 +1380,7 @@ class PlexInstaller:
 
     def _install_addon(self, product_name: str, product_path: Path):
         """Install an addon for a product"""
+        assert self.addon_manager is not None, "AddonManager module is required but not available"
         self.printer.header(f"Install Addon for {product_name}")
 
         # Search for addon archives
@@ -1458,6 +1463,7 @@ class PlexInstaller:
 
     def _remove_addon(self, product_name: str, product_path: Path, addons: list[dict]):
         """Remove an addon from a product"""
+        assert self.addon_manager is not None, "AddonManager module is required but not available"
         if not addons:
             self.printer.warning("No addons installed to remove")
             return
@@ -1516,6 +1522,7 @@ class PlexInstaller:
 
     def _configure_addon(self, product_name: str, product_path: Path, addons: list[dict]):
         """Configure an addon's config.yml/yaml file"""
+        assert self.addon_manager is not None, "AddonManager module is required but not available"
         # Filter to addons with config files
         configurable_addons = [a for a in addons if a["has_config"]]
 
@@ -1584,6 +1591,7 @@ class PlexInstaller:
 
     def _view_addon_backups(self, product_name: str, product_path: Path):
         """View and optionally restore addon backups"""
+        assert self.addon_manager is not None, "AddonManager module is required but not available"
         self.printer.header(f"Addon Backups for {product_name}")
 
         backups = self.addon_manager.list_addon_backups(product_path)
@@ -1630,6 +1638,7 @@ class PlexInstaller:
 
     def _restore_addon_backup(self, product_name: str, product_path: Path, backup: dict):
         """Restore an addon from backup"""
+        assert self.addon_manager is not None, "AddonManager module is required but not available"
         import tarfile
 
         addon_name = backup["addon_name"]
