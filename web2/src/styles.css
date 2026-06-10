@@ -22,21 +22,29 @@
 
 /* Migration Banner */
 .migration-banner {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-  color: #000;
-  padding: 12px 20px;
-  text-align: center;
-  font-size: 0.875rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 10px;
+  padding: 12px 20px;
+  text-align: center;
+  font-size: 0.875rem;
+  color: #fbd38d;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.35);
   border-radius: var(--radius-m);
   margin-bottom: 16px;
 }
 
 .migration-banner strong {
   font-weight: 600;
+  color: #fcd34d;
+}
+
+.banner-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
 }
 
 * {
@@ -47,15 +55,36 @@ body {
   margin: 0;
   min-height: 100vh;
   background:
-    radial-gradient(circle at 15% 20%, rgba(83, 185, 255, 0.15), transparent 45%),
-    radial-gradient(circle at 85% 10%, rgba(99, 102, 241, 0.18), transparent 40%),
-    radial-gradient(circle at 30% 80%, rgba(45, 212, 191, 0.12), transparent 35%),
+    radial-gradient(circle at 15% 20%, rgba(83, 185, 255, 0.12), transparent 45%),
+    radial-gradient(circle at 85% 10%, rgba(33, 161, 255, 0.08), transparent 40%),
     #05070d;
   color: var(--text);
 }
 
 a {
   color: inherit;
+}
+
+h2 {
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+
+h3 {
+  font-size: 1.15rem;
+  line-height: 1.3;
+}
+
+button {
+  cursor: pointer;
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 #root {
@@ -116,16 +145,30 @@ a {
   color: var(--text);
 }
 
+.nav-links a.active {
+  border-color: rgba(83, 185, 255, 0.4);
+  background: rgba(83, 185, 255, 0.1);
+  color: var(--text);
+}
+
 .nav-addons {
-  background: linear-gradient(135deg, rgba(168, 85, 247, 0.15), rgba(236, 72, 153, 0.15));
-  border: 1px solid rgba(168, 85, 247, 0.3) !important;
-  color: #e879f9 !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(83, 185, 255, 0.35) !important;
+  background: rgba(83, 185, 255, 0.08);
+  color: var(--accent) !important;
 }
 
 .nav-addons:hover {
-  background: linear-gradient(135deg, rgba(168, 85, 247, 0.25), rgba(236, 72, 153, 0.25));
-  border-color: rgba(168, 85, 247, 0.5) !important;
-  color: #f0abfc !important;
+  background: rgba(83, 185, 255, 0.16);
+  border-color: rgba(83, 185, 255, 0.55) !important;
+  color: var(--accent-strong) !important;
+}
+
+.nav-external-icon {
+  width: 12px;
+  height: 12px;
 }
 
 .card {
@@ -164,6 +207,11 @@ a {
   margin: 0;
 }
 
+.hero > p:not(.eyebrow) {
+  max-width: 65ch;
+  color: var(--muted);
+}
+
 .eyebrow {
   text-transform: uppercase;
   letter-spacing: 0.2em;
@@ -187,6 +235,7 @@ a {
   border-radius: var(--radius-s);
   font-weight: 600;
   text-decoration: none;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
 }
 
 .primary {
@@ -194,9 +243,18 @@ a {
   color: #05070d;
 }
 
+.primary:hover {
+  background: linear-gradient(120deg, #7accff, var(--accent));
+}
+
 .ghost {
   border: 1px solid var(--border);
   color: var(--text);
+}
+
+.ghost:hover {
+  border-color: rgba(83, 185, 255, 0.4);
+  background: rgba(83, 185, 255, 0.06);
 }
 
 .section-heading {
@@ -339,8 +397,8 @@ a {
 .addons-promo {
   display: grid;
   gap: 24px;
-  background: linear-gradient(135deg, rgba(168, 85, 247, 0.08), rgba(236, 72, 153, 0.08), rgba(10, 14, 25, 0.75));
-  border: 1px solid rgba(168, 85, 247, 0.25);
+  background: linear-gradient(135deg, rgba(83, 185, 255, 0.08), rgba(10, 14, 25, 0.75));
+  border: 1px solid rgba(83, 185, 255, 0.25);
 }
 
 @media (min-width: 768px) {
@@ -385,7 +443,10 @@ a {
 }
 
 .addons-feature-icon {
-  font-size: 1.1rem;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--accent);
 }
 
 .docs-page {
@@ -397,6 +458,11 @@ a {
   background: rgba(10, 14, 25, 0.8);
   border: 1px solid var(--border);
   border-radius: var(--radius-m);
+}
+
+.docs-hero > p:not(.eyebrow),
+.docs-section p {
+  max-width: 70ch;
 }
 
 .docs-sections {

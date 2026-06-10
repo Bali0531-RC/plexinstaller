@@ -38,6 +38,23 @@ while getopts "b" opt; do
     esac
 done
 
+# Prompt helper that works when the script is piped into bash (curl | sudo bash).
+# In that case stdin is the script itself, so we read from /dev/tty instead.
+# Falls back to a safe default answer when no terminal is available.
+prompt_user() {
+    local prompt_text="$1" __var_name="$2" default_answer="${3:-n}"
+    local answer=""
+    if [ -t 0 ]; then
+        read -rp "$prompt_text" answer || answer="$default_answer"
+    elif [ -r /dev/tty ]; then
+        read -rp "$prompt_text" answer < /dev/tty || answer="$default_answer"
+    else
+        echo "${prompt_text}(non-interactive, defaulting to '${default_answer}')"
+        answer="$default_answer"
+    fi
+    printf -v "$__var_name" '%s' "$answer"
+}
+
 # Print functions
 print_header() {
     echo -e "\n${BOLD}${PURPLE}#===== $1 =====#${NC}\n"
@@ -61,7 +78,7 @@ print_step() {
 
 # Banner
 display_banner() {
-    clear
+    clear 2>/dev/null || true
     echo -e "${BOLD}${CYAN}"
     echo "  _____  _           _____                 _                                  _   "
     echo " |  __ \| |         |  __ \               | |                                | |  "
@@ -90,7 +107,7 @@ print_success "Running with root privileges"
 print_step "Checking system requirements..."
 
 MISSING_CMDS=()
-for cmd in curl wget git python3 jq; do
+for cmd in curl wget git python3 jq gpg; do
     if ! command -v $cmd &> /dev/null; then
         MISSING_CMDS+=($cmd)
     fi
@@ -101,15 +118,15 @@ if [ ${#MISSING_CMDS[@]} -gt 0 ]; then
     print_step "Installing missing dependencies..."
     
     if command -v apt &> /dev/null; then
-        apt update && apt install -y curl wget git python3 python3-pip jq
+        apt update && apt install -y curl wget git python3 python3-pip jq gnupg
     elif command -v dnf &> /dev/null; then
-        dnf install -y curl wget git python3 python3-pip jq
+        dnf install -y curl wget git python3 python3-pip jq gnupg2
     elif command -v yum &> /dev/null; then
-        yum install -y curl wget git python3 python3-pip jq
+        yum install -y curl wget git python3 python3-pip jq gnupg2
     elif command -v pacman &> /dev/null; then
-        pacman -S --noconfirm curl wget git python python-pip jq
+        pacman -S --noconfirm curl wget git python python-pip jq gnupg
     elif command -v zypper &> /dev/null; then
-        zypper install -y curl wget git python3 python3-pip jq
+        zypper install -y curl wget git python3 python3-pip jq gpg2
     else
         print_error "Cannot automatically install dependencies. Please install manually: ${MISSING_CMDS[*]}"
         exit 1
@@ -181,7 +198,7 @@ if command -v gpg &> /dev/null; then
             print_warning "GPG signature could not be verified"
             print_warning "This may indicate the files were modified, or the signing key has changed."
             echo ""
-            read -p "Would you like to continue with the setup? (y/n): " continue_anyway
+            prompt_user "Would you like to continue with the setup? (y/n): " continue_anyway "n"
             if [ "$continue_anyway" != "y" ] && [ "$continue_anyway" != "Y" ]; then
                 print_step "Installation cancelled."
                 exit 1
@@ -254,7 +271,7 @@ if [ -f "$INSTALL_DIR/version.json" ]; then
         print_warning "Some file checksums did not match version.json."
         print_warning "This may happen if files were updated after the last release, or if a download was incomplete."
         echo ""
-        read -p "Would you like to continue with the setup? (y/n): " continue_checksum
+        prompt_user "Would you like to continue with the setup? (y/n): " continue_checksum "n"
         if [ "$continue_checksum" != "y" ] && [ "$continue_checksum" != "Y" ]; then
             print_step "Installation cancelled."
             exit 1
@@ -355,7 +372,7 @@ echo ""
 # Ask if user wants to run installer now
 print_step "Setup complete!"
 echo ""
-read -p "Would you like to run the installer now? (y/n): " run_now
+prompt_user "Would you like to run the installer now? (y/n): " run_now "n"
 
 if [ "$run_now" = "y" ] || [ "$run_now" = "Y" ]; then
     print_header "Starting PlexDevelopment Installer"

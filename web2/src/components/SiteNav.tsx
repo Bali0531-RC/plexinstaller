@@ -1,4 +1,5 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { ExternalLinkIcon } from "./icons";
 
 type NavLink = {
   to: string;
@@ -64,7 +65,8 @@ export const SiteNav = ({ sticky = false }: { sticky?: boolean }) => {
           );
         })}
         <a href="https://addons.plexdev.xyz" className="nav-addons" target="_blank" rel="noreferrer">
-          🧩 Addons
+          Addons
+          <ExternalLinkIcon className="nav-external-icon" />
         </a>
       </div>
     </nav>

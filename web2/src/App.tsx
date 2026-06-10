@@ -4,6 +4,7 @@ import { CommandBlock } from "./components/CommandBlock";
 import { ProductGrid } from "./components/ProductGrid";
 import { ReleaseTimeline } from "./components/ReleaseTimeline";
 import { SiteNav } from "./components/SiteNav";
+import { RefreshIcon, PackageIcon, ShieldCheckIcon } from "./components/icons";
 import { installerContent, InstallerTab } from "./data/installers";
 import { releases } from "./data/changelog";
 
@@ -33,10 +34,10 @@ export const App = () => {
   return (
     <div className="page">
       <div className="migration-banner">
-        <span>🔄</span>
+        <RefreshIcon className="banner-icon" />
         <span>
-          <strong>Domain Migration:</strong> We've moved from plexdev.live to plexdev.xyz! 
-          Update your bookmarks. The old domain will redirect here until it expires (~60 days).
+          <strong>Domain migration:</strong> We've moved from plexdev.live to plexdev.xyz.
+          Update your bookmarks — the old domain will redirect here until it expires (~60 days).
         </span>
       </div>
       <SiteNav />
@@ -101,7 +102,7 @@ export const App = () => {
       </section>
 
       <section className="card notice">
-        <p className="eyebrow">Friendly reminder</p>
+        <p className="eyebrow">Licensing</p>
         <p>
           This installer does not ship or license any PlexDevelopment products. Server owners must supply their own application files, keys, and content before running deployments.
         </p>
@@ -125,7 +126,7 @@ export const App = () => {
         <div className="section-heading">
           <div>
             <p className="eyebrow">Changelog</p>
-            <h2>Always forward</h2>
+            <h2>Recent releases</h2>
           </div>
           <p className="hint">Full release notes live in the repo if you need deeper detail.</p>
         </div>
@@ -135,7 +136,7 @@ export const App = () => {
       <section id="addons" className="addons-promo card">
         <div className="addons-promo-content">
           <p className="eyebrow">New Platform</p>
-          <h2>🧩 PlexDev Addons</h2>
+          <h2>PlexDev Addons</h2>
           <p>
             Discover and share community-built addons for PlexDevelopment products. 
             Version checking, automatic updates, and a growing library of extensions.
@@ -151,22 +152,22 @@ export const App = () => {
         </div>
         <div className="addons-promo-features">
           <div className="addons-feature">
-            <span className="addons-feature-icon">📦</span>
+            <PackageIcon className="addons-feature-icon" />
             <span>Addon Registry</span>
           </div>
           <div className="addons-feature">
-            <span className="addons-feature-icon">🔄</span>
+            <RefreshIcon className="addons-feature-icon" />
             <span>Auto Updates</span>
           </div>
           <div className="addons-feature">
-            <span className="addons-feature-icon">🔐</span>
+            <ShieldCheckIcon className="addons-feature-icon" />
             <span>Discord Auth</span>
           </div>
         </div>
       </section>
 
       <section id="support" className="cta card">
-        <p className="eyebrow">Fast help</p>
+        <p className="eyebrow">Support</p>
         <h2>Need support?</h2>
         <p>
           SSH access or logs ready? Email the maintainer or open a GitHub issue and we will get your environment unblocked.
