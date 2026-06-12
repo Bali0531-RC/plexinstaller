@@ -33,13 +33,6 @@ export const App = () => {
 
   return (
     <div className="page">
-      <div className="migration-banner">
-        <RefreshIcon className="banner-icon" />
-        <span>
-          <strong>Domain migration:</strong> We've moved from plexdev.live to plexdev.xyz.
-          Update your bookmarks — the old domain will redirect here until it expires (~60 days).
-        </span>
-      </div>
       <SiteNav />
       <main>
         <header className="hero">

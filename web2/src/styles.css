@@ -20,33 +20,6 @@
   background-color: var(--bg);
 }
 
-/* Migration Banner */
-.migration-banner {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 12px 20px;
-  text-align: center;
-  font-size: 0.875rem;
-  color: #fbd38d;
-  background: rgba(245, 158, 11, 0.1);
-  border: 1px solid rgba(245, 158, 11, 0.35);
-  border-radius: var(--radius-m);
-  margin-bottom: 16px;
-}
-
-.migration-banner strong {
-  font-weight: 600;
-  color: #fcd34d;
-}
-
-.banner-icon {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-}
-
 * {
   box-sizing: border-box;
 }
