@@ -454,11 +454,11 @@ class PlexInstaller:
             self._show_services_status()
             print()
 
-            print("PlexDevelopment Bots")
+            print("Plex Development Products")
             print("1) Install PlexTickets")
             print("2) Install PlexStaff")
             print("----------------------------------------")
-            print("Drako Products")
+            print("Drako Development Products")
             print("3) Install DrakoStatus")
             print("4) Install DrakoStore")
             print("5) Install DrakoForms")

@@ -126,10 +126,6 @@ for cmd in curl python3 gpg sha256sum; do
     fi
 done
 
-if ! python3 -c 'import venv' >/dev/null 2>&1; then
-    MISSING_CMDS+=(python3-venv)
-fi
-
 if [ ${#MISSING_CMDS[@]} -gt 0 ]; then
     print_warning "Missing required commands: ${MISSING_CMDS[*]}"
     print_step "Installing missing dependencies..."
@@ -152,6 +148,60 @@ fi
 
 PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}')
 print_success "Python $PYTHON_VERSION found"
+
+# Importing venv is not enough on Debian-family systems: the module can exist
+# while ensurepip is split into python<major.minor>-venv. Probe by creating an
+# actual disposable environment, then install the missing distro package.
+venv_available() {
+    local probe_dir
+    probe_dir=$(mktemp -d)
+    if python3 -m venv "$probe_dir/venv" >/dev/null 2>&1 \
+        && [ -x "$probe_dir/venv/bin/python" ] \
+        && "$probe_dir/venv/bin/python" -m pip --version >/dev/null 2>&1; then
+        rm -rf "$probe_dir"
+        return 0
+    fi
+    rm -rf "$probe_dir"
+    return 1
+}
+
+install_venv_support() {
+    local python_series
+    python_series=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+
+    print_warning "Python $python_series cannot create a pip-enabled virtual environment."
+    print_step "Installing Python virtual environment support..."
+
+    if command -v apt-get &> /dev/null; then
+        apt-get update
+        if ! apt-get install -y "python${python_series}-venv"; then
+            print_warning "python${python_series}-venv was unavailable; trying python3-venv..."
+            apt-get install -y python3-venv
+        fi
+    elif command -v dnf &> /dev/null; then
+        dnf install -y python3-pip python3-virtualenv
+    elif command -v yum &> /dev/null; then
+        yum install -y python3-pip python3-virtualenv
+    elif command -v pacman &> /dev/null; then
+        pacman -S --noconfirm --needed python python-pip
+    elif command -v zypper &> /dev/null; then
+        zypper install -y python3-pip python3-virtualenv
+    else
+        print_error "Cannot automatically install virtual environment support."
+        return 1
+    fi
+}
+
+if ! venv_available; then
+    install_venv_support || exit 1
+    if ! venv_available; then
+        PYTHON_SERIES=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+        print_error "Python virtual environment support is still unavailable."
+        print_error "Install python${PYTHON_SERIES}-venv (or python3-venv) and re-run setup."
+        exit 1
+    fi
+fi
+print_success "Python virtual environment support is ready"
 
 # Stage the complete bundle outside the live installation directory.
 print_step "Creating secure staging directory..."
@@ -317,6 +367,7 @@ fi
 # Install Python dependencies
 print_step "Installing Python dependencies..."
 if [ -f "${STAGING_DIR}/requirements.txt" ]; then
+    rm -rf "${STAGING_DIR}/.venv"
     if ! python3 -m venv "${STAGING_DIR}/.venv"; then
         print_error "Failed to create isolated Python virtual environment"
         exit 1

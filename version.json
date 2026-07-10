@@ -30,7 +30,7 @@
     "backup_manager": "81fe94694511bf63e6c1748d76af41b058f1ed8d601591a63721a3df6133483c",
     "config": "1c80635f143cc83c05a01f1a1cfa9df24f95649cdbdf4b66441a3355fc68baeb",
     "health_checker": "7ede7683b8f705b41753aa213e9d4ce91d105e52fe959d217cc828ad6b5f60e1",
-    "installer": "fb14e35e1f68cc738a5816ba7cc1e08ed70335744561e29817da8ef4702210c1",
+    "installer": "20195ecd896bf4866bea85ca62ee799609ecde2dc4601dea7869b370ab02d87d",
     "mongodb_manager": "dbb1892ec54cd1e675789435b3dada1c66d7fe702b86457ac46f2c09a1b0f68d",
     "plex_cli": "b1dd29d3e03b55f6c364725385166cca57e257cae2faa973c39a5e8d5d025de8",
     "requirements": "fd8f0565512b997c8c699eeb87dbf432d31e3b5de9dde4ef76f7e2a10e65df12",
