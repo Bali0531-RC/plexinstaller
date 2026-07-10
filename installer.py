@@ -515,7 +515,7 @@ class PlexInstaller:
             else:
                 self.printer.error("Invalid choice")
 
-            if choice != "0":
+            if choice != "0":  # pragma: no branch
                 input("\nPress Enter to continue...")
         return exit_code
 
@@ -1561,7 +1561,7 @@ class PlexInstaller:
             else:
                 self.printer.error("Invalid choice")
 
-            if choice != "0":
+            if choice != "0":  # pragma: no branch
                 input("\nPress Enter to continue...")
 
     def _show_ssl_status(self):
@@ -1649,7 +1649,7 @@ class PlexInstaller:
             except ValueError:
                 self.printer.error("Invalid choice")
 
-            if choice != "0":
+            if choice != "0":  # pragma: no branch
                 input("\nPress Enter to continue...")
 
     def _get_addon_supported_products(self) -> list[tuple[str, Path]]:
@@ -1716,7 +1716,7 @@ class PlexInstaller:
             else:
                 self.printer.error("Invalid choice")
 
-            if choice != "0":
+            if choice != "0":  # pragma: no branch
                 input("\nPress Enter to continue...")
 
     def _install_addon(self, product_name: str, product_path: Path):

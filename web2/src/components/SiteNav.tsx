@@ -1,4 +1,3 @@
-import { useLocation } from "react-router-dom";
 import { ExternalLinkIcon } from "./icons";
 
 type NavLink = {
@@ -8,29 +7,30 @@ type NavLink = {
 };
 
 const links: NavLink[] = [
-  { to: "/#install", label: "Installer" },
-  { to: "/#platform", label: "Platform" },
-  { to: "/#changelog", label: "Changelog" },
+  { to: "/#install", label: "Install" },
+  { to: "/#products", label: "Products" },
   { to: "/guide.html", label: "Guide" },
+  { to: "/changelog.html", label: "Changelog" },
   { to: "/faq.html", label: "FAQ" },
-  { to: "/terms.html", label: "TOS" },
-  { to: "/privacy.html", label: "Privacy" },
-  { to: "/setup.sh", label: "setup.sh", download: true },
 ];
 
 export const SiteNav = ({ sticky = false }: { sticky?: boolean }) => {
-  const location = useLocation();
+  const pathname = window.location.pathname;
 
   return (
-    <nav className={`site-nav${sticky ? " sticky" : ""}`}>
-      <a className="logo" href="/">
-        plexdev.xyz
+    <nav className={`site-nav${sticky ? " sticky" : ""}`} aria-label="Primary navigation">
+      <a className="brand" href="/" aria-label="PlexDev Installer home">
+        <span className="brand-mark" aria-hidden="true">P</span>
+        <span>
+          <strong>PlexDev Installer</strong>
+          <small>Community project</small>
+        </span>
       </a>
       <div className="nav-links">
         {links.map((link) => {
           const isHash = link.to.startsWith("/#");
           const isActive = !isHash && !link.download &&
-            (location.pathname === link.to || location.pathname === link.to.replace(/\.html$/, ""));
+            (pathname === link.to || pathname === link.to.replace(/\.html$/, ""));
 
           if (link.download) {
             return (
@@ -48,10 +48,14 @@ export const SiteNav = ({ sticky = false }: { sticky?: boolean }) => {
             );
           }
 
-          return <a key={link.label} href={link.to} className={isActive ? "active" : ""}>{link.label}</a>;
+          return (
+            <a key={link.label} href={link.to} className={isActive ? "active" : ""} aria-current={isActive ? "page" : undefined}>
+              {link.label}
+            </a>
+          );
         })}
-        <a href="https://addons.plexdev.xyz" className="nav-addons" target="_blank" rel="noreferrer">
-          Addons
+        <a href="https://github.com/Bali0531-RC/plexinstaller" className="nav-github" target="_blank" rel="noreferrer">
+          GitHub
           <ExternalLinkIcon className="nav-external-icon" />
         </a>
       </div>

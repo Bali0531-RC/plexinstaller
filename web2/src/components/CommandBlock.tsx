@@ -15,11 +15,13 @@ export const CommandBlock = ({ command }: { command: string }) => {
   };
 
   return (
-    <div className="card command-block">
+    <div className="command-block">
+      <span className="prompt" aria-hidden="true">$</span>
       <code>{command}</code>
-      <button className="ghost" onClick={handleCopy} aria-label="Copy command">
+      <button onClick={handleCopy} aria-label="Copy install command">
         {copied ? "Copied" : "Copy"}
       </button>
+      <span className="sr-only" aria-live="polite">{copied ? "Command copied to clipboard" : ""}</span>
     </div>
   );
 };

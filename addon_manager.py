@@ -323,7 +323,7 @@ class AddonManager:
                 basename = backup_file.name.removesuffix(".tar.gz")
                 marker = "_addon_"
                 prefix, separator, timestamp_str = basename.rpartition(marker)
-                if separator:
+                if separator:  # pragma: no branch - glob guarantees marker
                     # Extract addon name (remove product prefix)
                     addon_name = prefix.removeprefix(f"{product_name}_")
 

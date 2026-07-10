@@ -64,6 +64,7 @@ The FastAPI telemetry service stores bounded raw events and logs, aggregates pub
 - Python development dependencies, typing stubs, and test tooling are installed with `python -m pip install -e ".[dev,telemetry-server]"`.
 - Release manifests and signed Git commits use `431E869D5BB519AFF7B028379B0DFA4BF86307BD` (`developer@bali0531.hu`). The APT repository uses the separate key `C1D43E70EF36AB0B47151196B669DC325581C77B` (`apt@plexdev.xyz`).
 - Do not hand-edit release hashes, release changelog entries, or detached signatures. Use `release.sh`; `--prepare-only` regenerates and verifies `version.json`, the matching website changelog entry, checksums, exported public key, and signature without committing or pushing.
+- The complete historical archive is published at `https://plexdev.xyz/changelog.html`, including versions that predate GitHub Releases. Publish mode creates a signed Git tag and creates or updates the matching GitHub Release automatically, including the signed manifest files. If GitHub publishing fails after the release commit, rerun `release.sh --publish-current` instead of preparing another version.
 
 ## Contributing
 1. Fork and clone the repository.

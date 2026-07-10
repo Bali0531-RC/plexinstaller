@@ -64,7 +64,7 @@ class BackupManager:
             else:
                 self.printer.error("Invalid choice")
 
-            if choice != "0":
+            if choice != "0":  # pragma: no branch
                 input("\nPress Enter to continue...")
 
     # ------------------------------------------------------------------

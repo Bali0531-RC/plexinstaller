@@ -573,7 +573,7 @@ class SystemdManager:
         safe_name = validate_path_component(service_name, label="service name")
         normalized = re.sub(r"[^a-z0-9_-]", "-", safe_name.lower())
         user = f"plex-{normalized}"[:31]
-        if user == "plex-":
+        if user == "plex-":  # pragma: no cover - defensive, unreachable
             raise ValueError("Could not derive an isolated service user")
         return user
 

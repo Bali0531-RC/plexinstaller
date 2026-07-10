@@ -26,16 +26,16 @@
     "requirements": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/requirements.txt"
   },
   "checksums": {
-    "addon_manager": "a0a6354d744dd23aaec5c7cfdc8392998ceff0ef740a7b916684e81498307305",
-    "backup_manager": "81fe94694511bf63e6c1748d76af41b058f1ed8d601591a63721a3df6133483c",
+    "addon_manager": "d3daf8f8865ba79c0656ecbc6437aa547398e25ac6de586da2e3560e9b54cccc",
+    "backup_manager": "1cd1119ed021c35b238306dede7a9d0f164a16dce58ffcacdf946373efcdcb50",
     "config": "1c80635f143cc83c05a01f1a1cfa9df24f95649cdbdf4b66441a3355fc68baeb",
     "health_checker": "7ede7683b8f705b41753aa213e9d4ce91d105e52fe959d217cc828ad6b5f60e1",
-    "installer": "20195ecd896bf4866bea85ca62ee799609ecde2dc4601dea7869b370ab02d87d",
+    "installer": "62cf7a26ddb4b0df7590073194147cadf3cdc54cc849bdc99a05e85ed436a796",
     "mongodb_manager": "dbb1892ec54cd1e675789435b3dada1c66d7fe702b86457ac46f2c09a1b0f68d",
-    "plex_cli": "b1dd29d3e03b55f6c364725385166cca57e257cae2faa973c39a5e8d5d025de8",
+    "plex_cli": "9c35f5078c73f2c1561089cea70703fc7f54eaa282b2b2cb50ffc2695d8130ba",
     "requirements": "fd8f0565512b997c8c699eeb87dbf432d31e3b5de9dde4ef76f7e2a10e65df12",
     "shared": "e0fe514f103ae13d523c8bfd68eca23b73d020e22151d25bb2c46231d38df9c0",
     "telemetry_client": "d499d80d9b8224adc51c5d6c60b33a6c9165e41446d5d5eb127f61561749f3fa",
-    "utils": "78d3af6dabeb6adab0a0c13c3094f4075a80895572b9c579662805c003217b76"
+    "utils": "3a077072abd9d2341d6183397787093deaab0d1fce9ea3e67b26a1725212e56d"
   }
 }

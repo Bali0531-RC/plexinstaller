@@ -13,6 +13,12 @@
         <priority>0.8</priority>
     </url>
     <url>
+        <loc>https://plexdev.xyz/changelog.html</loc>
+        <lastmod>2026-07-10</lastmod>
+        <changefreq>monthly</changefreq>
+        <priority>0.7</priority>
+    </url>
+    <url>
         <loc>https://plexdev.xyz/privacy.html</loc>
         <lastmod>2026-07-10</lastmod>
         <changefreq>yearly</changefreq>
