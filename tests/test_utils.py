@@ -1,7 +1,10 @@
 """Tests for utils.py — ColorPrinter, DNSChecker, FirewallManager, ArchiveExtractor, redaction, logging."""
 
 import logging
+import stat
+import tarfile
 import zipfile
+from io import BytesIO
 from pathlib import Path
 from unittest import mock
 
@@ -9,9 +12,14 @@ import pytest
 
 from utils import (
     ArchiveExtractor,
+    ArchiveLimitError,
     ColorPrinter,
+    SystemdManager,
+    UnsafeArchiveError,
     redact_mongo_uri_credentials,
     redact_sensitive_yaml,
+    safe_extract_tar,
+    safe_extract_zip,
     setup_logging,
 )
 
@@ -173,7 +181,6 @@ class TestArchiveExtractor:
         # Extract — mock subprocess.run so chown/chmod don't change ownership to root
         extractor = ArchiveExtractor()
         target_dir = tmp_path / "myapp"
-        target_dir.mkdir()
 
         with mock.patch("utils.subprocess.run"):
             extractor.extract(archive_path, target_dir)
@@ -200,10 +207,10 @@ class TestArchiveExtractor:
 
         extractor = ArchiveExtractor()
         target = tmp_path / "safe"
-        target.mkdir()
 
         with pytest.raises(ValueError, match="Path traversal"):
             extractor.extract(archive_path, target)
+        assert not target.exists()
 
 
 # ---------------------------------------------------------------------------
@@ -255,7 +262,6 @@ class TestArchiveExtractorEdgeCases:
 
         extractor = ArchiveExtractor()
         target_dir = tmp_path / "myapp"
-        target_dir.mkdir()
 
         with mock.patch("utils.subprocess.run"):
             extractor.extract(archive_path, target_dir)
@@ -276,8 +282,8 @@ class TestArchiveExtractorEdgeCases:
 
         assert target_dir.exists()
 
-    def test_extract_zip_overwrites_existing_files(self, tmp_path: Path):
-        """Existing files in target dir are replaced."""
+    def test_extract_zip_refuses_existing_target(self, tmp_path: Path):
+        """An existing target is never modified."""
         archive_path = tmp_path / "test.zip"
         with zipfile.ZipFile(archive_path, "w") as zf:
             zf.writestr("myapp/file.txt", "new content")
@@ -287,10 +293,169 @@ class TestArchiveExtractorEdgeCases:
         (target_dir / "file.txt").write_text("old content")
 
         extractor = ArchiveExtractor()
-        with mock.patch("utils.subprocess.run"):
+        with pytest.raises(FileExistsError):
             extractor.extract(archive_path, target_dir)
 
-        assert (target_dir / "file.txt").read_text() == "new content"
+        assert (target_dir / "file.txt").read_text() == "old content"
+
+
+class TestSafeExtractionRegressions:
+    def test_zip_rejects_absolute_path(self, tmp_path: Path):
+        archive = tmp_path / "absolute.zip"
+        with zipfile.ZipFile(archive, "w") as zf:
+            zf.writestr("/tmp/owned", "bad")
+
+        with pytest.raises(UnsafeArchiveError, match="Absolute"):
+            safe_extract_zip(archive, tmp_path / "out")
+
+    def test_zip_rejects_windows_absolute_path(self, tmp_path: Path):
+        archive = tmp_path / "windows.zip"
+        with zipfile.ZipFile(archive, "w") as zf:
+            zf.writestr(r"C:\\Windows\\owned", "bad")
+
+        with pytest.raises(UnsafeArchiveError, match="Absolute"):
+            safe_extract_zip(archive, tmp_path / "out")
+
+    def test_zip_rejects_sibling_prefix_bypass(self, tmp_path: Path):
+        archive = tmp_path / "prefix.zip"
+        with zipfile.ZipFile(archive, "w") as zf:
+            zf.writestr("../safe-evil/owned", "bad")
+
+        with pytest.raises(UnsafeArchiveError, match="Path traversal"):
+            safe_extract_zip(archive, tmp_path / "safe")
+        assert not (tmp_path / "safe-evil" / "owned").exists()
+
+    def test_zip_rejects_backslash_traversal(self, tmp_path: Path):
+        archive = tmp_path / "backslash.zip"
+        with zipfile.ZipFile(archive, "w") as zf:
+            zf.writestr(r"..\\outside", "bad")
+
+        with pytest.raises(UnsafeArchiveError, match="Path traversal"):
+            safe_extract_zip(archive, tmp_path / "out")
+
+    def test_zip_rejects_symlink(self, tmp_path: Path):
+        archive = tmp_path / "link.zip"
+        info = zipfile.ZipInfo("link")
+        info.create_system = 3
+        info.external_attr = (stat.S_IFLNK | 0o777) << 16
+        with zipfile.ZipFile(archive, "w") as zf:
+            zf.writestr(info, "../../outside")
+
+        with pytest.raises(UnsafeArchiveError, match="links and special"):
+            safe_extract_zip(archive, tmp_path / "out")
+
+    def test_zip_enforces_file_count_limit(self, tmp_path: Path):
+        archive = tmp_path / "many.zip"
+        with zipfile.ZipFile(archive, "w") as zf:
+            zf.writestr("one", "1")
+            zf.writestr("two", "2")
+
+        with pytest.raises(ArchiveLimitError, match="too many files"):
+            safe_extract_zip(archive, tmp_path / "out", max_files=1)
+
+    def test_zip_enforces_expanded_byte_limit(self, tmp_path: Path):
+        archive = tmp_path / "large.zip"
+        with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("large", b"A" * 100)
+
+        with pytest.raises(ArchiveLimitError, match="too many bytes"):
+            safe_extract_zip(archive, tmp_path / "out", max_bytes=99)
+
+    @pytest.mark.parametrize(
+        ("member_type", "description"),
+        [
+            (tarfile.SYMTYPE, "symlink"),
+            (tarfile.LNKTYPE, "hard link"),
+            (tarfile.FIFOTYPE, "FIFO"),
+            (tarfile.CHRTYPE, "character device"),
+            (tarfile.BLKTYPE, "block device"),
+        ],
+    )
+    def test_tar_rejects_links_and_special_files(self, tmp_path: Path, member_type: bytes, description: str):
+        archive = tmp_path / f"{description}.tar"
+        member = tarfile.TarInfo("unsafe")
+        member.type = member_type
+        member.linkname = "../../outside"
+        with tarfile.open(archive, "w") as tf:
+            tf.addfile(member)
+
+        with pytest.raises(UnsafeArchiveError, match="links and special"):
+            safe_extract_tar(archive, tmp_path / "out")
+
+    def test_tar_rejects_wrong_top_level_product(self, tmp_path: Path):
+        archive = tmp_path / "wrong.tar.gz"
+        member = tarfile.TarInfo("other/file.txt")
+        data = b"data"
+        member.size = len(data)
+        with tarfile.open(archive, "w:gz") as tf:
+            tf.addfile(member, BytesIO(data))
+
+        with pytest.raises(UnsafeArchiveError, match="top-level directory 'expected'"):
+            safe_extract_tar(archive, tmp_path / "out", expected_top_level="expected")
+
+    def test_safe_extract_refuses_existing_target(self, tmp_path: Path):
+        archive = tmp_path / "archive.zip"
+        with zipfile.ZipFile(archive, "w") as zf:
+            zf.writestr("file", "new")
+        target = tmp_path / "out"
+        target.mkdir()
+        (target / "file").write_text("old")
+
+        with pytest.raises(FileExistsError):
+            safe_extract_zip(archive, target)
+        assert (target / "file").read_text() == "old"
+
+    def test_invalid_limits_do_not_create_target(self, tmp_path: Path):
+        archive = tmp_path / "archive.zip"
+        with zipfile.ZipFile(archive, "w") as zf:
+            zf.writestr("file", "content")
+        target = tmp_path / "out"
+
+        with pytest.raises(ValueError, match="limits"):
+            safe_extract_zip(archive, target, max_files=0)
+        assert not target.exists()
+
+
+class TestSystemdIsolation:
+    def test_root_remains_default(self, tmp_path: Path):
+        manager = SystemdManager()
+        service_path = tmp_path / "plex-example.service"
+        original_path = Path
+
+        def fake_path(value):
+            if str(value) == "/etc/systemd/system/plex-example.service":
+                return service_path
+            return original_path(value)
+
+        with mock.patch("utils.Path", side_effect=fake_path):
+            with mock.patch("utils.subprocess.run"):
+                manager.create_service("example", tmp_path)
+
+        content = service_path.read_text()
+        assert "User=root" in content
+        assert "ProtectSystem=strict" not in content
+
+    def test_isolated_service_creates_user_and_hardening(self, tmp_path: Path):
+        manager = SystemdManager()
+        service_path = tmp_path / "plex-example.service"
+        original_path = Path
+
+        def fake_path(value):
+            if str(value) == "/etc/systemd/system/plex-example.service":
+                return service_path
+            return original_path(value)
+
+        with mock.patch("utils.Path", side_effect=fake_path):
+            with mock.patch("utils.pwd.getpwnam", side_effect=KeyError):
+                with mock.patch("utils.shutil.which", return_value="/usr/bin/tool"):
+                    with mock.patch("utils.subprocess.run") as run:
+                        manager.create_service("example", tmp_path, isolated=True)
+
+        content = service_path.read_text()
+        assert "User=plex-example" in content
+        assert "NoNewPrivileges=true" in content
+        assert "ProtectSystem=strict" in content
+        assert any(call.args[0][0] == "useradd" for call in run.call_args_list)
 
 
 # ---------------------------------------------------------------------------

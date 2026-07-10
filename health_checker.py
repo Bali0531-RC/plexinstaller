@@ -187,7 +187,7 @@ class HealthChecker:
             results.append(
                 SelfTestResult(
                     name="systemd service active",
-                    status="pass" if is_active else "warn",
+                    status="pass" if is_active else "fail",
                     detail=f"{service_name} is {self.systemd.get_status(service_name)}",
                     hint=(
                         f"The service may have crashed because config.yml is not yet filled in. "
@@ -207,9 +207,10 @@ class HealthChecker:
                 )
             )
 
-        # App port checks — only meaningful when a dashboard/web UI is installed.
-        # Without a dashboard the product is a headless bot; nothing listens on the port.
-        if context.service_created and getattr(context, "has_dashboard", False):
+        # App port checks are required for every web-enabled product. PlexTickets
+        # bot-only installs explicitly set needs_web_setup=False and are skipped.
+        needs_web_setup = bool(getattr(context, "needs_web_setup", True))
+        if context.service_created and needs_web_setup:
             port_ready = self.wait_for_tcp_port("127.0.0.1", context.port, timeout_seconds=45)
             results.append(
                 SelfTestResult(
@@ -234,13 +235,13 @@ class HealthChecker:
                         hint=("The app may not expose /; verify the configured bind/port" if not http_ok else ""),
                     )
                 )
-        elif context.service_created and not getattr(context, "has_dashboard", False):
+        elif context.service_created and not needs_web_setup:
             results.append(
                 SelfTestResult(
                     name="Local TCP port check",
                     status="warn",
-                    detail=f"skipped — no dashboard installed (port {context.port} unused)",
-                    hint="Install with a dashboard if you need a web UI on this port",
+                    detail=f"skipped — web setup not required (port {context.port} unused)",
+                    hint="Enable the product's web interface if you need an HTTP endpoint",
                 )
             )
 

@@ -6,6 +6,20 @@ export type ReleaseNote = {
 
 export const releases: ReleaseNote[] = [
   {
+    version: "3.3.0",
+    date: "2026-07-10",
+    highlights: [
+      "Renamed Status, Store, Forms, Links, Paste, and Tracker to Drako for new installs while preserving legacy Plex installation aliases.",
+      "Hardened ZIP/TAR installation, add-on management, and backup restores with staged extraction and rollback.",
+      "Made stable bootstrap and self-updates fail closed with pinned release-key verification and signed dependency hashes.",
+      "Prevented existing installation overwrite and added deterministic per-instance resource cleanup manifests.",
+      "Kept root as the default service model and added optional isolated service users with safe fallback.",
+      "Added validated port persistence, health-gated outcomes, transactional domain setup, and conservative MongoDB cleanup.",
+      "Hardened telemetry redaction, request limits, authentication, retention, permissions, consent, and privacy disclosures.",
+      "Expanded CLI automation, frontend reproducibility, CI security checks, and test coverage.",
+    ]
+  },
+  {
     version: "3.2.0",
     date: "2026-03-04",
     highlights: [
@@ -66,7 +80,7 @@ export const releases: ReleaseNote[] = [
     date: "2026-01-16",
     highlights: [
       "Added Addon Management for PlexTickets and PlexStaff products.",
-      "Addons can be installed from .zip/.rar archives with smart extraction handling.",
+      "Addons can be installed from safely validated ZIP/TAR archives with staged extraction.",
       "Smart extraction handles both correctly packaged (single folder) and incorrectly packaged (loose files) addons.",
       "Addon configuration editing with YAML syntax validation.",
       "Automatic backup creation before addon removal.",

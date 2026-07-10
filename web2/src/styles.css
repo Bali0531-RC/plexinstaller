@@ -1,5 +1,5 @@
 :root {
-  color-scheme: dark;
+  color-scheme: light dark;
   font-family: "Inter", "SF Pro Display", system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", sans-serif;
   line-height: 1.6;
@@ -18,6 +18,41 @@
   --shadow-soft: 0 20px 60px rgba(0, 0, 0, 0.45);
   --shadow-glow: 0 10px 40px rgba(83, 185, 255, 0.25);
   background-color: var(--bg);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f4f7fc;
+    --surface: rgba(255, 255, 255, 0.82);
+    --surface-strong: rgba(255, 255, 255, 0.94);
+    --border: rgba(12, 31, 56, 0.14);
+    --text: #101827;
+    --muted: #526079;
+    --accent: #087ec4;
+    --accent-strong: #0069aa;
+    --shadow-soft: 0 20px 60px rgba(34, 58, 88, 0.14);
+    --shadow-glow: 0 10px 40px rgba(8, 126, 196, 0.16);
+  }
+
+  body {
+    background:
+      radial-gradient(circle at 15% 20%, rgba(8, 126, 196, 0.12), transparent 45%),
+      radial-gradient(circle at 85% 10%, rgba(0, 105, 170, 0.08), transparent 40%),
+      var(--bg);
+  }
+
+  .site-nav.sticky {
+    background: rgba(244, 247, 252, 0.92);
+  }
+
+  .primary {
+    color: #fff;
+  }
+
+  .notice,
+  .docs-hero {
+    background: var(--surface-strong);
+  }
 }
 
 * {
@@ -527,5 +562,16 @@ footer a:hover {
 
   .hint {
     max-width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
   }
 }

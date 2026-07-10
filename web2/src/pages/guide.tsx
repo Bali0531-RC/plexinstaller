@@ -6,6 +6,6 @@ import "../styles.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <DocsLayout title="Installation Guide" description="Step-by-step walkthrough for deploying PlexDevelopment products on your own hardware." sections={guideSections} />
+    <DocsLayout title="Installation Guide" description="Step-by-step walkthrough for deploying PlexDevelopment bots and Drako products on your own hardware." sections={guideSections} />
   </React.StrictMode>
 );

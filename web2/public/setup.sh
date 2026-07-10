@@ -2,7 +2,7 @@
 # PlexDevelopment Installer Setup Script
 # Downloads and installs the Python-based installer from GitHub
 # Usage: curl -sSL https://plexdev.xyz/setup.sh | sudo bash
-# Or with beta flag: curl -sSL https://plexdev.xyz/setup.sh | sudo bash -s -- -b
+# Explicit insecure beta: curl -sSL https://plexdev.xyz/setup.sh | sudo bash -s -- --insecure-beta
 
 set -euo pipefail
 
@@ -22,20 +22,29 @@ GITHUB_BRANCH="main"
 VERSION="Stable"
 INSTALL_DIR="/opt/plexinstaller"
 BIN_DIR="/usr/local/bin"
+PINNED_RELEASE_FINGERPRINT="431E869D5BB519AFF7B028379B0DFA4BF86307BD"
+ALLOW_INSECURE_BETA=false
 
 # Parse command line arguments
-while getopts "b" opt; do
-    case $opt in
-        b)
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --insecure-beta)
             VERSION="Beta"
-            GITHUB_BRANCH="dev"  # Use dev branch for beta builds
+            GITHUB_BRANCH="dev"
+            ALLOW_INSECURE_BETA=true
             ;;
-        \?)
-            echo "Usage: $0 [-b]"
-            echo "  -b    Install beta version (default: stable)"
+        -b)
+            echo "The ambiguous -b option is no longer accepted."
+            echo "Use --insecure-beta to explicitly acknowledge that beta is not signature-enforced."
+            exit 1
+            ;;
+        *)
+            echo "Usage: $0 [--insecure-beta]"
+            echo "  --insecure-beta  Install dev branch and explicitly permit failed beta verification"
             exit 1
             ;;
     esac
+    shift
 done
 
 # Prompt helper that works when the script is piped into bash (curl | sudo bash).
@@ -103,30 +112,38 @@ fi
 
 print_success "Running with root privileges"
 
+if [ "$ALLOW_INSECURE_BETA" = true ]; then
+    print_warning "INSECURE BETA MODE: signature or checksum verification failures may be bypassed."
+fi
+
 # Check for required commands
 print_step "Checking system requirements..."
 
 MISSING_CMDS=()
-for cmd in curl wget git python3 jq gpg; do
+for cmd in curl python3 gpg sha256sum; do
     if ! command -v $cmd &> /dev/null; then
         MISSING_CMDS+=($cmd)
     fi
 done
+
+if ! python3 -c 'import venv' >/dev/null 2>&1; then
+    MISSING_CMDS+=(python3-venv)
+fi
 
 if [ ${#MISSING_CMDS[@]} -gt 0 ]; then
     print_warning "Missing required commands: ${MISSING_CMDS[*]}"
     print_step "Installing missing dependencies..."
     
     if command -v apt &> /dev/null; then
-        apt update && apt install -y curl wget git python3 python3-pip jq gnupg
+        apt update && apt install -y curl python3 python3-venv python3-pip gnupg coreutils
     elif command -v dnf &> /dev/null; then
-        dnf install -y curl wget git python3 python3-pip jq gnupg2
+        dnf install -y curl python3 python3-pip gnupg2 coreutils
     elif command -v yum &> /dev/null; then
-        yum install -y curl wget git python3 python3-pip jq gnupg2
+        yum install -y curl python3 python3-pip gnupg2 coreutils
     elif command -v pacman &> /dev/null; then
-        pacman -S --noconfirm curl wget git python python-pip jq gnupg
+        pacman -S --noconfirm curl python python-pip gnupg coreutils
     elif command -v zypper &> /dev/null; then
-        zypper install -y curl wget git python3 python3-pip jq gpg2
+        zypper install -y curl python3 python3-pip gpg2 coreutils
     else
         print_error "Cannot automatically install dependencies. Please install manually: ${MISSING_CMDS[*]}"
         exit 1
@@ -136,10 +153,17 @@ fi
 PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}')
 print_success "Python $PYTHON_VERSION found"
 
-# Create installation directory
-print_step "Creating installation directory..."
-mkdir -p "$INSTALL_DIR"
-cd "$INSTALL_DIR"
+# Stage the complete bundle outside the live installation directory.
+print_step "Creating secure staging directory..."
+STAGING_DIR=$(mktemp -d "${INSTALL_DIR}.staging.XXXXXX")
+BACKUP_DIR=""
+cleanup() {
+    if [ -n "$STAGING_DIR" ]; then
+        rm -rf "$STAGING_DIR"
+    fi
+}
+trap cleanup EXIT
+chmod 700 "$STAGING_DIR"
 
 # Download installer files from GitHub
 print_header "Downloading Installer Files"
@@ -167,17 +191,13 @@ print_step "Downloading from GitHub repository: $GITHUB_REPO (branch: $GITHUB_BR
 
 for file in "${FILES_TO_DOWNLOAD[@]}"; do
     print_step "Downloading $file..."
-    if curl -fsSL "${GITHUB_RAW_URL}/${file}" -o "$INSTALL_DIR/$file"; then
+    if curl --proto '=https' --tlsv1.2 --max-filesize 16777216 -fsSL \
+        "${GITHUB_RAW_URL}/${file}" -o "$STAGING_DIR/$file"; then
         print_success "Downloaded $file"
     else
         print_error "Failed to download $file"
-        print_warning "Trying alternate method..."
-        if wget -q "${GITHUB_RAW_URL}/${file}" -O "$INSTALL_DIR/$file"; then
-            print_success "Downloaded $file (via wget)"
-        else
-            print_error "Failed to download $file. Installation cannot continue."
-            exit 1
-        fi
+        print_error "Installation cannot continue."
+        exit 1
     fi
 done
 
@@ -185,32 +205,36 @@ done
 print_header "Verifying GPG Signature"
 
 GPG_VERIFIED=false
-if command -v gpg &> /dev/null; then
-    if [ -f "$INSTALL_DIR/release-key.gpg" ] && [ -f "$INSTALL_DIR/version.json.sig" ]; then
-        print_step "Importing release signing key..."
-        gpg --batch --yes --import "$INSTALL_DIR/release-key.gpg" 2>/dev/null || true
+GPG_HOME=$(mktemp -d)
+chmod 700 "$GPG_HOME"
 
-        print_step "Verifying version.json signature..."
-        if gpg --verify "$INSTALL_DIR/version.json.sig" "$INSTALL_DIR/version.json" 2>/dev/null; then
-            print_success "GPG signature verified — files are authentic"
-            GPG_VERIFIED=true
-        else
-            print_warning "GPG signature could not be verified"
-            print_warning "This may indicate the files were modified, or the signing key has changed."
-            echo ""
-            prompt_user "Would you like to continue with the setup? (y/n): " continue_anyway "n"
-            if [ "$continue_anyway" != "y" ] && [ "$continue_anyway" != "Y" ]; then
-                print_step "Installation cancelled."
-                exit 1
-            fi
-            print_step "Continuing without verified signature..."
-        fi
-    else
-        print_warning "Signature files not found — skipping GPG verification"
-    fi
+fingerprint=$(gpg --batch --no-options --with-colons --show-keys --fingerprint "$STAGING_DIR/release-key.gpg" 2>/dev/null \
+    | awk -F: '$1 == "pub" { want_fpr=1; next } $1 == "fpr" && want_fpr { print toupper($10); exit }')
+
+if [ "$fingerprint" != "$PINNED_RELEASE_FINGERPRINT" ]; then
+    print_error "Release key fingerprint mismatch (found: ${fingerprint:-none})"
+elif ! gpg --batch --no-options --homedir "$GPG_HOME" --import-options import-clean \
+    --import "$STAGING_DIR/release-key.gpg" >/dev/null 2>&1; then
+    print_error "Could not import the pinned release key into the isolated keyring"
 else
-    print_warning "gpg not installed — skipping signature verification"
-    print_step "Install gnupg for signature verification: sudo apt install gnupg"
+    VERIFY_STATUS="$STAGING_DIR/gpg-status"
+    if gpg --batch --no-options --homedir "$GPG_HOME" --status-fd 1 --no-auto-key-retrieve \
+        --verify "$STAGING_DIR/version.json.sig" "$STAGING_DIR/version.json" >"$VERIFY_STATUS" 2>/dev/null \
+        && awk -v expected="$PINNED_RELEASE_FINGERPRINT" '$2 == "VALIDSIG" && ($3 == expected || $NF == expected) { found=1 } END { exit !found }' "$VERIFY_STATUS"; then
+        print_success "GPG signature and pinned release key verified"
+        GPG_VERIFIED=true
+    else
+        print_error "version.json signature verification failed"
+    fi
+fi
+rm -rf "$GPG_HOME"
+
+if [ "$GPG_VERIFIED" != true ] && [ "$ALLOW_INSECURE_BETA" != true ]; then
+    print_error "Stable installation requires valid signature and exact pinned key fingerprint."
+    exit 1
+fi
+if [ "$GPG_VERIFIED" != true ]; then
+    print_warning "Explicit insecure beta mode is bypassing failed signature verification."
 fi
 
 # Verify SHA256 checksums from version.json
@@ -228,11 +252,13 @@ read_checksum() {
     fi
 }
 
-if [ -f "$INSTALL_DIR/version.json" ]; then
+if [ -f "$STAGING_DIR/version.json" ]; then
     CHECKSUM_FAILED=false
-    for key in installer config utils plex_cli telemetry_client addon_manager shared health_checker mongodb_manager backup_manager; do
-        expected=$(read_checksum "$key" "$INSTALL_DIR/version.json")
+    for key in installer config utils plex_cli telemetry_client addon_manager shared health_checker mongodb_manager backup_manager requirements; do
+        expected=$(read_checksum "$key" "$STAGING_DIR/version.json")
         if [ -z "$expected" ]; then
+            print_error "Missing checksum for $key"
+            CHECKSUM_FAILED=true
             continue
         fi
 
@@ -248,12 +274,14 @@ if [ -f "$INSTALL_DIR/version.json" ]; then
             health_checker)   fname="health_checker.py" ;;
             mongodb_manager)  fname="mongodb_manager.py" ;;
             backup_manager)   fname="backup_manager.py" ;;
+            requirements)     fname="requirements.txt" ;;
             *)                continue ;;
         esac
 
-        filepath="$INSTALL_DIR/$fname"
+        filepath="$STAGING_DIR/$fname"
         if [ ! -f "$filepath" ]; then
-            print_warning "File not found for checksum: $fname"
+            print_error "File not found for checksum: $fname"
+            CHECKSUM_FAILED=true
             continue
         fi
 
@@ -261,73 +289,110 @@ if [ -f "$INSTALL_DIR/version.json" ]; then
         if [ "$actual" = "$expected" ]; then
             print_success "Checksum OK: $fname"
         else
-            print_warning "Checksum mismatch: $fname"
+            print_error "Checksum mismatch: $fname"
             CHECKSUM_FAILED=true
         fi
     done
 
     if [ "$CHECKSUM_FAILED" = true ]; then
         echo ""
-        print_warning "Some file checksums did not match version.json."
-        print_warning "This may happen if files were updated after the last release, or if a download was incomplete."
-        echo ""
-        prompt_user "Would you like to continue with the setup? (y/n): " continue_checksum "n"
-        if [ "$continue_checksum" != "y" ] && [ "$continue_checksum" != "Y" ]; then
-            print_step "Installation cancelled."
+        if [ "$ALLOW_INSECURE_BETA" != true ]; then
+            print_error "Stable installation aborted because checksums did not verify."
             exit 1
         fi
-        print_step "Continuing with setup..."
+        print_warning "Explicit insecure beta mode is bypassing checksum failures."
     fi
 else
-    print_warning "version.json not found — skipping checksum verification"
+    print_error "version.json not found"
+    exit 1
 fi
 
 # Rewrite download URLs for dev branch AFTER integrity checks
-if [ "$GITHUB_BRANCH" = "dev" ] && [ -f "$INSTALL_DIR/version.json" ]; then
+if [ "$GITHUB_BRANCH" = "dev" ] && [ -f "$STAGING_DIR/version.json" ]; then
     print_step "Patching version.json download URLs for dev branch..."
-    sed -i 's|/plexinstaller/main/|/plexinstaller/dev/|g' "$INSTALL_DIR/version.json"
+    sed -i 's|/plexinstaller/main/|/plexinstaller/dev/|g' "$STAGING_DIR/version.json"
     print_success "Download URLs updated to use dev branch"
 fi
 
 # Install Python dependencies
 print_step "Installing Python dependencies..."
-if [ -f "${INSTALL_DIR}/requirements.txt" ]; then
-    if ! pip3 install -r "${INSTALL_DIR}/requirements.txt" --quiet 2>/dev/null \
-        && ! pip3 install -r "${INSTALL_DIR}/requirements.txt" --break-system-packages --quiet 2>/dev/null; then
+if [ -f "${STAGING_DIR}/requirements.txt" ]; then
+    if ! python3 -m venv "${STAGING_DIR}/.venv"; then
+        print_error "Failed to create isolated Python virtual environment"
+        exit 1
+    fi
+    if ! "${STAGING_DIR}/.venv/bin/python" -m pip install -r "${STAGING_DIR}/requirements.txt" --quiet; then
         print_error "Failed to install Python dependencies from requirements.txt"
         exit 1
     fi
 else
-    print_warning "requirements.txt not found — skipping dependency installation"
+    print_error "requirements.txt not found"
+    exit 1
 fi
 
 # Make Python files executable
 print_step "Setting permissions..."
-chmod +x "${INSTALL_DIR}/installer.py"
-chmod +x "${INSTALL_DIR}/plex_cli.py"
-chmod 644 "${INSTALL_DIR}/config.py"
-chmod 644 "${INSTALL_DIR}/utils.py"
-chmod 644 "${INSTALL_DIR}/telemetry_client.py"
-chmod 644 "${INSTALL_DIR}/addon_manager.py"
-chmod 644 "${INSTALL_DIR}/shared.py"
-chmod 644 "${INSTALL_DIR}/health_checker.py"
-chmod 644 "${INSTALL_DIR}/mongodb_manager.py"
-chmod 644 "${INSTALL_DIR}/backup_manager.py"
-chmod 644 "${INSTALL_DIR}/version.json"
-chmod 644 "${INSTALL_DIR}/version.json.sig" 2>/dev/null || true
-chmod 644 "${INSTALL_DIR}/release-key.gpg" 2>/dev/null || true
+chmod 755 "${STAGING_DIR}/installer.py" "${STAGING_DIR}/plex_cli.py"
+chmod 644 "${STAGING_DIR}/config.py" "${STAGING_DIR}/utils.py" "${STAGING_DIR}/telemetry_client.py"
+chmod 644 "${STAGING_DIR}/addon_manager.py" "${STAGING_DIR}/shared.py" "${STAGING_DIR}/health_checker.py"
+chmod 644 "${STAGING_DIR}/mongodb_manager.py" "${STAGING_DIR}/backup_manager.py"
+chmod 644 "${STAGING_DIR}/version.json" "${STAGING_DIR}/version.json.sig" "${STAGING_DIR}/release-key.gpg"
 
-# Create symbolic link for the main installer
+# Atomically switch the complete verified bundle into place, preserving the old
+# bundle for immediate rollback until wrappers are successfully installed.
+print_step "Activating verified installer bundle..."
+if [ -e "$INSTALL_DIR" ]; then
+    BACKUP_DIR="${INSTALL_DIR}.backup.$(date +%s)"
+    mv "$INSTALL_DIR" "$BACKUP_DIR"
+fi
+if ! mv "$STAGING_DIR" "$INSTALL_DIR"; then
+    print_error "Could not activate the staged installer bundle"
+    if [ -n "$BACKUP_DIR" ] && [ -e "$BACKUP_DIR" ]; then
+        mv "$BACKUP_DIR" "$INSTALL_DIR"
+    fi
+    exit 1
+fi
+STAGING_DIR=""
+
+rollback_activation() {
+    if [ -n "$BACKUP_DIR" ] && [ -e "$BACKUP_DIR" ]; then
+        rm -rf "$INSTALL_DIR"
+        mv "$BACKUP_DIR" "$INSTALL_DIR"
+    fi
+}
+trap 'rollback_activation; cleanup' ERR
+
+# Create venv-backed command wrappers.
 print_step "Creating installer command..."
-ln -sf "${INSTALL_DIR}/installer.py" "${BIN_DIR}/plexinstaller"
+mkdir -p "$BIN_DIR"
+cat >"${BIN_DIR}/plexinstaller.tmp" <<EOF
+#!/bin/sh
+python="${INSTALL_DIR}/.venv/bin/python"
+if [ ! -x "\$python" ]; then python="\${PYTHON:-python3}"; fi
+exec "\$python" "${INSTALL_DIR}/installer.py" "\$@"
+EOF
+chmod 755 "${BIN_DIR}/plexinstaller.tmp"
+mv -f "${BIN_DIR}/plexinstaller.tmp" "${BIN_DIR}/plexinstaller"
 print_success "Created 'plexinstaller' command"
 
 # Install the plex CLI tool
 print_header "Installing Plex CLI Management Tool"
 print_step "Setting up 'plex' command..."
 
-# Use a symlink so autoupdates to /opt/plexinstaller also update the CLI.
-ln -sf "${INSTALL_DIR}/plex_cli.py" "${BIN_DIR}/plex"
+cat >"${BIN_DIR}/plex.tmp" <<EOF
+#!/bin/sh
+python="${INSTALL_DIR}/.venv/bin/python"
+if [ ! -x "\$python" ]; then python="\${PYTHON:-python3}"; fi
+exec "\$python" "${INSTALL_DIR}/plex_cli.py" "\$@"
+EOF
+chmod 755 "${BIN_DIR}/plex.tmp"
+mv -f "${BIN_DIR}/plex.tmp" "${BIN_DIR}/plex"
+
+if [ -n "$BACKUP_DIR" ]; then
+    rm -rf "$BACKUP_DIR"
+    BACKUP_DIR=""
+fi
+trap cleanup EXIT
 
 print_success "Plex CLI tool installed successfully!"
 
@@ -366,7 +431,7 @@ echo ""
 echo -e "${BOLD}${CYAN}Examples:${NC}"
 echo -e "  ${YELLOW}plex list${NC}"
 echo -e "  ${YELLOW}plex start plextickets${NC}"
-echo -e "  ${YELLOW}plex logs plexstore${NC}"
+echo -e "  ${YELLOW}plex logs drakostore${NC}"
 echo ""
 
 # Ask if user wants to run installer now

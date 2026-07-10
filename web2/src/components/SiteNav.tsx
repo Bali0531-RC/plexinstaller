@@ -1,4 +1,4 @@
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { ExternalLinkIcon } from "./icons";
 
 type NavLink = {
@@ -11,36 +11,26 @@ const links: NavLink[] = [
   { to: "/#install", label: "Installer" },
   { to: "/#platform", label: "Platform" },
   { to: "/#changelog", label: "Changelog" },
-  { to: "/guide", label: "Guide" },
-  { to: "/faq", label: "FAQ" },
-  { to: "/terms", label: "TOS" },
-  { to: "/privacy", label: "Privacy" },
+  { to: "/guide.html", label: "Guide" },
+  { to: "/faq.html", label: "FAQ" },
+  { to: "/terms.html", label: "TOS" },
+  { to: "/privacy.html", label: "Privacy" },
   { to: "/setup.sh", label: "setup.sh", download: true },
 ];
 
 export const SiteNav = ({ sticky = false }: { sticky?: boolean }) => {
   const location = useLocation();
-  const navigate = useNavigate();
-
-  const handleHashClick = (e: React.MouseEvent<HTMLAnchorElement>, to: string) => {
-    e.preventDefault();
-    const id = to.slice(2); // "/#install" -> "install"
-    if (location.pathname === "/") {
-      document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
-    } else {
-      navigate(to);
-    }
-  };
 
   return (
     <nav className={`site-nav${sticky ? " sticky" : ""}`}>
-      <Link className="logo" to="/">
+      <a className="logo" href="/">
         plexdev.xyz
-      </Link>
+      </a>
       <div className="nav-links">
         {links.map((link) => {
           const isHash = link.to.startsWith("/#");
-          const isActive = !isHash && !link.download && location.pathname === link.to;
+          const isActive = !isHash && !link.download &&
+            (location.pathname === link.to || location.pathname === link.to.replace(/\.html$/, ""));
 
           if (link.download) {
             return (
@@ -52,17 +42,13 @@ export const SiteNav = ({ sticky = false }: { sticky?: boolean }) => {
 
           if (isHash) {
             return (
-              <a key={link.label} href={link.to} onClick={(e) => handleHashClick(e, link.to)}>
+              <a key={link.label} href={link.to}>
                 {link.label}
               </a>
             );
           }
 
-          return (
-            <Link key={link.label} to={link.to} className={isActive ? "active" : ""}>
-              {link.label}
-            </Link>
-          );
+          return <a key={link.label} href={link.to} className={isActive ? "active" : ""}>{link.label}</a>;
         })}
         <a href="https://addons.plexdev.xyz" className="nav-addons" target="_blank" rel="noreferrer">
           Addons

@@ -10,35 +10,36 @@ type InstallerContent = {
 
 export const installerContent: Record<InstallerTab, InstallerContent> = {
   quick: {
-    title: "Quick Install",
-    description: "Best for clean Ubuntu 22.04+ hosts. Fetches the latest unofficial PlexDevelopment installer bundled with MongoDB 8.x helpers and hardening defaults.",
+    title: "Bootstrap",
+    description: "Downloads the installer bundle and Python dependencies into /opt/plexinstaller, verifies release metadata where possible, and creates the plexinstaller and plex commands. It does not deploy a PlexDevelopment or Drako product by itself.",
     command: "curl -fsSL https://plexdev.xyz/setup.sh | sudo bash",
     notes: [
-      "Append -b to opt into the beta channel: curl -fsSL https://plexdev.xyz/setup.sh | sudo bash -s -- -b",
-      "Script only prepares the tooling; you must upload PlexDevelopment product files yourself."
+      "Explicit beta mode: curl -fsSL https://plexdev.xyz/setup.sh | sudo bash -s -- --insecure-beta. This may bypass failed beta verification.",
+      "At the end, setup.sh asks whether to launch the separate interactive installer; in a non-interactive session it defaults to no.",
+      "You must provide licensed PlexDevelopment or Drako product archives yourself."
     ]
   },
   manual: {
     title: "Manual Install",
-    description: "Prefer to inspect scripts first? Clone the repo and run the Python installer yourself.",
+    description: "Prefer to inspect the code first? Clone the repository, install the package in a virtual environment, then run the interactive installer with root privileges.",
     steps: [
       "git clone https://github.com/Bali0531-RC/plexinstaller.git",
       "cd plexinstaller",
       "python3 -m venv .venv && source .venv/bin/activate",
-      "pip install -r requirements.txt",
-      "python installer.py"
+      "python3 -m pip install -e .",
+      "sudo .venv/bin/python installer.py"
     ],
     notes: [
-      "Installer auto-detects OS details and selects proper MongoDB channel.",
-      "All services are configured under systemd with sane defaults."
+      "Automatic system dependency and MongoDB setup varies by distribution; Ubuntu and Debian are the primary tested targets.",
+      "Review prompts before allowing package, firewall, nginx, MongoDB, or systemd changes."
     ]
   },
   update: {
-    title: "Auto Updates",
-    description: "The installer self-updates against GitHub every time you launch it, so just run 'plexinstaller' locally when you need to make changes—no more rerunning curl.",
+    title: "Update Checks",
+    description: "Interactive plexinstaller launches check the GitHub release manifest. When a newer version exists, the installer displays the changelog and asks before replacing its managed files. Interactive plex CLI runs also check for updates.",
     notes: [
-      "Backups of config files land in /opt/plexinstaller/backups before any change.",
-      "Need to force refresh manually? curl -fsSL https://plexdev.xyz/setup.sh | sudo bash simply re-downloads the launcher."
+      "Accepted self-updates verify signatures/checksums and temporarily back up managed installer files for rollback; they do not back up deployed product data or configuration.",
+      "Update-check failures do not block normal use. Re-running setup.sh re-downloads the bootstrap bundle."
     ]
   }
 };

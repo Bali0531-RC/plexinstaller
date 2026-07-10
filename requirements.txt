@@ -1,6 +1,6 @@
 # PlexDevelopment Installer - Python Dependencies
 # These packages are used by the Python-based installer
 
-requests>=2.31.0        
-pyyaml>=6.0            
-colorama>=0.4.6        
+requests>=2.31,<3
+PyYAML>=6.0,<7
+colorama>=0.4.6,<1

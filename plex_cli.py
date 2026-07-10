@@ -4,14 +4,18 @@ Plex CLI Management Tool
 Command-line interface for managing PlexDevelopment applications
 """
 
+import argparse
 import json
 import logging
 import os
 import re
+import shlex
 import subprocess
 import sys
 import urllib.request
+from collections.abc import Sequence
 from pathlib import Path
+from typing import Any, NoReturn
 
 from colorama import Fore, Style
 from colorama import init as colorama_init
@@ -27,7 +31,7 @@ except Exception:  # pragma: no cover
     AddonManager = None  # type: ignore[assignment,misc]
 
 try:
-    import requests
+    import requests  # type: ignore[import-untyped]
 except Exception:  # pragma: no cover
     requests = None  # type: ignore[assignment]
 
@@ -78,6 +82,112 @@ NC = Style.RESET_ALL
 
 _cli_logger = logging.getLogger("plexinstaller.cli")
 
+EXIT_OK = 0
+EXIT_ERROR = 1
+EXIT_USAGE = 64
+
+
+def _confirm(prompt: str, *, assume_yes: bool = False, non_interactive: bool = False) -> bool:
+    """Return an explicit confirmation, with automation-safe defaults."""
+    if assume_yes:
+        return True
+    if non_interactive or not sys.stdin.isatty():
+        return False
+    return input(f"{prompt} (y/N): ").strip().lower() in {"y", "yes"}
+
+
+def _editor_command() -> list[str]:
+    """Parse EDITOR safely and choose a usable fallback."""
+    configured = os.environ.get("EDITOR", "nano")
+    try:
+        command = shlex.split(configured)
+    except ValueError:
+        command = []
+    if command and shutil_which(command[0]):
+        return command
+    for fallback in ("nano", "vi"):
+        if shutil_which(fallback):
+            return [fallback]
+    return command or ["vi"]
+
+
+def shutil_which(command: str) -> str | None:
+    """Small indirection to keep editor selection straightforward to test."""
+    from shutil import which
+
+    return which(command)
+
+
+def _run_editor(path: Path) -> int:
+    """Open *path* with EDITOR and propagate a failed editor status."""
+    try:
+        result = subprocess.run([*_editor_command(), str(path)], check=False)
+    except OSError as exc:
+        print_error(f"Failed to open editor: {exc}")
+        return EXIT_ERROR
+    if result.returncode != 0:
+        print_error(f"Editor exited with status {result.returncode}")
+        return EXIT_ERROR
+    return EXIT_OK
+
+
+_SENSITIVE_KEY = re.compile(
+    r"(?i)(password|passwd|secret|token|api[_-]?key|client[_-]?secret|authorization|cookie|webhook)"
+)
+_MONGO_URI = re.compile(r"mongodb(?:\+srv)?://[^\s/@:]+:[^\s/@]+@", re.IGNORECASE)
+_BEARER = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+")
+
+
+def redact_debug_text(text: str) -> str:
+    """Redact YAML, JSON, URI credentials, bearer tokens, and log key/value secrets."""
+    if redact_sensitive_yaml is not None:
+        text = redact_sensitive_yaml(text)
+    text = _MONGO_URI.sub("mongodb://<REDACTED>:<REDACTED>@", text)
+    text = _BEARER.sub("Bearer <REDACTED>", text)
+    text = re.sub(
+        r'(?im)^(?P<prefix>\s*["\']?(?:password|passwd|secret|token|api[_-]?key|client[_-]?secret|authorization|cookie|webhook)["\']?\s*[:=]\s*)(?P<value>.+?)(?P<suffix>,?\s*)$',
+        lambda match: f'{match.group("prefix")}"<REDACTED>"{match.group("suffix")}',
+        text,
+    )
+    return text
+
+
+def _redact_json_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: ("<REDACTED>" if _SENSITIVE_KEY.search(str(key)) else _redact_json_value(item))
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_json_value(item) for item in value]
+    if isinstance(value, str):
+        return redact_debug_text(value)
+    return value
+
+
+def redact_config_contents(contents: str, suffix: str) -> str:
+    """Strictly redact JSON configs and apply text redaction as defense in depth."""
+    if suffix.lower() == ".json":
+        try:
+            parsed = json.loads(contents)
+            return json.dumps(_redact_json_value(parsed), indent=2) + "\n"
+        except (TypeError, ValueError):
+            pass
+    return redact_debug_text(contents)
+
+
+def debug_bundle_is_safe(text: str) -> bool:
+    """Reject bundles that still contain obvious credential-bearing patterns."""
+    if _MONGO_URI.search(text) or _BEARER.search(text):
+        return False
+    for line in text.splitlines():
+        if not _SENSITIVE_KEY.search(line) or ":" not in line and "=" not in line:
+            continue
+        value = re.split(r"[:=]", line, maxsplit=1)[1]
+        if value.strip(" \t\"',") not in {"", "<REDACTED>", "[REDACTED]"}:
+            return False
+    return True
+
 
 def print_error(message: str):
     """Print error message"""
@@ -108,10 +218,10 @@ def show_help():
     print(f"{BOLD}{CYAN}Plex CLI Management Tool{NC}")
     print()
     print(f"{YELLOW}Usage:{NC}")
-    print(f"  {GREEN}plex list{NC}              - Show installed Plex applications and their status")
-    print(f"  {GREEN}plex start <app>{NC}       - Start a Plex application")
-    print(f"  {GREEN}plex stop <app>{NC}        - Stop a Plex application")
-    print(f"  {GREEN}plex restart <app>{NC}     - Restart a Plex application")
+    print(f"  {GREEN}plex list{NC}              - Show installed Plex/Drako applications and status")
+    print(f"  {GREEN}plex start <app>{NC}       - Start an application")
+    print(f"  {GREEN}plex stop <app>{NC}        - Stop an application")
+    print(f"  {GREEN}plex restart <app>{NC}     - Restart an application")
     print(f"  {GREEN}plex status <app>{NC}      - Show detailed status of an application")
     print(f"  {GREEN}plex logs <app>{NC}        - View application logs")
     print(f"  {GREEN}plex config <app>{NC}      - Edit application configuration file")
@@ -131,9 +241,9 @@ def show_help():
     print(f"{YELLOW}Examples:{NC}")
     print("  plex list")
     print("  plex start plextickets")
-    print("  plex restart plexstore")
+    print("  plex restart drakostore")
     print("  plex logs plextickets")
-    print("  plex config plexstore")
+    print("  plex config drakostore")
     print("  plex debug plextickets")
     print("  plex addon list plextickets")
     print("  plex addon install plextickets /tmp/MyAddon.zip")
@@ -144,7 +254,7 @@ def show_help():
 def _is_newer_version(remote: str, local: str) -> bool:
     """Compare semantic-ish version strings."""
     if is_newer_version is not None:
-        return is_newer_version(remote, local)
+        return bool(is_newer_version(remote, local))
     try:
         remote_parts = [int(x) for x in remote.split(".")]
         local_parts = [int(x) for x in local.split(".")]
@@ -197,16 +307,18 @@ def _ensure_cli_entrypoints():
 def _verify_gpg_signature(version_json_bytes: bytes) -> bool:
     """Download version.json.sig and verify version.json against it."""
     if verify_gpg_signature is not None:
-        return verify_gpg_signature(
-            version_json_bytes,
-            print_info=print_info,
-            print_success=print_success,
-            print_warning=print_warning,
-            print_error=print_error,
+        return bool(
+            verify_gpg_signature(
+                version_json_bytes,
+                print_info=print_info,
+                print_success=print_success,
+                print_warning=print_warning,
+                print_error=print_error,
+            )
         )
     # Fallback: skip verification if shared module unavailable
-    print_warning("Shared module unavailable — skipping GPG verification")
-    return True
+    print_error("Shared module unavailable — update verification cannot continue")
+    return False
 
 
 def _perform_update(version_data: dict, version_json_bytes: bytes = b""):
@@ -233,6 +345,8 @@ def _maybe_auto_update():
         with urllib.request.urlopen(VERSION_CHECK_URL, timeout=5) as response:
             version_json_bytes = response.read()
         version_data = json.loads(version_json_bytes.decode())
+        if not _verify_gpg_signature(version_json_bytes):
+            return
         remote_version = version_data.get("version", "0.0.0")
         local_version = _read_local_installer_version()
 
@@ -256,7 +370,7 @@ def _maybe_auto_update():
 
 
 def get_installed_apps() -> list[str]:
-    """Get list of installed Plex applications"""
+    """Get list of installed Plex and Drako applications."""
     apps: list[str] = []
     if not INSTALL_DIR.exists():
         return apps
@@ -287,12 +401,24 @@ def resolve_app_instance(name: str) -> str | None:
     by_lower = {app.lower(): app for app in installed}
     normalized = name.strip().lower()
 
-    # Exact match
     if normalized in by_lower:
         return by_lower[normalized]
 
-    # Unambiguous prefix match for multi-instance installs (e.g. plextickets -> plextickets-ab12)
-    candidates = [app for app in installed if app.lower().startswith(f"{normalized}-")]
+    aliases = Config.equivalent_instance_names(normalized) if Config is not None else (normalized,)
+
+    # Exact match, followed by exact current/legacy brand aliases.
+    exact_candidates = {by_lower[candidate] for candidate in aliases if candidate in by_lower}
+    if len(exact_candidates) == 1:
+        return next(iter(exact_candidates))
+    if len(exact_candidates) > 1:
+        print_error(f"Both current and legacy installations match '{name}'. Specify the exact directory name:")
+        for app in sorted(exact_candidates):
+            print(f"  - {app}")
+        return None
+
+    # Unambiguous family-prefix match for multi-instance installs.
+    base_aliases = Config.equivalent_product_names(normalized) if Config is not None else (normalized,)
+    candidates = [app for app in installed if any(app.lower().startswith(f"{base}-") for base in base_aliases)]
     if len(candidates) == 1:
         return candidates[0]
 
@@ -340,17 +466,33 @@ def get_service_status(service_name: str) -> dict[str, object]:
         return {"status": "Unknown", "color": RED, "active": False, "enabled": False}
 
 
-def list_apps():
-    """List all installed Plex applications"""
-    print_info("Scanning for installed Plex applications...")
+def list_apps(json_output: bool = False):
+    """List all installed Plex and Drako applications."""
+    print_info("Scanning for installed Plex/Drako applications...")
     apps = get_installed_apps()
 
     if not apps:
-        print_error(f"No Plex applications found in {INSTALL_DIR}")
+        print_error(f"No Plex/Drako applications found in {INSTALL_DIR}")
         return 1
 
+    if json_output:
+        payload = []
+        for app in apps:
+            status_info = get_service_status(get_service_name(app))
+            payload.append(
+                {
+                    "name": app,
+                    "path": str(INSTALL_DIR / app),
+                    "status": status_info["status"],
+                    "active": status_info["active"],
+                    "enabled": status_info["enabled"],
+                }
+            )
+        print(json.dumps(payload, indent=2))
+        return EXIT_OK
+
     print()
-    print(f"{BOLD}{CYAN}Installed Plex Applications:{NC}")
+    print(f"{BOLD}{CYAN}Installed Plex/Drako Applications:{NC}")
     print()
 
     for app in apps:
@@ -531,20 +673,12 @@ def edit_config(app: str):
     print_info("Remember to restart the application after making changes!")
     print()
 
-    # Use nano as default editor, fall back to vi
-    editor = os.environ.get("EDITOR", "nano")
-    if not subprocess.run(["which", editor], capture_output=True).returncode == 0:
-        editor = "nano" if subprocess.run(["which", "nano"], capture_output=True).returncode == 0 else "vi"
-
-    try:
-        subprocess.run([editor, str(config_file)])
-        print()
-        print(f"{YELLOW}Configuration file updated. Restart the application to apply changes:{NC}")
-        print(f"  {GREEN}plex restart {instance}{NC}")
-        return 0
-    except subprocess.CalledProcessError:
-        print_error("Failed to open editor")
-        return 1
+    if _run_editor(config_file) != EXIT_OK:
+        return EXIT_ERROR
+    print()
+    print(f"{YELLOW}Configuration file updated. Restart the application to apply changes:{NC}")
+    print(f"  {GREEN}plex restart {instance}{NC}")
+    return EXIT_OK
 
 
 def enable_app(app: str):
@@ -585,7 +719,7 @@ def disable_app(app: str):
         return 1
 
 
-def debug_app(app: str) -> int:
+def debug_app(app: str, *, assume_yes: bool = False, non_interactive: bool = False) -> int:
     """Upload redacted config + recent logs for support."""
     instance = resolve_app_instance(app)
     if not instance:
@@ -594,7 +728,7 @@ def debug_app(app: str) -> int:
 
     app_dir = INSTALL_DIR / instance
     config_path = None
-    for config_name in ["config.yml", "config.yaml"]:
+    for config_name in ["config.yml", "config.yaml", "config.json"]:
         candidate = app_dir / config_name
         if candidate.exists():
             config_path = candidate
@@ -603,6 +737,7 @@ def debug_app(app: str) -> int:
     if config_path:
         try:
             config_contents = config_path.read_text(encoding="utf-8", errors="replace")
+            config_contents = redact_config_contents(config_contents, config_path.suffix)
         except Exception as exc:
             config_contents = f"<Could not read config file: {exc}>\n"
     else:
@@ -625,10 +760,11 @@ def debug_app(app: str) -> int:
         f"===== journalctl (last 500 lines) =====\n{logs_contents}\n"
     )
 
-    if redact_sensitive_yaml is not None:
-        bundle = redact_sensitive_yaml(bundle)
-    else:
-        print_warning("Redaction helper unavailable — sensitive values may not be masked")
+    bundle = redact_debug_text(bundle)
+
+    if not debug_bundle_is_safe(bundle):
+        print_error("Debug upload blocked because redaction could not safely mask every detected secret")
+        return EXIT_ERROR
 
     paste_endpoint = "https://paste.plexdev.xyz/documents"
     if Config is not None:
@@ -640,6 +776,17 @@ def debug_app(app: str) -> int:
     if requests is None:
         print_error("Python package 'requests' is required for plex debug uploads")
         return 1
+
+    print_warning(
+        "Review the redacted bundle before sharing; automated redaction cannot guarantee removal of every secret."
+    )
+    if not _confirm(
+        "Upload this redacted debug bundle to the configured paste service?",
+        assume_yes=assume_yes,
+        non_interactive=non_interactive,
+    ):
+        print_info("Debug upload cancelled")
+        return EXIT_OK
 
     print_info("Uploading debug bundle to paste service...")
     try:
@@ -746,9 +893,10 @@ def addon_install(app: str, archive_path: str) -> int:
         print_error(f"Archive not found: {archive_path}")
         return 1
 
-    if archive.suffix.lower() not in [".zip", ".rar"]:
-        print_error(f"Unsupported archive format: {archive.suffix}")
-        print_info("Supported formats: .zip, .rar")
+    supported_suffixes = (".zip", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz")
+    if not archive.name.lower().endswith(supported_suffixes):
+        print_error(f"Unsupported archive format: {archive.name}")
+        print_info("Supported formats: ZIP and TAR archives")
         return 1
 
     app_dir = INSTALL_DIR / instance
@@ -851,30 +999,22 @@ def addon_config(app: str, addon_name: str) -> int:
     print_info("Remember to restart the application after making changes!")
     print()
 
-    # Use nano as default editor
-    editor = os.environ.get("EDITOR", "nano")
-    if not subprocess.run(["which", editor], capture_output=True).returncode == 0:
-        editor = "nano" if subprocess.run(["which", "nano"], capture_output=True).returncode == 0 else "vi"
+    if _run_editor(config_path) != EXIT_OK:
+        return EXIT_ERROR
 
-    try:
-        subprocess.run([editor, str(config_path)])
+    # Validate YAML after editing
+    is_valid, error = addon_mgr.validate_yaml(config_path)
 
-        # Validate YAML after editing
-        is_valid, error = addon_mgr.validate_yaml(config_path)
+    if is_valid:
+        print_success("Configuration file is valid YAML")
+    else:
+        print_error(f"YAML syntax error: {error}")
+        print_warning("The configuration may not work correctly until fixed")
 
-        if is_valid:
-            print_success("Configuration file is valid YAML")
-        else:
-            print_error(f"YAML syntax error: {error}")
-            print_warning("The configuration may not work correctly until fixed")
-
-        print()
-        print(f"{YELLOW}Restart the application to apply changes:{NC}")
-        print(f"  plex restart {instance}")
-        return 0
-    except subprocess.CalledProcessError:
-        print_error("Failed to open editor")
-        return 1
+    print()
+    print(f"{YELLOW}Restart the application to apply changes:{NC}")
+    print(f"  plex restart {instance}")
+    return EXIT_OK
 
 
 def handle_addon_command(args: list[str]) -> int:
@@ -947,10 +1087,17 @@ def tool_setupdomain(app: str) -> int:
         if config_file.exists():
             try:
                 content = config_file.read_text()
-                match = re.search(r"^\s*port\s*:\s*(\d+)", content, re.IGNORECASE | re.MULTILINE)
-                if match:
-                    port = int(match.group(1))
-                    break
+                if config_file.suffix.lower() == ".json":
+                    data = json.loads(content)
+                    value = next((data[key] for key in ("Port", "port", "PORT") if key in data), None)
+                    if isinstance(value, int) and 1 <= value <= 65535:
+                        port = value
+                        break
+                else:
+                    match = re.search(r"^\s*port\s*:\s*(\d+)", content, re.IGNORECASE | re.MULTILINE)
+                    if match:
+                        port = int(match.group(1))
+                        break
             except Exception:
                 pass
 
@@ -973,6 +1120,10 @@ def tool_setupdomain(app: str) -> int:
                 port = int(port_input)
             else:
                 print_error("Invalid port, using detected port.")
+
+    if Config is None:
+        print_error("Configuration module unavailable; cannot persist the selected port safely")
+        return EXIT_ERROR
 
     # Get domain
     domain_pattern = re.compile(
@@ -1024,9 +1175,11 @@ def tool_setupdomain(app: str) -> int:
     firewall = FirewallManager()
     nginx = NginxManager()
     ssl_mgr = SSLManager()
-
-    # Open firewall port for the application
-    firewall.open_port(port, instance)
+    nginx_config = nginx.config.nginx_available / f"{domain}.conf"
+    nginx_enabled = nginx.config.nginx_enabled / f"{domain}.conf"
+    if nginx_config.exists() or nginx_enabled.exists() or nginx_enabled.is_symlink():
+        print_error(f"Nginx configuration already exists for {domain}; refusing to overwrite it")
+        return EXIT_ERROR
 
     # Check DNS
     if not dns_checker.check(domain):
@@ -1042,6 +1195,7 @@ def tool_setupdomain(app: str) -> int:
         print_success("Nginx configured successfully")
     except Exception as e:
         print_error(f"Nginx setup failed: {e}")
+        _rollback_setupdomain(domain, nginx=nginx, remove_nginx=True)
         return 1
 
     # Setup SSL
@@ -1051,13 +1205,94 @@ def tool_setupdomain(app: str) -> int:
         print_success("SSL certificate obtained successfully")
     except Exception as e:
         print_error(f"SSL setup failed: {e}")
-        print_warning("Nginx is configured but without SSL. You can retry SSL with: sudo certbot --nginx -d " + domain)
+        _rollback_setupdomain(domain, nginx=nginx, ssl_manager=ssl_mgr, remove_nginx=True)
         return 1
+
+    try:
+        Config().persist_app_port(app_dir, port)
+    except Exception as exc:
+        print_error(f"Could not persist selected application port: {exc}")
+        _rollback_setupdomain(domain, nginx=nginx, ssl_manager=ssl_mgr, remove_nginx=True)
+        return EXIT_ERROR
+
+    # A reverse-proxied app port must not remain public.
+    try:
+        firewall.close_port(port)
+    except Exception as exc:
+        print_warning(f"Could not verify app-port firewall cleanup: {exc}")
+
+    _record_domain_resources(app_dir, instance, domain, port)
 
     print()
     print_success(f"Domain setup complete! Access your instance at: https://{domain}")
     print_info(f"Restart the service to apply any changes: plex restart {instance}")
     return 0
+
+
+def _rollback_setupdomain(domain: str, *, nginx, ssl_manager=None, remove_nginx: bool = True) -> None:
+    """Best-effort rollback for nginx files and partial certificate state."""
+    if ssl_manager is not None:
+        try:
+            subprocess.run(
+                ["certbot", "delete", "--cert-name", domain, "--non-interactive"],
+                check=False,
+                capture_output=True,
+            )
+        except OSError:
+            pass
+    if remove_nginx:
+        config = getattr(nginx, "config", None)
+        for directory_name in ("nginx_enabled", "nginx_available"):
+            directory = getattr(config, directory_name, None)
+            if directory is None:
+                continue
+            path = Path(directory) / f"{domain}.conf"
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+    try:
+        subprocess.run(["nginx", "-t"], check=False, capture_output=True)
+        subprocess.run(["systemctl", "reload", "nginx"], check=False, capture_output=True)
+    except OSError:
+        pass
+
+
+def _record_domain_resources(app_dir: Path, instance: str, domain: str, port: int) -> None:
+    """Update an installer resource manifest after successful CLI domain setup."""
+    manifest = app_dir / ".plexinstaller-resources.json"
+    data: dict[str, Any] = {}
+    try:
+        parsed = json.loads(manifest.read_text(encoding="utf-8"))
+        if isinstance(parsed, dict):
+            data = parsed
+    except (OSError, ValueError, TypeError):
+        pass
+    data.update(
+        {
+            "schema_version": 1,
+            "instance": instance,
+            "install_path": str(app_dir.resolve()),
+            "port": port,
+            "firewall_port": None,
+            "domain": domain,
+            "nginx": True,
+            "certificate": True,
+            "service": data.get("service", f"plex-{instance}"),
+            "mongodb": data.get("mongodb", {}),
+        }
+    )
+    temporary = manifest.with_name(f".{manifest.name}.{os.getpid()}.tmp")
+    try:
+        fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(data, stream, indent=2)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, manifest)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def handle_tool_command(args: list) -> int:
@@ -1086,8 +1321,42 @@ def handle_tool_command(args: list) -> int:
 # ========== END TOOL COMMANDS ==========
 
 
-def main():
-    """Main entry point"""
+class _Parser(argparse.ArgumentParser):
+    """Argument parser with a stable EX_USAGE-compatible error code."""
+
+    def error(self, message: str) -> NoReturn:
+        self.print_usage(sys.stderr)
+        self.exit(EXIT_USAGE, f"{self.prog}: error: {message}\n")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Build the public CLI grammar without executing a command."""
+    parser = _Parser(prog="plex", description="Manage PlexDevelopment applications")
+    parser.add_argument("--yes", "-y", action="store_true", help="accept destructive/upload confirmations")
+    parser.add_argument("--non-interactive", action="store_true", help="never prompt; fail or use safe defaults")
+    parser.add_argument("--no-update-check", action="store_true", help="skip the installer update check")
+    parser.add_argument("--json", action="store_true", dest="json_output", help="emit JSON where supported")
+
+    subparsers = parser.add_subparsers(dest="command")
+    subparsers.add_parser("list", aliases=["ls"], help="list installed applications")
+    for command in ("start", "stop", "restart", "status", "logs", "enable", "disable"):
+        command_parser = subparsers.add_parser(command)
+        command_parser.add_argument("app")
+    config_parser = subparsers.add_parser("config", aliases=["configure"])
+    config_parser.add_argument("app")
+    debug_parser = subparsers.add_parser("debug")
+    debug_parser.add_argument("app")
+
+    addon_parser = subparsers.add_parser("addon")
+    addon_parser.add_argument("addon_args", nargs=argparse.REMAINDER)
+    tool_parser = subparsers.add_parser("tool")
+    tool_parser.add_argument("tool_args", nargs=argparse.REMAINDER)
+    subparsers.add_parser("help")
+    return parser
+
+
+def main(argv: Sequence[str] | None = None):
+    """Main entry point."""
     try:
         from utils import setup_logging
 
@@ -1095,95 +1364,50 @@ def main():
     except Exception:  # pragma: no cover
         pass
 
-    _maybe_auto_update()
-
-    if len(sys.argv) < 2:
+    parser = build_parser()
+    args = parser.parse_args(list(argv) if argv is not None else None)
+    if not args.command:
         show_help()
-        return 1
+        return EXIT_USAGE
 
-    command = sys.argv[1].lower()
+    if not args.no_update_check:
+        _maybe_auto_update()
 
-    if command in ["list", "ls"]:
-        return list_apps()
-
-    elif command == "start":
-        if len(sys.argv) < 3:
-            print_error("Usage: plex start <app_name>")
-            print("Use 'plex list' to see available applications")
-            return 1
-        return start_app(sys.argv[2])
-
-    elif command == "stop":
-        if len(sys.argv) < 3:
-            print_error("Usage: plex stop <app_name>")
-            print("Use 'plex list' to see available applications")
-            return 1
-        return stop_app(sys.argv[2])
-
-    elif command == "restart":
-        if len(sys.argv) < 3:
-            print_error("Usage: plex restart <app_name>")
-            print("Use 'plex list' to see available applications")
-            return 1
-        return restart_app(sys.argv[2])
-
-    elif command == "status":
-        if len(sys.argv) < 3:
-            print_error("Usage: plex status <app_name>")
-            print("Use 'plex list' to see available applications")
-            return 1
-        return show_status(sys.argv[2])
-
-    elif command == "logs":
-        if len(sys.argv) < 3:
-            print_error("Usage: plex logs <app_name>")
-            print("Use 'plex list' to see available applications")
-            return 1
-        return view_logs(sys.argv[2])
-
-    elif command in ["config", "configure"]:
-        if len(sys.argv) < 3:
-            print_error("Usage: plex config <app_name>")
-            print("Use 'plex list' to see available applications")
-            return 1
-        return edit_config(sys.argv[2])
-
-    elif command == "enable":
-        if len(sys.argv) < 3:
-            print_error("Usage: plex enable <app_name>")
-            print("Use 'plex list' to see available applications")
-            return 1
-        return enable_app(sys.argv[2])
-
-    elif command == "disable":
-        if len(sys.argv) < 3:
-            print_error("Usage: plex disable <app_name>")
-            print("Use 'plex list' to see available applications")
-            return 1
-        return disable_app(sys.argv[2])
-
-    elif command == "debug":
-        if len(sys.argv) < 3:
-            print_error("Usage: plex debug <app_name>")
-            print("Use 'plex list' to see available applications")
-            return 1
-        return debug_app(sys.argv[2])
-
-    elif command == "addon":
-        return handle_addon_command(sys.argv[2:])
-
-    elif command == "tool":
-        return handle_tool_command(sys.argv[2:])
-
-    elif command in ["help", "-h", "--help"]:
+    command = args.command.lower()
+    if command in {"list", "ls"}:
+        return list_apps(json_output=args.json_output)
+    if command == "start":
+        return start_app(args.app)
+    if command == "stop":
+        return stop_app(args.app)
+    if command == "restart":
+        return restart_app(args.app)
+    if command == "status":
+        return show_status(args.app)
+    if command == "logs":
+        return view_logs(args.app)
+    if command in {"config", "configure"}:
+        if args.non_interactive:
+            print_error("config cannot run in non-interactive mode")
+            return EXIT_USAGE
+        return edit_config(args.app)
+    if command == "enable":
+        return enable_app(args.app)
+    if command == "disable":
+        return disable_app(args.app)
+    if command == "debug":
+        return debug_app(args.app, assume_yes=args.yes, non_interactive=args.non_interactive)
+    if command == "addon":
+        return handle_addon_command(args.addon_args)
+    if command == "tool":
+        if args.non_interactive:
+            print_error("interactive tools cannot run with --non-interactive")
+            return EXIT_USAGE
+        return handle_tool_command(args.tool_args)
+    if command == "help":
         show_help()
-        return 0
-
-    else:
-        print_error(f"Unknown command: {command}")
-        print()
-        show_help()
-        return 1
+        return EXIT_OK
+    return EXIT_USAGE
 
 
 if __name__ == "__main__":

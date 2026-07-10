@@ -3,17 +3,22 @@
 Utility functions for PlexDevelopment Installer
 """
 
+import ctypes
+import errno
 import logging
 import os
+import pwd
 import re
 import shutil
 import socket
+import stat
 import subprocess
 import sys
 import tarfile
 import tempfile
 import zipfile
-from pathlib import Path
+from dataclasses import dataclass
+from pathlib import Path, PurePosixPath
 
 from colorama import Fore, Style
 from colorama import init as colorama_init
@@ -166,7 +171,7 @@ class SystemDetector:
         cmd = update_cmds.get(self.pkg_manager)
         if cmd:
             try:
-                subprocess.run(["sudo"] + cmd, check=False)
+                subprocess.run(cmd, check=False)
             except Exception as e:
                 self.printer.warning(f"Update failed: {e}")
 
@@ -184,7 +189,7 @@ class SystemDetector:
         cmd = install_cmds.get(self.pkg_manager)
         if cmd:
             try:
-                subprocess.run(["sudo"] + cmd, check=True)
+                subprocess.run(cmd, check=True)
                 self.printer.success("System dependencies installed")
             except subprocess.CalledProcessError as e:
                 self.printer.error(f"Package installation failed: {e}")
@@ -206,7 +211,7 @@ class SystemDetector:
 
             try:
                 # Download and run setup script
-                subprocess.run(f"curl -fsSL {script_url} | sudo -E bash -", shell=True, check=True)
+                subprocess.run(f"curl -fsSL {script_url} | bash -", shell=True, check=True)
 
                 # Install nodejs
                 install_cmd = {
@@ -215,14 +220,14 @@ class SystemDetector:
                     "yum": ["yum", "install", "-y", "nodejs"],
                 }[self.pkg_manager]
 
-                subprocess.run(["sudo"] + install_cmd, check=True)
+                subprocess.run(install_cmd, check=True)
                 self.printer.success("Node.js installed")
             except subprocess.CalledProcessError as e:
                 self.printer.error(f"Node.js installation failed: {e}")
 
         elif self.pkg_manager == "pacman":
             try:
-                subprocess.run(["sudo", "pacman", "-S", "--noconfirm", "--needed", "nodejs", "npm"], check=True)
+                subprocess.run(["pacman", "-S", "--noconfirm", "--needed", "nodejs", "npm"], check=True)
                 self.printer.success("Node.js installed")
             except subprocess.CalledProcessError as e:
                 self.printer.error(f"Node.js installation failed: {e}")
@@ -382,9 +387,7 @@ class FirewallManager:
     def _open_ufw(self, port: int, description: str):
         """Open port in UFW"""
         try:
-            subprocess.run(
-                ["sudo", "ufw", "allow", f"{port}/tcp", "comment", description], check=True, capture_output=True
-            )
+            subprocess.run(["ufw", "allow", f"{port}/tcp", "comment", description], check=True, capture_output=True)
             self.printer.success(f"Port {port} opened in UFW")
         except subprocess.CalledProcessError:
             self.printer.warning("Failed to open port in UFW")
@@ -392,10 +395,8 @@ class FirewallManager:
     def _open_firewalld(self, port: int):
         """Open port in firewalld"""
         try:
-            subprocess.run(
-                ["sudo", "firewall-cmd", "--permanent", f"--add-port={port}/tcp"], check=True, capture_output=True
-            )
-            subprocess.run(["sudo", "firewall-cmd", "--reload"], check=True, capture_output=True)
+            subprocess.run(["firewall-cmd", "--permanent", f"--add-port={port}/tcp"], check=True, capture_output=True)
+            subprocess.run(["firewall-cmd", "--reload"], check=True, capture_output=True)
             self.printer.success(f"Port {port} opened in firewalld")
         except subprocess.CalledProcessError:
             self.printer.warning("Failed to open port in firewalld")
@@ -404,7 +405,7 @@ class FirewallManager:
         """Open port in iptables"""
         try:
             subprocess.run(
-                ["sudo", "iptables", "-A", "INPUT", "-p", "tcp", "--dport", str(port), "-j", "ACCEPT"],
+                ["iptables", "-A", "INPUT", "-p", "tcp", "--dport", str(port), "-j", "ACCEPT"],
                 check=True,
                 capture_output=True,
             )
@@ -415,7 +416,7 @@ class FirewallManager:
 
     def _close_ufw(self, port: int):
         try:
-            subprocess.run(["sudo", "ufw", "delete", "allow", f"{port}/tcp"], check=True, capture_output=True)
+            subprocess.run(["ufw", "delete", "allow", f"{port}/tcp"], check=True, capture_output=True)
             self.printer.success(f"Port {port} rule removed from UFW")
         except subprocess.CalledProcessError:
             self.printer.warning("Failed to remove UFW rule")
@@ -423,9 +424,9 @@ class FirewallManager:
     def _close_firewalld(self, port: int):
         try:
             subprocess.run(
-                ["sudo", "firewall-cmd", "--permanent", f"--remove-port={port}/tcp"], check=True, capture_output=True
+                ["firewall-cmd", "--permanent", f"--remove-port={port}/tcp"], check=True, capture_output=True
             )
-            subprocess.run(["sudo", "firewall-cmd", "--reload"], check=True, capture_output=True)
+            subprocess.run(["firewall-cmd", "--reload"], check=True, capture_output=True)
             self.printer.success(f"Port {port} removed from firewalld")
         except subprocess.CalledProcessError:
             self.printer.warning("Failed to remove firewalld rule")
@@ -433,7 +434,7 @@ class FirewallManager:
     def _close_iptables(self, port: int):
         try:
             subprocess.run(
-                ["sudo", "iptables", "-D", "INPUT", "-p", "tcp", "--dport", str(port), "-j", "ACCEPT"],
+                ["iptables", "-D", "INPUT", "-p", "tcp", "--dport", str(port), "-j", "ACCEPT"],
                 check=True,
                 capture_output=True,
             )
@@ -497,8 +498,8 @@ class NginxManager:
 
         # Test and reload nginx
         try:
-            subprocess.run(["sudo", "nginx", "-t"], check=True, capture_output=True)
-            subprocess.run(["sudo", "systemctl", "reload", "nginx"], check=True)
+            subprocess.run(["nginx", "-t"], check=True, capture_output=True)
+            subprocess.run(["systemctl", "reload", "nginx"], check=True)
             self.printer.success("Nginx configured")
         except subprocess.CalledProcessError as e:
             self.printer.error(f"Nginx configuration failed: {e.stderr.decode()}")
@@ -518,7 +519,6 @@ class SSLManager:
         try:
             subprocess.run(
                 [
-                    "sudo",
                     "certbot",
                     "--nginx",
                     "-d",
@@ -547,13 +547,13 @@ class SSLManager:
 
         try:
             # Get current crontab
-            result = subprocess.run(["sudo", "crontab", "-l"], capture_output=True, text=True)
+            result = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
             current_cron = result.stdout if result.returncode == 0 else ""
 
             # Add renewal entry if not present
             if "certbot renew" not in current_cron:
                 new_cron = current_cron + cron_entry
-                subprocess.run(["sudo", "crontab", "-"], input=new_cron, text=True, check=True)
+                subprocess.run(["crontab", "-"], input=new_cron, text=True, check=True)
                 self.printer.success("SSL auto-renewal configured")
             else:
                 self.printer.step("SSL auto-renewal already configured")
@@ -567,9 +567,89 @@ class SystemdManager:
     def __init__(self):
         self.printer = ColorPrinter()
 
-    def create_service(self, service_name: str, install_path: Path):
-        """Create systemd service file"""
+    @staticmethod
+    def service_user_name(service_name: str) -> str:
+        """Derive the bounded system identity used by opt-in isolation."""
+        safe_name = validate_path_component(service_name, label="service name")
+        normalized = re.sub(r"[^a-z0-9_-]", "-", safe_name.lower())
+        user = f"plex-{normalized}"[:31]
+        if user == "plex-":
+            raise ValueError("Could not derive an isolated service user")
+        return user
+
+    def prepare_service_identity(self, service_name: str, install_path: Path) -> tuple[str, bool]:
+        """Create/chown an isolated identity before dependency scripts run."""
+        if shutil.which("useradd") is None or shutil.which("runuser") is None:
+            raise RuntimeError("useradd and runuser are required for isolated mode")
+        user = self.service_user_name(service_name)
+        created = False
+        try:
+            pwd.getpwnam(user)
+        except KeyError:
+            subprocess.run(
+                [
+                    "useradd",
+                    "--system",
+                    "--user-group",
+                    "--home-dir",
+                    str(install_path),
+                    "--shell",
+                    "/usr/sbin/nologin",
+                    user,
+                ],
+                check=True,
+                timeout=30,
+            )
+            created = True
+        try:
+            subprocess.run(["chown", "-R", f"{user}:{user}", str(install_path)], check=True, timeout=60)
+        except Exception:
+            if created:
+                subprocess.run(["userdel", user], check=False, timeout=30)
+            raise
+        return user, created
+
+    def release_service_identity(
+        self,
+        service_name: str,
+        install_path: Path,
+        *,
+        remove_user: bool,
+    ) -> None:
+        """Restore root ownership and optionally delete an installer-created user."""
+        user = self.service_user_name(service_name)
+        if install_path.exists():
+            subprocess.run(["chown", "-R", "root:root", str(install_path)], check=False, timeout=60)
+        if remove_user:
+            subprocess.run(["userdel", user], check=False, timeout=30)
+            if shutil.which("groupdel"):
+                subprocess.run(["groupdel", user], check=False, timeout=30)
+
+    def create_service(self, service_name: str, install_path: Path, *, isolated: bool = False):
+        """Create a service, optionally under a dedicated unprivileged user.
+
+        Root remains the default for compatibility.  Isolated mode is opt-in;
+        failures are raised so the installer can explicitly fall back to root.
+        """
         service_file = Path(f"/etc/systemd/system/plex-{service_name}.service")
+
+        user = "root"
+        group = "root"
+        hardening = ""
+        if isolated:
+            user, _ = self.prepare_service_identity(service_name, install_path)
+            group = user
+            hardening = f"""NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadWritePaths={install_path}
+"""
 
         service_content = f"""[Unit]
 Description=PlexDevelopment - {service_name} Service
@@ -577,8 +657,8 @@ After=network.target nginx.service
 
 [Service]
 Type=simple
-User=root
-Group=root
+User={user}
+Group={group}
 WorkingDirectory={install_path}
 ExecStart=/usr/bin/node .
 Restart=on-failure
@@ -587,6 +667,7 @@ TimeoutStartSec=30s
 StandardOutput=syslog
 StandardError=syslog
 SyslogIdentifier=plex-{service_name}
+{hardening}
 
 [Install]
 WantedBy=multi-user.target
@@ -596,16 +677,16 @@ WantedBy=multi-user.target
         os.chmod(service_file, 0o644)
 
         # Reload systemd and enable service
-        subprocess.run(["sudo", "systemctl", "daemon-reload"], check=True, timeout=30)
-        subprocess.run(["sudo", "systemctl", "enable", f"plex-{service_name}"], check=True, timeout=30)
-        subprocess.run(["sudo", "systemctl", "start", f"plex-{service_name}"], check=True, timeout=60)
+        subprocess.run(["systemctl", "daemon-reload"], check=True, timeout=30)
+        subprocess.run(["systemctl", "enable", f"plex-{service_name}"], check=True, timeout=30)
+        subprocess.run(["systemctl", "start", f"plex-{service_name}"], check=True, timeout=60)
 
         self.printer.success(f"Service plex-{service_name} created and started")
 
     def start(self, service_name: str):
         """Start service"""
         try:
-            subprocess.run(["sudo", "systemctl", "start", service_name], check=True, timeout=60)
+            subprocess.run(["systemctl", "start", service_name], check=True, timeout=60)
             self.printer.success(f"{service_name} started")
         except subprocess.CalledProcessError:
             self.printer.error(f"Failed to start {service_name}")
@@ -613,7 +694,7 @@ WantedBy=multi-user.target
     def stop(self, service_name: str):
         """Stop service"""
         try:
-            subprocess.run(["sudo", "systemctl", "stop", service_name], check=True, timeout=60)
+            subprocess.run(["systemctl", "stop", service_name], check=True, timeout=60)
             self.printer.success(f"{service_name} stopped")
         except subprocess.CalledProcessError:
             self.printer.error(f"Failed to stop {service_name}")
@@ -621,7 +702,7 @@ WantedBy=multi-user.target
     def restart(self, service_name: str):
         """Restart service"""
         try:
-            subprocess.run(["sudo", "systemctl", "restart", service_name], check=True, timeout=60)
+            subprocess.run(["systemctl", "restart", service_name], check=True, timeout=60)
             self.printer.success(f"{service_name} restarted")
         except subprocess.CalledProcessError:
             self.printer.error(f"Failed to restart {service_name}")
@@ -639,15 +720,15 @@ WantedBy=multi-user.target
     def view_logs(self, service_name: str):
         """View service logs"""
         try:
-            subprocess.run(["sudo", "journalctl", "-u", service_name, "-n", "50", "-f"])
+            subprocess.run(["journalctl", "-u", service_name, "-n", "50", "-f"])
         except KeyboardInterrupt:
             pass
 
     def remove_service(self, service_name: str):
         """Remove systemd service"""
         try:
-            subprocess.run(["sudo", "systemctl", "stop", service_name], check=False, timeout=60)
-            subprocess.run(["sudo", "systemctl", "disable", service_name], check=False, timeout=30)
+            subprocess.run(["systemctl", "stop", service_name], check=False, timeout=60)
+            subprocess.run(["systemctl", "disable", service_name], check=False, timeout=30)
 
             service_file = Path(f"/etc/systemd/system/{service_name}.service")
             # Use try/except instead of check-then-act to avoid race condition
@@ -656,114 +737,446 @@ WantedBy=multi-user.target
             except FileNotFoundError:
                 pass
 
-            subprocess.run(["sudo", "systemctl", "daemon-reload"], check=True, timeout=30)
+            subprocess.run(["systemctl", "daemon-reload"], check=True, timeout=30)
             self.printer.success(f"Service {service_name} removed")
         except subprocess.CalledProcessError as e:
             self.printer.error(f"Failed to remove service: {e}")
 
 
-class ArchiveExtractor:
-    """Archive extraction utilities"""
+DEFAULT_MAX_ARCHIVE_FILES = 100_000
+DEFAULT_MAX_ARCHIVE_BYTES = 10 * 1024 * 1024 * 1024
+_ARCHIVE_COPY_CHUNK_SIZE = 1024 * 1024
+_TAR_SUFFIXES = (".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz", ".gz", ".bz2", ".xz")
 
-    def __init__(self):
+
+class UnsafeArchiveError(ValueError):
+    """Raised when an archive cannot be extracted without escaping safety rules."""
+
+
+class ArchiveLimitError(UnsafeArchiveError):
+    """Raised when an archive exceeds configured expansion limits."""
+
+
+@dataclass(frozen=True)
+class _ArchiveEntry:
+    member: zipfile.ZipInfo | tarfile.TarInfo
+    parts: tuple[str, ...]
+    is_dir: bool
+    size: int
+    mode: int
+
+
+def validate_path_component(value: str, *, label: str = "path component") -> str:
+    """Validate an untrusted value that will be used as one directory name."""
+    if not isinstance(value, str) or not value or value in {".", ".."}:
+        raise ValueError(f"Invalid {label}: {value!r}")
+    if "\x00" in value or "/" in value or "\\" in value or re.match(r"^[A-Za-z]:", value):
+        raise ValueError(f"Invalid {label}: {value!r}")
+    return value
+
+
+def _path_exists(path: Path) -> bool:
+    """Return True for all existing paths, including broken symbolic links."""
+    return os.path.lexists(path)
+
+
+def install_staged_directory(source: Path, target: Path) -> None:
+    """Atomically publish a staged directory without replacing any target."""
+    if sys.platform.startswith("linux"):
+        libc = ctypes.CDLL(None, use_errno=True)
+        renameat2 = getattr(libc, "renameat2", None)
+        if renameat2 is None:
+            raise OSError(errno.ENOTSUP, "Atomic no-replace directory installation is unavailable")
+
+        renameat2.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+        renameat2.restype = ctypes.c_int
+        if renameat2(-100, os.fsencode(source), -100, os.fsencode(target), 1) == 0:
+            return
+
+        error_number = ctypes.get_errno()
+        if error_number in {errno.EEXIST, errno.ENOTEMPTY}:
+            raise FileExistsError(f"Installation target already exists: {target}")
+        raise OSError(error_number, os.strerror(error_number), target)
+
+    try:
+        os.rename(source, target)
+    except FileExistsError:
+        raise FileExistsError(f"Installation target already exists: {target}") from None
+    except OSError as exc:
+        if _path_exists(target):
+            raise FileExistsError(f"Installation target already exists: {target}") from exc
+        raise
+
+
+def _archive_member_parts(name: str) -> tuple[str, ...]:
+    """Return a safe, normalized archive path split into components."""
+    if not isinstance(name, str) or "\x00" in name:
+        raise UnsafeArchiveError(f"Invalid archive member path: {name!r}")
+
+    normalized = name.replace("\\", "/")
+    if normalized.startswith("/") or re.match(r"^[A-Za-z]:", normalized) or ":" in normalized.split("/", 1)[0]:
+        raise UnsafeArchiveError(f"Absolute archive member path is not allowed: {name}")
+
+    path = PurePosixPath(normalized)
+    if path.is_absolute() or any(part == ".." for part in path.parts):
+        raise UnsafeArchiveError(f"Path traversal attempt detected: {name}")
+
+    return tuple(part for part in path.parts if part not in {"", "."})
+
+
+def _member_destination(root: Path, parts: tuple[str, ...]) -> Path:
+    """Build a destination and verify containment without string-prefix checks."""
+    root_resolved = root.resolve()
+    destination = root.joinpath(*parts)
+    try:
+        destination.resolve(strict=False).relative_to(root_resolved)
+    except ValueError as exc:
+        raise UnsafeArchiveError(f"Archive member escapes extraction directory: {'/'.join(parts)}") from exc
+    return destination
+
+
+def _validate_entry_layout(entries: list[_ArchiveEntry], expected_top_level: str | None) -> None:
+    if not entries:
+        raise UnsafeArchiveError("Archive is empty")
+
+    kinds: dict[tuple[str, ...], str] = {}
+    for entry in entries:
+        if not entry.parts:
+            if not entry.is_dir:
+                raise UnsafeArchiveError("Archive contains a file with an empty path")
+            continue
+
+        if entry.parts in kinds:
+            raise UnsafeArchiveError(f"Duplicate archive member path: {'/'.join(entry.parts)}")
+        kinds[entry.parts] = "directory" if entry.is_dir else "file"
+
+    if not kinds:
+        raise UnsafeArchiveError("Archive is empty")
+
+    for parts in kinds:
+        for index in range(1, len(parts)):
+            if kinds.get(parts[:index]) == "file":
+                raise UnsafeArchiveError(f"Archive path conflicts with a file: {'/'.join(parts)}")
+
+    if expected_top_level is not None:
+        expected = validate_path_component(expected_top_level, label="expected top-level directory")
+        unexpected = [parts for parts in kinds if parts[0] != expected]
+        if unexpected:
+            raise UnsafeArchiveError(
+                f"Archive must contain only the top-level directory '{expected}'; found '{unexpected[0][0]}'"
+            )
+
+
+def _validate_limits(entries: list[_ArchiveEntry], max_files: int, max_bytes: int) -> None:
+    if max_files <= 0 or max_bytes < 0:
+        raise ValueError("Archive limits must be positive")
+    if len(entries) > max_files:
+        raise ArchiveLimitError(f"Archive contains too many files ({len(entries)} > {max_files})")
+
+    expanded_bytes = sum(entry.size for entry in entries if not entry.is_dir)
+    if expanded_bytes > max_bytes:
+        raise ArchiveLimitError(f"Archive expands to too many bytes ({expanded_bytes} > {max_bytes})")
+
+
+def _validated_zip_entries(
+    archive: zipfile.ZipFile,
+    max_files: int,
+    max_bytes: int,
+    expected_top_level: str | None,
+) -> list[_ArchiveEntry]:
+    infos = archive.infolist()
+    if len(infos) > max_files:
+        raise ArchiveLimitError(f"Archive contains too many files ({len(infos)} > {max_files})")
+
+    entries: list[_ArchiveEntry] = []
+    for info in infos:
+        parts = _archive_member_parts(info.filename)
+        mode = (info.external_attr >> 16) & 0xFFFF if info.create_system == 3 else 0
+        file_type = stat.S_IFMT(mode)
+        is_dir = info.is_dir()
+
+        allowed_type = stat.S_IFDIR if is_dir else stat.S_IFREG
+        if file_type not in {0, allowed_type}:
+            raise UnsafeArchiveError(f"Archive links and special files are not allowed: {info.filename}")
+        if info.file_size < 0:
+            raise UnsafeArchiveError(f"Invalid archive member size: {info.filename}")
+
+        entries.append(_ArchiveEntry(info, parts, is_dir, 0 if is_dir else info.file_size, mode))
+
+    _validate_limits(entries, max_files, max_bytes)
+    _validate_entry_layout(entries, expected_top_level)
+    return entries
+
+
+def _validated_tar_entries(
+    archive: tarfile.TarFile,
+    max_files: int,
+    max_bytes: int,
+    expected_top_level: str | None,
+) -> list[_ArchiveEntry]:
+    entries: list[_ArchiveEntry] = []
+    for member in archive:
+        if len(entries) >= max_files:
+            raise ArchiveLimitError(f"Archive contains too many files (more than {max_files})")
+
+        parts = _archive_member_parts(member.name)
+        if member.isdir():
+            entries.append(_ArchiveEntry(member, parts, True, 0, member.mode))
+        elif member.isreg():
+            if member.size < 0:
+                raise UnsafeArchiveError(f"Invalid archive member size: {member.name}")
+            entries.append(_ArchiveEntry(member, parts, False, member.size, member.mode))
+        else:
+            raise UnsafeArchiveError(f"Archive links and special files are not allowed: {member.name}")
+
+    _validate_limits(entries, max_files, max_bytes)
+    _validate_entry_layout(entries, expected_top_level)
+    return entries
+
+
+def _write_archive_file(source, destination: Path, entry: _ArchiveEntry, total: int, max_bytes: int) -> int:
+    member_total = 0
+    with source, destination.open("xb") as output:
+        while True:
+            remaining_member = entry.size - member_total
+            remaining_total = max_bytes - total
+            read_size = min(_ARCHIVE_COPY_CHUNK_SIZE, remaining_member + 1, remaining_total + 1)
+            chunk = source.read(max(1, read_size))
+            if not chunk:
+                break
+
+            member_total += len(chunk)
+            total += len(chunk)
+            if member_total > entry.size:
+                raise UnsafeArchiveError(f"Archive member exceeds its declared size: {'/'.join(entry.parts)}")
+            if total > max_bytes:
+                raise ArchiveLimitError(f"Archive expands to more than {max_bytes} bytes")
+            output.write(chunk)
+
+    if member_total != entry.size:
+        raise UnsafeArchiveError(f"Archive member size mismatch: {'/'.join(entry.parts)}")
+    return total
+
+
+def _extract_validated_entries(
+    archive: zipfile.ZipFile | tarfile.TarFile,
+    entries: list[_ArchiveEntry],
+    target_dir: Path,
+    max_bytes: int,
+) -> None:
+    directories: list[tuple[Path, int]] = []
+    total = 0
+
+    for entry in entries:
+        if not entry.parts:
+            continue
+        destination = _member_destination(target_dir, entry.parts)
+        if entry.is_dir:
+            destination.mkdir(mode=0o700, parents=True, exist_ok=True)
+            if destination.is_symlink() or not destination.is_dir():
+                raise UnsafeArchiveError(f"Unsafe archive directory: {'/'.join(entry.parts)}")
+            directories.append((destination, entry.mode))
+            continue
+
+        destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        if isinstance(archive, zipfile.ZipFile):
+            if not isinstance(entry.member, zipfile.ZipInfo):
+                raise UnsafeArchiveError(f"Invalid ZIP member metadata: {'/'.join(entry.parts)}")
+            source = archive.open(entry.member, "r")
+        else:
+            if not isinstance(entry.member, tarfile.TarInfo):
+                raise UnsafeArchiveError(f"Invalid TAR member metadata: {'/'.join(entry.parts)}")
+            tar_source = archive.extractfile(entry.member)
+            if tar_source is None:
+                raise UnsafeArchiveError(f"Cannot read archive member: {'/'.join(entry.parts)}")
+            source = tar_source
+
+        total = _write_archive_file(source, destination, entry, total, max_bytes)
+        os.chmod(destination, (entry.mode & 0o777) or 0o600)
+
+    for directory, mode in sorted(directories, key=lambda item: len(item[0].parts), reverse=True):
+        os.chmod(directory, (mode & 0o777) or 0o700)
+
+
+def _safe_extract(
+    archive_path: Path,
+    target_dir: Path,
+    archive_type: str,
+    *,
+    max_files: int,
+    max_bytes: int,
+    expected_top_level: str | None,
+) -> Path:
+    archive_path = Path(archive_path)
+    target_dir = Path(target_dir)
+
+    if max_files <= 0 or max_bytes < 0:
+        raise ValueError("Archive limits must be positive")
+    if not archive_path.is_file():
+        raise FileNotFoundError(f"Archive not found: {archive_path}")
+    if _path_exists(target_dir):
+        raise FileExistsError(f"Extraction target already exists: {target_dir}")
+
+    target_dir.parent.mkdir(parents=True, exist_ok=True)
+    if target_dir.parent.is_symlink():
+        raise UnsafeArchiveError(f"Extraction parent must not be a symbolic link: {target_dir.parent}")
+    created = False
+    try:
+        target_dir.mkdir(mode=0o700)
+        created = True
+        if archive_type == "zip":
+            with zipfile.ZipFile(archive_path, "r") as archive:
+                entries = _validated_zip_entries(archive, max_files, max_bytes, expected_top_level)
+                _extract_validated_entries(archive, entries, target_dir, max_bytes)
+        else:
+            with tarfile.open(archive_path, "r:*") as archive:
+                entries = _validated_tar_entries(archive, max_files, max_bytes, expected_top_level)
+                _extract_validated_entries(archive, entries, target_dir, max_bytes)
+
+        if expected_top_level is not None and not (target_dir / expected_top_level).is_dir():
+            raise UnsafeArchiveError(f"Archive is missing top-level directory '{expected_top_level}'")
+        return target_dir
+    except zipfile.BadZipFile as exc:
+        raise ValueError(f"Corrupted or invalid ZIP archive: {archive_path.name}") from exc
+    except tarfile.TarError as exc:
+        raise ValueError(f"Corrupted or invalid TAR archive: {archive_path.name} ({exc})") from exc
+    finally:
+        if created and sys.exc_info()[0] is not None:
+            shutil.rmtree(target_dir, ignore_errors=True)
+
+
+def safe_extract_zip(
+    archive_path: Path,
+    target_dir: Path,
+    *,
+    max_files: int = DEFAULT_MAX_ARCHIVE_FILES,
+    max_bytes: int = DEFAULT_MAX_ARCHIVE_BYTES,
+    expected_top_level: str | None = None,
+) -> Path:
+    """Safely extract a ZIP archive into a new directory."""
+    return _safe_extract(
+        archive_path,
+        target_dir,
+        "zip",
+        max_files=max_files,
+        max_bytes=max_bytes,
+        expected_top_level=expected_top_level,
+    )
+
+
+def safe_extract_tar(
+    archive_path: Path,
+    target_dir: Path,
+    *,
+    max_files: int = DEFAULT_MAX_ARCHIVE_FILES,
+    max_bytes: int = DEFAULT_MAX_ARCHIVE_BYTES,
+    expected_top_level: str | None = None,
+) -> Path:
+    """Safely extract a TAR archive into a new directory."""
+    return _safe_extract(
+        archive_path,
+        target_dir,
+        "tar",
+        max_files=max_files,
+        max_bytes=max_bytes,
+        expected_top_level=expected_top_level,
+    )
+
+
+def safe_extract_archive(
+    archive_path: Path,
+    target_dir: Path,
+    *,
+    max_files: int = DEFAULT_MAX_ARCHIVE_FILES,
+    max_bytes: int = DEFAULT_MAX_ARCHIVE_BYTES,
+    expected_top_level: str | None = None,
+) -> Path:
+    """Safely extract a supported ZIP or TAR archive into a new directory."""
+    archive_name = Path(archive_path).name.lower()
+    if archive_name.endswith(".zip"):
+        extractor = safe_extract_zip
+    elif archive_name.endswith(_TAR_SUFFIXES):
+        extractor = safe_extract_tar
+    else:
+        raise ValueError(f"Unsupported archive format: {Path(archive_path).suffix}")
+
+    return extractor(
+        archive_path,
+        target_dir,
+        max_files=max_files,
+        max_bytes=max_bytes,
+        expected_top_level=expected_top_level,
+    )
+
+
+class ArchiveExtractor:
+    """Stage and atomically install safely extracted product archives."""
+
+    def __init__(
+        self,
+        *,
+        max_files: int = DEFAULT_MAX_ARCHIVE_FILES,
+        max_bytes: int = DEFAULT_MAX_ARCHIVE_BYTES,
+    ):
         self.printer = ColorPrinter()
+        self.max_files = max_files
+        self.max_bytes = max_bytes
 
     def extract(self, archive_path: Path, target_dir: Path) -> Path:
-        """Extract archive to target directory"""
+        """Extract to a private stage, then atomically rename it into place."""
+        archive_path = Path(archive_path)
+        target_dir = Path(target_dir)
         self.printer.step(f"Extracting {archive_path.name}")
 
-        # Verify archive exists and is readable
-        if not archive_path.exists():
+        if not archive_path.is_file():
             raise FileNotFoundError(f"Archive not found: {archive_path}")
+        if _path_exists(target_dir):
+            raise FileExistsError(f"Extraction target already exists: {target_dir}")
 
-        # Create target directory
-        try:
-            target_dir.mkdir(parents=True, exist_ok=True)
-        except PermissionError as exc:
-            raise PermissionError(f"Cannot create directory {target_dir}: permission denied") from exc
-
-        # Create temporary extraction directory
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
-
-            # Extract based on file type with improved error handling
-            try:
-                if archive_path.suffix == ".zip":
-                    self._extract_zip(archive_path, temp_path)
-                elif archive_path.suffix in [".tar", ".gz", ".bz2", ".xz"]:
-                    self._extract_tar(archive_path, temp_path)
-                elif archive_path.suffix == ".rar":
-                    self._extract_rar(archive_path, temp_path)
-                else:
-                    raise ValueError(f"Unsupported archive format: {archive_path.suffix}")
-            except zipfile.BadZipFile as exc:
-                raise ValueError(f"Corrupted or invalid ZIP archive: {archive_path.name}") from exc
-            except tarfile.TarError as exc:
-                raise ValueError(f"Corrupted or invalid TAR archive: {archive_path.name} ({exc})") from exc
-            except PermissionError as exc:
-                raise PermissionError(f"Cannot read archive {archive_path.name}: permission denied") from exc
-
-            # Find actual product directory
-            source_dir = self._find_product_dir(temp_path, target_dir.name)
-
-            # Move contents to target
-            for item in source_dir.iterdir():
-                dest = target_dir / item.name
-                if dest.exists():
-                    if dest.is_dir():
-                        shutil.rmtree(dest)
-                    else:
-                        dest.unlink()
-                shutil.move(str(item), str(target_dir))
-
-            # Set permissions
-            subprocess.run(["sudo", "chown", "-R", "root:root", str(target_dir)], timeout=60)
-            subprocess.run(
-                ["sudo", "find", str(target_dir), "-type", "d", "-exec", "chmod", "755", "{}", ";"], timeout=60
+        target_dir.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix=f".{target_dir.name}.staging-", dir=target_dir.parent) as temp_dir:
+            stage_root = Path(temp_dir)
+            payload = stage_root / "payload"
+            safe_extract_archive(
+                archive_path,
+                payload,
+                max_files=self.max_files,
+                max_bytes=self.max_bytes,
             )
-            subprocess.run(
-                ["sudo", "find", str(target_dir), "-type", "f", "-exec", "chmod", "644", "{}", ";"], timeout=60
-            )
+
+            source_dir = self._find_product_dir(payload, target_dir.name)
+            self._set_permissions(source_dir)
+
+            if _path_exists(target_dir):
+                raise FileExistsError(f"Extraction target already exists: {target_dir}")
+            install_staged_directory(source_dir, target_dir)
 
         self.printer.success(f"Extracted to {target_dir}")
         return target_dir
 
-    def _extract_zip(self, archive_path: Path, target_path: Path):
-        """Extract ZIP file with path traversal protection"""
-        with zipfile.ZipFile(archive_path, "r") as zip_ref:
-            for member in zip_ref.namelist():
-                # Validate each path before extraction
-                member_path = (target_path / member).resolve()
-                if not str(member_path).startswith(str(target_path.resolve())):
-                    raise ValueError(f"Path traversal attempt detected: {member}")
-            zip_ref.extractall(target_path)
+    def _set_permissions(self, target_dir: Path) -> None:
+        """Set the installer product permission policy before publishing."""
+        subprocess.run(["chown", "-R", "root:root", str(target_dir)], check=True, timeout=60)
+        subprocess.run(
+            ["find", str(target_dir), "-type", "d", "-exec", "chmod", "750", "{}", ";"],
+            check=True,
+            timeout=60,
+        )
+        for path in target_dir.rglob("*"):
+            if not path.is_file() or path.is_symlink():
+                continue
+            name = path.name.lower()
+            sensitive = name in {"config.yml", "config.yaml", "config.json", ".env"} or name.endswith((".key", ".pem"))
+            executable = bool(path.stat().st_mode & 0o111) or path.suffix.lower() in {".sh", ".py"}
+            os.chmod(path, 0o600 if sensitive else 0o750 if executable else 0o640)
 
-    def _extract_tar(self, archive_path: Path, target_path: Path):
-        """Extract TAR file with path traversal protection"""
-        with tarfile.open(archive_path, "r:*") as tar_ref:
-            for member in tar_ref.getmembers():
-                # Validate each path before extraction
-                member_path = (target_path / member.name).resolve()
-                if not str(member_path).startswith(str(target_path.resolve())):
-                    raise ValueError(f"Path traversal attempt detected: {member.name}")
-            tar_ref.extractall(target_path)
+    def _extract_zip(self, archive_path: Path, target_path: Path) -> Path:
+        """Compatibility wrapper around the shared ZIP extractor."""
+        return safe_extract_zip(archive_path, target_path, max_files=self.max_files, max_bytes=self.max_bytes)
 
-    def _extract_rar(self, archive_path: Path, target_path: Path):
-        """Extract RAR file with path traversal protection"""
-        # Check if unrar is available
-        if not shutil.which("unrar"):
-            raise FileNotFoundError("unrar command not found. Install it with: apt install unrar")
-
-        subprocess.run(["unrar", "x", "-o+", str(archive_path), str(target_path) + "/"], check=True, timeout=300)
-
-        # Post-extraction validation: ensure all files are within target
-        target_resolved = target_path.resolve()
-        for item in target_path.rglob("*"):
-            if not str(item.resolve()).startswith(str(target_resolved)):
-                # Remove the offending file and raise error
-                if item.is_file():
-                    item.unlink()
-                raise ValueError(f"Path traversal attempt detected in RAR archive: {item}")
+    def _extract_tar(self, archive_path: Path, target_path: Path) -> Path:
+        """Compatibility wrapper around the shared TAR extractor."""
+        return safe_extract_tar(archive_path, target_path, max_files=self.max_files, max_bytes=self.max_bytes)
 
     def _find_product_dir(self, temp_path: Path, product_name: str) -> Path:
         """Find actual product directory within extracted archive"""

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">PlexDev Installer</title>
+  <desc id="desc">Community-maintained installer tooling for PlexDevelopment products on Linux.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="630" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#05070d"/>
+      <stop offset="1" stop-color="#0b2035"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="translate(940 100) rotate(140) scale(650 430)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#53b9ff" stop-opacity=".42"/>
+      <stop offset="1" stop-color="#53b9ff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" rx="36" fill="url(#bg)"/>
+  <rect width="1200" height="630" rx="36" fill="url(#glow)"/>
+  <g transform="translate(86 88)">
+    <rect width="92" height="92" rx="24" fill="#0d1726" stroke="#53b9ff" stroke-opacity=".45"/>
+    <path d="M25 20h25c15 0 25 9 25 22S65 64 50 64H39v12H25V20Zm14 13v18h11c7 0 11-3 11-9s-4-9-11-9H39Z" fill="#53b9ff"/>
+  </g>
+  <text x="86" y="260" fill="#53b9ff" font-family="Inter,Segoe UI,sans-serif" font-size="28" font-weight="700" letter-spacing="6">PLEXDEV.XYZ</text>
+  <text x="86" y="350" fill="#f4f7ff" font-family="Inter,Segoe UI,sans-serif" font-size="76" font-weight="750">PlexDev Installer</text>
+  <text x="86" y="425" fill="#aeb9d0" font-family="Inter,Segoe UI,sans-serif" font-size="34">Community-maintained Linux deployment tooling</text>
+  <rect x="86" y="500" width="430" height="3" rx="1.5" fill="#53b9ff"/>
+</svg>

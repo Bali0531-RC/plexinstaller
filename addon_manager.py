@@ -4,14 +4,18 @@ Addon Manager for PlexDevelopment Products
 Handles addon installation, removal, configuration, and backup for PlexTickets/PlexStaff
 """
 
+import json
+import os
+import pwd
 import shutil
 import tarfile
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
 import yaml
 
-from utils import ArchiveExtractor, ColorPrinter
+from utils import ColorPrinter, SystemdManager, install_staged_directory, safe_extract_archive, validate_path_component
 
 
 class AddonManager:
@@ -19,7 +23,6 @@ class AddonManager:
 
     def __init__(self):
         self.printer = ColorPrinter()
-        self.extractor = ArchiveExtractor()
 
     def get_addons_path(self, product_path: Path) -> Path:
         """Get the addons directory path for a product"""
@@ -42,7 +45,7 @@ class AddonManager:
 
         addons = []
         for item in sorted(addons_path.iterdir()):
-            if item.is_dir():
+            if item.is_dir() and not item.is_symlink():
                 config_path = self._find_addon_config(item)
                 addons.append(
                     {"name": item.name, "path": item, "has_config": config_path is not None, "config_path": config_path}
@@ -60,7 +63,7 @@ class AddonManager:
 
     def install_addon(self, archive_path: Path, product_path: Path) -> tuple[bool, str, str | None]:
         """
-        Install an addon from a zip/rar archive.
+        Install an addon from a ZIP or TAR archive.
 
         Uses smart extraction to handle both correctly and incorrectly packaged addons:
         - Correct: Archive contains a single folder with addon contents
@@ -68,152 +71,101 @@ class AddonManager:
 
         Returns: (success, message, addon_name or None)
         """
+        archive_path = Path(archive_path)
         addons_path = self.get_addons_path(product_path)
-        addons_path.mkdir(parents=True, exist_ok=True)
-
-        # Snapshot before extraction
-        before_items = set(addons_path.iterdir()) if addons_path.exists() else set()
-
         try:
-            # Extract directly to addons folder
             self.printer.step(f"Extracting {archive_path.name}...")
-            self._extract_archive_to(archive_path, addons_path)
+            addons_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # Snapshot after extraction
-            after_items = set(addons_path.iterdir())
-            new_items = after_items - before_items
+            with tempfile.TemporaryDirectory(prefix=".addon-staging-", dir=addons_path.parent) as temp_dir:
+                extracted_root = Path(temp_dir) / "extracted"
+                safe_extract_archive(archive_path, extracted_root)
+                addon_name, staged_addon = self._prepare_staged_addon(extracted_root, archive_path)
+                validate_path_component(addon_name, label="addon name")
 
-            if not new_items:
-                return False, "No files were extracted from the archive", None
+                final_path = addons_path / addon_name
+                if final_path.exists() or final_path.is_symlink():
+                    raise FileExistsError(
+                        f"Addon '{addon_name}' already exists. Remove it first or use a different archive name."
+                    )
 
-            # Analyze what was extracted
-            addon_name, final_path = self._handle_extracted_items(new_items, addons_path, archive_path)
+                self._set_permissions(staged_addon, product_path=product_path)
+                addons_path.mkdir(parents=True, exist_ok=True)
+                if final_path.exists() or final_path.is_symlink():
+                    raise FileExistsError(
+                        f"Addon '{addon_name}' already exists. Remove it first or use a different archive name."
+                    )
+                install_staged_directory(staged_addon, final_path)
 
-            if addon_name is None:
-                return False, "Failed to determine addon name from archive", None
-
-            # Check for collision (addon already exists)
-            # This check is already done implicitly if the folder existed
-
-            # Set proper permissions
-            if final_path is not None:
-                self._set_permissions(final_path)
-
-            # Check for config file
-            config_path = self._find_addon_config(final_path) if final_path is not None else None
+            config_path = self._find_addon_config(final_path)
             config_msg = f" (config: {config_path.name})" if config_path else " (no config file found)"
-
             return True, f"Addon '{addon_name}' installed successfully{config_msg}", addon_name
-
-        except FileExistsError as e:
-            return False, str(e), None
         except Exception as e:
-            # Clean up any partially extracted files
-            self._cleanup_new_items(addons_path, before_items)
             return False, f"Installation failed: {e}", None
 
-    def _extract_archive_to(self, archive_path: Path, target_dir: Path):
-        """Extract archive contents to target directory"""
-        import subprocess
-        import zipfile
+    def _prepare_staged_addon(self, extracted_root: Path, archive_path: Path) -> tuple[str, Path]:
+        """Normalize extracted contents inside the private staging directory."""
+        items = list(extracted_root.iterdir())
+        if len(items) == 1 and items[0].is_dir():
+            return items[0].name, items[0]
 
-        if archive_path.suffix.lower() == ".zip":
-            with zipfile.ZipFile(archive_path, "r") as zip_ref:
-                # Path traversal protection
-                for member in zip_ref.namelist():
-                    member_path = (target_dir / member).resolve()
-                    if not str(member_path).startswith(str(target_dir.resolve())):
-                        raise ValueError(f"Path traversal attempt detected: {member}")
-                zip_ref.extractall(target_dir)
-        elif archive_path.suffix.lower() == ".rar":
-            if not shutil.which("unrar"):
-                raise FileNotFoundError("unrar command not found. Install it with: apt install unrar")
-            subprocess.run(["unrar", "x", "-o+", str(archive_path), str(target_dir) + "/"], check=True, timeout=300)
-        else:
-            raise ValueError(f"Unsupported archive format: {archive_path.suffix}")
-
-    def _handle_extracted_items(
-        self, new_items: set, addons_path: Path, archive_path: Path
-    ) -> tuple[str | None, Path | None]:
-        """
-        Handle extracted items and determine the final addon folder.
-
-        Returns: (addon_name, final_addon_path)
-        """
-        new_items_list = list(new_items)
-
-        # Case 1: Single folder extracted - this is a correctly packaged addon
-        if len(new_items_list) == 1 and new_items_list[0].is_dir():
-            addon_folder = new_items_list[0]
-            addon_name = addon_folder.name
-
-            # Check if this addon already existed (collision)
-            # Since we're extracting to addons_path, if it exists, the extraction would have
-            # created or overwritten it. We need to check if there was already a folder
-            # with this name that we're replacing.
-            return addon_name, addon_folder
-
-        # Case 2: Multiple items or loose files - incorrectly packaged addon
-        # Create a folder based on archive name
-        addon_name = archive_path.stem  # e.g., "TicketStats" from "TicketStats.zip"
-        # Remove common suffixes that might be in the name
+        addon_name = archive_path.name
+        while True:
+            suffix = Path(addon_name).suffix.lower()
+            if suffix not in {".zip", ".tar", ".gz", ".bz2", ".xz", ".tgz", ".tbz2", ".txz"}:
+                break
+            addon_name = addon_name[: -len(suffix)]
         for suffix in ["-main", "-master", "-addon", "-v1", "-v2"]:
             if addon_name.lower().endswith(suffix):
                 addon_name = addon_name[: -len(suffix)]
+        validate_path_component(addon_name, label="addon name")
 
-        target_folder = addons_path / addon_name
-
-        # Check for collision
-        if target_folder.exists() and target_folder not in new_items:
-            raise FileExistsError(
-                f"Addon '{addon_name}' already exists. Remove it first or use a different archive name."
-            )
-
-        # Create the target folder if it doesn't exist
-        target_folder.mkdir(exist_ok=True)
-
-        # Move all new items into the target folder
-        for item in new_items_list:
-            if item == target_folder:
-                continue  # Skip if it's our target folder
-            dest = target_folder / item.name
-            if dest.exists():
-                if dest.is_dir():
-                    shutil.rmtree(dest)
-                else:
-                    dest.unlink()
-            shutil.move(str(item), str(dest))
+        target_folder = extracted_root.parent / "normalized"
+        target_folder.mkdir()
+        for item in items:
+            item.rename(target_folder / item.name)
 
         self.printer.warning(f"Archive was not properly packaged - reorganized into '{addon_name}/' folder")
-
         return addon_name, target_folder
 
-    def _cleanup_new_items(self, addons_path: Path, before_items: set):
-        """Clean up any items created during a failed extraction"""
+    @staticmethod
+    def _service_owner(product_path: Path | None) -> str:
+        """Return the verified isolated owner recorded for a product."""
+        if product_path is None:
+            return "root"
+        manifest = product_path / ".plexinstaller-resources.json"
         try:
-            current_items = set(addons_path.iterdir()) if addons_path.exists() else set()
-            new_items = current_items - before_items
-            for item in new_items:
-                if item.is_dir():
-                    shutil.rmtree(item)
-                else:
-                    item.unlink()
-        except Exception:
-            pass  # Best effort cleanup
+            data = json.loads(manifest.read_text(encoding="utf-8"))
+            expected = SystemdManager.service_user_name(product_path.name)
+            user = data.get("service_user")
+            if data.get("service_isolated") is True and isinstance(user, str) and user == expected:
+                pwd.getpwnam(user)
+                return user
+        except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+            pass
+        return "root"
 
-    def _set_permissions(self, addon_path: Path):
+    def _set_permissions(self, addon_path: Path, *, product_path: Path | None = None):
         """Set proper permissions on addon files"""
         import subprocess
 
-        try:
-            subprocess.run(["chown", "-R", "root:root", str(addon_path)], timeout=60)
-            subprocess.run(["find", str(addon_path), "-type", "d", "-exec", "chmod", "755", "{}", ";"], timeout=60)
-            subprocess.run(["find", str(addon_path), "-type", "f", "-exec", "chmod", "644", "{}", ";"], timeout=60)
-        except Exception:
-            pass  # Best effort
+        owner = self._service_owner(product_path)
+        subprocess.run(["chown", "-R", f"{owner}:{owner}", str(addon_path)], check=True, timeout=60)
+        subprocess.run(
+            ["find", str(addon_path), "-type", "d", "-exec", "chmod", "750", "{}", ";"],
+            check=True,
+            timeout=60,
+        )
+        for path in addon_path.rglob("*"):
+            if not path.is_file() or path.is_symlink():
+                continue
+            sensitive = path.name.lower() in {"config.yml", "config.yaml", "config.json", ".env"}
+            executable = bool(path.stat().st_mode & 0o111) or path.suffix.lower() in {".sh", ".py"}
+            os.chmod(path, 0o600 if sensitive else 0o750 if executable else 0o640)
 
     def addon_exists(self, addon_name: str, product_path: Path) -> bool:
         """Check if an addon with the given name already exists"""
+        validate_path_component(addon_name, label="addon name")
         addons_path = self.get_addons_path(product_path)
         addon_folder = addons_path / addon_name
         return addon_folder.exists() and addon_folder.is_dir()
@@ -224,10 +176,11 @@ class AddonManager:
 
         Returns: (success, message, backup_path or None)
         """
+        validate_path_component(addon_name, label="addon name")
         addons_path = self.get_addons_path(product_path)
         addon_path = addons_path / addon_name
 
-        if not addon_path.exists():
+        if not addon_path.exists() or addon_path.is_symlink():
             return False, f"Addon '{addon_name}' not found", None
 
         # Create backup directory
@@ -242,13 +195,16 @@ class AddonManager:
         try:
             self.printer.step(f"Creating backup of addon '{addon_name}'...")
 
-            with tarfile.open(backup_file, "w:gz") as tar:
-                tar.add(addon_path, arcname=addon_name)
+            fd = os.open(backup_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "wb") as backup_stream:
+                with tarfile.open(fileobj=backup_stream, mode="w:gz") as tar:
+                    tar.add(addon_path, arcname=addon_name)
 
             size_mb = backup_file.stat().st_size / (1024 * 1024)
             return True, f"Backup created: {backup_file.name} ({size_mb:.2f} MB)", backup_file
 
         except Exception as e:
+            backup_file.unlink(missing_ok=True)
             return False, f"Backup failed: {e}", None
 
     def remove_addon(self, addon_name: str, product_path: Path, backup_first: bool = True) -> tuple[bool, str]:
@@ -262,10 +218,11 @@ class AddonManager:
 
         Returns: (success, message)
         """
+        validate_path_component(addon_name, label="addon name")
         addons_path = self.get_addons_path(product_path)
         addon_path = addons_path / addon_name
 
-        if not addon_path.exists():
+        if not addon_path.exists() or addon_path.is_symlink():
             return False, f"Addon '{addon_name}' not found"
 
         # Create backup if requested
@@ -304,10 +261,11 @@ class AddonManager:
 
     def get_addon_config_path(self, addon_name: str, product_path: Path) -> Path | None:
         """Get the config file path for an addon"""
+        validate_path_component(addon_name, label="addon name")
         addons_path = self.get_addons_path(product_path)
         addon_path = addons_path / addon_name
 
-        if not addon_path.exists():
+        if not addon_path.exists() or addon_path.is_symlink():
             return None
 
         return self._find_addon_config(addon_path)
@@ -323,7 +281,7 @@ class AddonManager:
 
         archives = []
         seen_paths = set()
-        patterns = ["*.zip", "*.rar"]
+        patterns = ["*.zip", "*.tar", "*.tar.gz", "*.tgz", "*.tar.bz2", "*.tbz2", "*.tar.xz", "*.txz"]
 
         for search_dir in search_dirs:
             if not search_dir.exists():
@@ -362,13 +320,12 @@ class AddonManager:
         ):
             try:
                 # Parse filename: product_addonname_addon_timestamp.tar.gz
-                parts = backup_file.stem.split("_addon_")
-                if len(parts) >= 2:
-                    prefix = parts[0]
-                    timestamp_str = parts[1]
-
+                basename = backup_file.name.removesuffix(".tar.gz")
+                marker = "_addon_"
+                prefix, separator, timestamp_str = basename.rpartition(marker)
+                if separator:
                     # Extract addon name (remove product prefix)
-                    addon_name = prefix.replace(f"{product_name}_", "", 1)
+                    addon_name = prefix.removeprefix(f"{product_name}_")
 
                     # Parse timestamp
                     try:

@@ -4,9 +4,9 @@
 web/node_modules/
 web2/node_modules/
 
-# Lock file - ignoring this as requested.
+# The legacy web lockfile is not maintained. web2/package-lock.json is
+# intentionally committed so npm ci is reproducible.
 web/package-lock.json
-web2/package-lock.json
 
 # AdSense files
 web/ads.txt
@@ -58,14 +58,16 @@ build/
 dist/
 plexinstaller.egg-info/
 .pytest_cache/
+.coverage
+coverage.xml
+.mypy_cache/
+.ruff_cache/
 
 # Misc
 web/ads.txt
 web/archive_search_log.txt
 web/.well-known/
 
-# Release script (contains local GPG key references)
-release.sh
 __pycache__/
 
 # Improvement plan (local only)

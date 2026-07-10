@@ -5,9 +5,26 @@ set -e
 INSTALL_DIR="/opt/plexinstaller"
 BIN_DIR="/usr/local/bin"
 
-# Create symlinks for CLI commands
-ln -sf "${INSTALL_DIR}/installer.py" "${BIN_DIR}/plexinstaller"
-ln -sf "${INSTALL_DIR}/plex_cli.py" "${BIN_DIR}/plex"
+# Keep Debian behavior aligned with setup.sh: dependencies live in a private
+# virtual environment and command wrappers invoke that interpreter.
+if [ ! -x "${INSTALL_DIR}/.venv/bin/python" ]; then
+	python3 -m venv "${INSTALL_DIR}/.venv"
+fi
+"${INSTALL_DIR}/.venv/bin/python" -m pip install --disable-pip-version-check -r "${INSTALL_DIR}/requirements.txt"
+
+cat > "${BIN_DIR}/plexinstaller" <<EOF
+#!/bin/sh
+python="${INSTALL_DIR}/.venv/bin/python"
+if [ ! -x "\$python" ]; then python="\${PYTHON:-python3}"; fi
+exec "\$python" "${INSTALL_DIR}/installer.py" "\$@"
+EOF
+cat > "${BIN_DIR}/plex" <<EOF
+#!/bin/sh
+python="${INSTALL_DIR}/.venv/bin/python"
+if [ ! -x "\$python" ]; then python="\${PYTHON:-python3}"; fi
+exec "\$python" "${INSTALL_DIR}/plex_cli.py" "\$@"
+EOF
+chmod 755 "${BIN_DIR}/plexinstaller" "${BIN_DIR}/plex"
 
 # Make entry points executable
 chmod +x "${INSTALL_DIR}/installer.py"

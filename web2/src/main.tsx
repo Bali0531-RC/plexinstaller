@@ -14,9 +14,13 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
       <Routes>
         <Route path="/" element={<App />} />
         <Route path="/guide" element={<GuidePage />} />
+        <Route path="/guide.html" element={<GuidePage />} />
         <Route path="/faq" element={<FaqPage />} />
+        <Route path="/faq.html" element={<FaqPage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
+        <Route path="/privacy.html" element={<PrivacyPage />} />
         <Route path="/terms" element={<TermsPage />} />
+        <Route path="/terms.html" element={<TermsPage />} />
       </Routes>
     </BrowserRouter>
   </React.StrictMode>

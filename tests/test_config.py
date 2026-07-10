@@ -15,12 +15,12 @@ class TestConfig:
         expected = [
             "plextickets",
             "plexstaff",
-            "plexstatus",
-            "plexstore",
-            "plexforms",
-            "plexlinks",
-            "plexpaste",
-            "plextracker",
+            "drakostatus",
+            "drakostore",
+            "drakoforms",
+            "drakolinks",
+            "drakopaste",
+            "drakotracker",
         ]
         for name in expected:
             assert name in config.PRODUCTS, f"Missing product: {name}"
@@ -69,6 +69,24 @@ class TestConfig:
         config = Config()
         ps = config.get_product("plexstatus")
         assert ps.supports_addons is False
+        assert ps.name == "drakostatus"
+
+    def test_legacy_plex_names_resolve_to_drako_products(self):
+        config = Config()
+        aliases = {
+            "plexstatus": "drakostatus",
+            "plexstore": "drakostore",
+            "plexforms": "drakoforms",
+            "plexlinks": "drakolinks",
+            "plexpaste": "drakopaste",
+            "plextracker": "drakotracker",
+        }
+        for legacy, current in aliases.items():
+            assert config.get_product(legacy).name == current
+
+    def test_equivalent_instance_names_preserve_suffix(self):
+        assert Config.equivalent_instance_names("drakostore-prod") == ("drakostore-prod", "plexstore-prod")
+        assert Config.equivalent_instance_names("plexstore-prod") == ("drakostore-prod", "plexstore-prod")
 
 
 # ---------------------------------------------------------------------------
@@ -137,7 +155,7 @@ class TestProductDetails:
 
     def test_other_products_no_dashboard_option(self):
         config = Config()
-        for name in ["plexstatus", "plexstore", "plexforms", "plexlinks", "plexpaste", "plextracker"]:
+        for name in ["drakostatus", "drakostore", "drakoforms", "drakolinks", "drakopaste", "drakotracker"]:
             p = config.get_product(name)
             assert p.has_dashboard_option is False, f"{name} should not have dashboard option"
 
@@ -157,7 +175,7 @@ class TestSystemPackages:
         """All package managers include essential tools."""
         config = Config()
         for mgr, pkgs in config.SYSTEM_PACKAGES.items():
-            for required in ["curl", "wget", "git", "nginx", "sudo"]:
+            for required in ["curl", "wget", "git", "nginx"]:
                 assert required in pkgs, f"{mgr} missing {required}"
 
     def test_apt_has_dnsutils(self):
@@ -188,8 +206,7 @@ class TestConfigAttributes:
 
     def test_get_product_whitespace(self):
         config = Config()
-        # lowercased but not stripped — should return None
-        assert config.get_product("  plextickets  ") is None
+        assert config.get_product("  plextickets  ").name == "plextickets"
 
     def test_product_list_returns_list(self):
         config = Config()

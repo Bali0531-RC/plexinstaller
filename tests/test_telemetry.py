@@ -1,5 +1,6 @@
 """Tests for telemetry_client.py — redaction, session lifecycle, payload assembly."""
 
+import stat
 from pathlib import Path
 from unittest import mock
 
@@ -100,6 +101,7 @@ class TestTelemetryClientSession:
         assert "plextickets" in session_id
         assert client.log_path is not None
         assert client.log_path.parent.exists()
+        assert stat.S_IMODE(client.log_path.parent.stat().st_mode) == 0o700
 
     def test_start_session_disabled_returns_empty(self, tmp_path: Path):
         client = self._make_client(tmp_path, enabled=False)
@@ -150,6 +152,7 @@ class TestTelemetryClientSession:
         payload = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
         assert payload["product"] == "plextickets"
         assert payload["status"] == "success"
+        mock_post.return_value.raise_for_status.assert_called_once_with()
 
     def test_finish_session_disabled_returns_none(self, tmp_path: Path):
         client = self._make_client(tmp_path, enabled=False)
@@ -163,6 +166,7 @@ class TestTelemetryClientSession:
         assert client.log_path is not None
         log_content = client.log_path.read_text()
         assert "test_step" in log_content
+        assert stat.S_IMODE(client.log_path.stat().st_mode) == 0o600
 
     @mock.patch("telemetry_client.requests.post")
     def test_finish_session_with_failure(self, mock_post, tmp_path: Path):
@@ -195,14 +199,19 @@ class TestTelemetryClientSession:
 
     @mock.patch("telemetry_client.requests.post")
     def test_finish_session_redacts_error(self, mock_post, tmp_path: Path):
-        """Sensitive data in error is redacted in the log file."""
+        """Sensitive error data is redacted before summary, payload, and log."""
         mock_post.return_value = mock.MagicMock(status_code=200)
         client = self._make_client(tmp_path)
         client.start_session("plextickets", "default")
-        client.finish_session("failure", error="password=hunter2")
+        summary = client.finish_session("failure", error="password=hunter2")
 
         content = client.log_path.read_text()
         assert "hunter2" not in content
+        assert summary is not None
+        assert "hunter2" not in (summary.error or "")
+        payload = mock_post.call_args.kwargs["json"]
+        assert "hunter2" not in (payload["error"] or "")
+        assert "hunter2" not in payload["log"]
 
     @mock.patch("telemetry_client.requests.post")
     def test_finish_session_cannot_be_called_twice(self, mock_post, tmp_path: Path):
@@ -237,11 +246,47 @@ class TestTelemetryClientSession:
     def test_session_id_format(self, tmp_path: Path):
         client = self._make_client(tmp_path)
         sid = client.start_session("plexstore", "prod")
-        # format: YYYYMMDD-HHMMSS-product-instance
+        # format: YYYYMMDD-HHMMSS-product-instance-random
         parts = sid.split("-")
-        assert len(parts) == 4
+        assert len(parts) == 5
         assert parts[2] == "plexstore"
         assert parts[3] == "prod"
+
+    def test_session_components_are_sanitized(self, tmp_path: Path):
+        client = self._make_client(tmp_path)
+        sid = client.start_session("../Plex Store", "../../tenant name")
+        assert ".." not in sid
+        assert "/" not in sid
+        assert client.log_path is not None
+        assert client.log_path.parent == tmp_path / "logs"
+        assert client._product == "plex-store"
+        assert client._instance == "tenant-name"
+
+    @mock.patch("telemetry_client.requests.post")
+    def test_api_key_header_is_optional_and_sent_when_configured(self, mock_post, tmp_path: Path):
+        mock_post.return_value = mock.MagicMock(status_code=200)
+        client = TelemetryClient(
+            endpoint="https://telemetry.example.com",
+            log_dir=tmp_path / "logs",
+            paste_endpoint="https://paste.example.com",
+            enabled=True,
+            api_key="test-api-key",
+        )
+        client.start_session("plexstore", "prod")
+        client.finish_session("success")
+        assert mock_post.call_args.kwargs["headers"]["X-API-Key"] == "test-api-key"
+
+    @mock.patch("telemetry_client.requests.post")
+    def test_http_error_from_payload_post_is_silent(self, mock_post, tmp_path: Path):
+        import requests as req
+
+        response = mock.MagicMock()
+        response.raise_for_status.side_effect = req.HTTPError("server error")
+        mock_post.return_value = response
+        client = self._make_client(tmp_path)
+        client.start_session("plexstore", "prod")
+        assert client.finish_session("success") is not None
+        response.raise_for_status.assert_called_once_with()
 
 
 # ---------------------------------------------------------------------------

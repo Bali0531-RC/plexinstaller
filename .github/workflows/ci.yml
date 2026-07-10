@@ -7,21 +7,23 @@ on:
     branches: [main]
 
 jobs:
-  lint:
-    name: Lint & Type Check
+  python-quality:
+    name: Python quality
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install ruff mypy types-requests types-PyYAML
+          cache: pip
+      - name: Install project and development extras
+        run: python -m pip install -e ".[dev,telemetry-server]"
       - name: Ruff lint
         run: ruff check .
       - name: Ruff format check
         run: ruff format --check .
       - name: Mypy type check
-        run: mypy installer.py plex_cli.py utils.py shared.py config.py --ignore-missing-imports
+        run: mypy addon_manager.py backup_manager.py config.py health_checker.py installer.py mongodb_manager.py plex_cli.py shared.py telemetry_client.py utils.py telemetry/server.py
 
   test:
     name: Tests (Python ${{ matrix.python-version }})
@@ -34,6 +36,101 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - run: pip install -e ".[dev]"
-      - name: Run tests
-        run: pytest tests/ -v --tb=short
+          cache: pip
+      - name: Install project and development extras
+        run: python -m pip install -e ".[dev,telemetry-server]"
+      - name: Run tests with coverage
+        run: pytest tests/ -v --tb=short --cov=. --cov-branch --cov-report=term-missing --cov-report=xml --cov-fail-under=55
+
+  release-integrity:
+    name: Release artifact integrity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify managed checksums and detached signature
+        run: |
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+
+          manifest = json.loads(Path("version.json").read_text())
+          files = {
+              "installer": "installer.py", "config": "config.py", "utils": "utils.py",
+              "plex_cli": "plex_cli.py", "telemetry_client": "telemetry_client.py",
+              "addon_manager": "addon_manager.py", "shared": "shared.py",
+              "health_checker": "health_checker.py", "mongodb_manager": "mongodb_manager.py",
+              "backup_manager": "backup_manager.py", "requirements": "requirements.txt",
+          }
+          for key, filename in files.items():
+              actual = hashlib.sha256(Path(filename).read_bytes()).hexdigest()
+              assert manifest["checksums"][key] == actual, f"stale checksum: {filename}"
+          PY
+          home="$(mktemp -d)"
+          chmod 700 "$home"
+          fingerprint="$(gpg --batch --no-options --with-colons --show-keys --fingerprint release-key.gpg \
+            | awk -F: '$1 == "pub" { want=1; next } $1 == "fpr" && want { print toupper($10); exit }')"
+          test "$fingerprint" = "431E869D5BB519AFF7B028379B0DFA4BF86307BD"
+          GNUPGHOME="$home" gpg --batch --import release-key.gpg
+          status="$(GNUPGHOME="$home" gpg --batch --no-auto-key-retrieve --status-fd 1 \
+            --verify version.json.sig version.json 2>/dev/null)"
+          printf '%s\n' "$status" | awk \
+            '$1 == "[GNUPG:]" && $2 == "VALIDSIG" && ($3 == "431E869D5BB519AFF7B028379B0DFA4BF86307BD" || $NF == "431E869D5BB519AFF7B028379B0DFA4BF86307BD") { found=1 } END { exit !found }'
+
+  shell:
+    name: Shell syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse shell scripts
+        run: bash -n web2/public/setup.sh debian/build-deb.sh debian/postinst debian/prerm release.sh
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web2/package-lock.json
+      - name: Clean install
+        run: npm ci
+      - name: Dependency audit
+        run: npm audit --audit-level=moderate
+      - name: Lint
+        run: npm run lint
+      - name: Build all pages
+        run: npm run build
+      - name: Verify multipage output and static assets
+        run: test -f dist/index.html && test -f dist/guide.html && test -f dist/faq.html && test -f dist/privacy.html && test -f dist/terms.html && test -f dist/favicon.svg && test -f dist/og-card.svg
+
+  debian-package:
+    name: Debian package smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build package
+        run: debian/build-deb.sh
+      - name: Inspect package metadata and contents
+        run: |
+          deb="$(find dist -maxdepth 1 -name 'plexinstaller_*_all.deb' -print -quit)"
+          test -n "$deb"
+          test "$(dpkg-deb -f "$deb" Package)" = "plexinstaller"
+          dpkg-deb --info "$deb"
+          dpkg-deb --contents "$deb" | tee /tmp/plexinstaller-deb-contents.txt
+          for path in installer.py plex_cli.py config.py utils.py shared.py telemetry_client.py addon_manager.py health_checker.py mongodb_manager.py backup_manager.py requirements.txt version.json version.json.sig release-key.gpg; do
+            grep -q "opt/plexinstaller/$path$" /tmp/plexinstaller-deb-contents.txt
+          done
+          dpkg-deb --fsys-tarfile "$deb" | tar -xOf - ./opt/plexinstaller/requirements.txt | cmp - requirements.txt
+      - name: Install package and smoke-test entrypoints
+        run: |
+          sudo dpkg -i dist/plexinstaller_*_all.deb || sudo apt-get install -f -y
+          plexinstaller --help
+          plex --no-update-check help

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { CommandBlock } from "./components/CommandBlock";
 import { ProductGrid } from "./components/ProductGrid";
 import { ReleaseTimeline } from "./components/ReleaseTimeline";
@@ -37,9 +37,9 @@ export const App = () => {
       <main>
         <header className="hero">
         <p className="eyebrow">PlexDev Installer · v{currentVersion}</p>
-        <h1>Unofficial PlexDevelopment installer for Linux hosts</h1>
+        <h1>Unofficial PlexDevelopment and Drako installer for Linux hosts</h1>
         <p>
-          plexdev.xyz is the home of the community-maintained installer. Bring your own PlexDevelopment product files and this script will handle MongoDB 8.x, systemd units, firewall rules, and health checks for you.
+          Bring your own PlexTickets, PlexStaff, or Drako product files and this community installer will handle MongoDB 8.x, systemd units, firewall rules, and health checks for you.
         </p>
         <div className="actions">
           <a className="primary" href="/setup.sh" download>
@@ -48,9 +48,9 @@ export const App = () => {
           <a className="ghost" href="https://github.com/Bali0531-RC/plexinstaller" target="_blank" rel="noreferrer">
             View on GitHub
           </a>
-          <Link className="ghost" to="/guide">
+          <a className="ghost" href="/guide.html">
             Read the guide
-          </Link>
+          </a>
         </div>
       </header>
 
@@ -97,10 +97,10 @@ export const App = () => {
       <section className="card notice">
         <p className="eyebrow">Licensing</p>
         <p>
-          This installer does not ship or license any PlexDevelopment products. Server owners must supply their own application files, keys, and content before running deployments.
+          This installer does not ship or license PlexDevelopment or Drako products. Server owners must supply their own application files, keys, and content before deployment.
         </p>
         <p>
-          PlexDev Installer is a community-built helper on top of PlexDevelopment's self-hosting workflow. Treat this as an acceleration tool—official support still comes directly from PlexDevelopment once you deploy their products.
+          PlexDev Installer is a community-built helper and is not affiliated with PlexDevelopment. Use this project's GitHub issues for installer problems and the product vendor's own channels for product or licensing questions, subject to your entitlement.
         </p>
       </section>
 
@@ -131,7 +131,7 @@ export const App = () => {
           <p className="eyebrow">New Platform</p>
           <h2>PlexDev Addons</h2>
           <p>
-            Discover and share community-built addons for PlexDevelopment products. 
+            Discover and share community-built addons for supported products.
             Version checking, automatic updates, and a growing library of extensions.
           </p>
           <div className="actions">
@@ -163,7 +163,7 @@ export const App = () => {
         <p className="eyebrow">Support</p>
         <h2>Need support?</h2>
         <p>
-          SSH access or logs ready? Email the maintainer or open a GitHub issue and we will get your environment unblocked.
+          For installer bugs, include redacted logs and environment details in a GitHub issue. Email is also available, but support is best-effort and no response time or resolution is guaranteed.
         </p>
         <div className="actions">
           <a className="primary" href="mailto:bali0531@plexdev.xyz">Email support</a>

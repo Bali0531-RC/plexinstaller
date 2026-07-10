@@ -4,11 +4,11 @@ export const guideSections: DocsSection[] = [
   {
     title: "Before you start",
     paragraphs: [
-      "Target a clean Ubuntu 22.04 or Debian 12 host with sudo access and at least 2 vCPU / 4 GB RAM.",
-      "Upload the PlexDevelopment product archives you own to /opt/plexapps or any path you prefer—the installer never bundles them for you."
+      "Use a dedicated Linux host with root or sudo access. Ubuntu and Debian are the primary tested targets; the code has package-manager paths for some RPM, Arch, and openSUSE-family systems, but those paths are not guaranteed.",
+      "Upload the PlexTickets, PlexStaff, or Drako product archives you own to /opt/plexapps or any path you prefer—the installer never bundles them for you."
     ],
     bullets: [
-      "Ensure ports 3000-3010 are open if you want the defaults.",
+      "Open only the product port you select, or use the optional nginx/domain flow rather than exposing every default port.",
       "Point your domain’s DNS records before enabling HTTPS inside products.",
       "Keep the PlexDevelopment archives and license keys you own staged before launching the installer."
     ]
@@ -16,23 +16,23 @@ export const guideSections: DocsSection[] = [
   {
     title: "One-line quick install",
     paragraphs: [
-      "Run curl -fsSL https://plexdev.xyz/setup.sh | sudo bash and follow the prompts. The script fetches the latest Python installer, prepares MongoDB 8.x, and creates systemd units.",
-      "When the script finishes, run plexinstaller to choose which PlexDevelopment products to configure." 
+      "Run curl -fsSL https://plexdev.xyz/setup.sh | sudo bash. setup.sh installs bootstrap prerequisites, downloads and verifies the Python installer bundle, installs its Python requirements, and creates the plexinstaller and plex command links.",
+      "setup.sh does not install MongoDB, unpack a product, configure nginx, or create product systemd units. At the end it can launch plexinstaller; otherwise run sudo plexinstaller later and follow the interactive product workflow."
     ],
     bullets: [
-      "Use -b for the beta channel if you want nightly fixes.",
-      "Re-run plexinstaller any time—auto updates land before the UI loads."
+      "Use --insecure-beta only if you explicitly want the dev branch and accept that failed beta verification may be bypassed.",
+      "On first interactive launch, choose whether to enable installer telemetry before selecting a product."
     ]
   },
   {
     title: "Manual install flow",
     paragraphs: [
-      "Clone the repository, create a virtual environment, install requirements, and launch python installer.py for full transparency.",
+      "Clone the repository, create a virtual environment, install the package, and launch installer.py as root for full transparency.",
       "This route is great when you want to tweak config defaults or audit every file before running."
     ],
     bullets: [
-      "All services are written to systemd so you can manage them with systemctl.",
-      "Configs live in /var/www/plex/<app>/config.yml for easy editing."
+      "Product installs can create systemd services; the installer asks whether each service should start automatically at boot.",
+      "Product directories live below /var/www/plex by default. Configuration filenames depend on the supplied product archive."
     ]
   },
   {
@@ -48,8 +48,8 @@ export const guideSections: DocsSection[] = [
 export const faqSections: DocsSection[] = [
   {
     title: "Is this official?",
-    paragraphs: ["PlexDev Installer is community-maintained, but PlexDevelopment fully supports self-hosting when you follow their licensing and documentation."],
-    bullets: ["Open tickets with PlexDevelopment for product-level issues; use this tool only to speed up server prep."]
+    paragraphs: ["No. PlexDev Installer is community-maintained and is not affiliated with or endorsed by PlexDevelopment."],
+    bullets: ["Use this repository's issue tracker for installer bugs. Product or licensing support depends on the vendor's own policies and your entitlement."]
   },
   {
     title: "Does the installer include Plex products?",
@@ -58,13 +58,13 @@ export const faqSections: DocsSection[] = [
   },
   {
     title: "How do updates work?",
-    paragraphs: ["Every plexinstaller run checks GitHub for the latest version and updates itself before touching your services."],
-    bullets: ["Services stay online while binaries refresh.", "Backups are created automatically."]
+    paragraphs: ["Interactive plexinstaller launches check the GitHub version manifest. If a newer version is available, you are prompted before managed installer files are replaced. Interactive plex CLI launches perform the same check; update-check failures are ignored."],
+    bullets: ["Accepted updates verify release integrity and use a temporary rollback copy of installer files.", "The updater does not automatically back up deployed product data or promise uninterrupted services."]
   },
   {
     title: "Which OS versions are supported?",
-    paragraphs: ["Ubuntu 22.04/24.04 LTS and Debian 12 are the primary targets. Other distros may work but are not tested."],
-    bullets: ["You need root or sudo access to install dependencies."]
+    paragraphs: ["Ubuntu and Debian are the primary tested targets. Package-manager support exists for apt, dnf, yum, pacman, and zypper, while automatic MongoDB setup covers Debian/Ubuntu, RHEL-family/Fedora, and Arch paths. Exact releases outside the primary targets may fail as upstream repositories change."],
+    bullets: ["Use a disposable host or backup first, and expect to install unsupported dependencies manually.", "Root access is required by the interactive installer."]
   }
 ];
 
@@ -72,7 +72,7 @@ export const termsSections: DocsSection[] = [
   {
     title: "Unofficial status",
     paragraphs: ["PlexDev Installer is not affiliated with PlexDevelopment. Using it does not grant licenses or support entitlements."],
-    bullets: ["You must already own rights to the PlexDevelopment products you deploy."]
+    bullets: ["You must already own rights to the PlexDevelopment or Drako products you deploy."]
   },
   {
     title: "Use at your own risk",
@@ -88,18 +88,29 @@ export const termsSections: DocsSection[] = [
 
 export const privacySections: DocsSection[] = [
   {
-    title: "What we log",
-    paragraphs: ["When you run setup.sh we log anonymized metrics such as installer version, distro, and success/failure codes to understand adoption."],
-    bullets: ["No PlexDevelopment files or customer data leave your server."]
+    title: "Installer telemetry",
+    paragraphs: ["setup.sh itself does not send installer telemetry. On the first interactive plexinstaller launch, you are asked whether to enable diagnostics. If enabled, telemetry starts only when a product installation begins and is posted to https://plexdev.xyz/tel when that attempt finishes."],
+    bullets: [
+      "Payloads include a generated session ID, product and instance names, overall status, failure step and error text, timestamps, per-step status/details, and the generated installation log.",
+      "Step details can include local archive and installation paths, selected domain and port, instance names, and error messages. The client redacts common MongoDB credentials, password/token/secret key-value patterns, and bearer tokens, but no redactor can guarantee removal of every sensitive value.",
+      "Enabled logs are also written locally below /opt/plexinstaller/telemetry/logs. The server stores events, logs, and recent aggregate summaries in its telemetry/data directory.",
+      "The server rotates event archives and prunes logs using configured age, count, and size limits. Exact retention depends on the server deployment.",
+      "The telemetry client does not intentionally upload PlexDevelopment archives or application customer databases. Review logs before separately using any support-log upload feature."
+    ]
   },
   {
-    title: "Third-party services",
-    paragraphs: ["The website uses basic analytics (Plausible) to track page views without storing personal information."],
-    bullets: ["If you enable Discord webhooks or email tests inside the installer, credentials stay on your host."]
+    title: "Choice and controls",
+    paragraphs: ["The initial telemetry prompt defaults to disabled if you press Enter or run without a terminal. The preference is stored in /etc/plex/telemetry_pref; explicitly choose yes to opt in, or write disabled to opt out before a later run. Disabling telemetry prevents new telemetry sessions and uploads."],
+    bullets: ["Installer update checks and setup downloads still contact GitHub and plexdev.xyz independently of the telemetry preference.", "Deleting the local preference or log files does not delete data already received by the telemetry server."]
   },
   {
-    title: "Contact",
-    paragraphs: ["Need data removed? Email privacy@plexdev.xyz and include timestamps plus any relevant metadata."],
-    bullets: ["We respond within 7 days."]
+    title: "Website analytics and advertising",
+    paragraphs: ["plexdev.xyz loads Google Analytics (measurement ID G-368VLJG2ZX) and Google AdSense (publisher ca-pub-7983111910687324). These services may process identifiers, cookie or local-storage data, IP/device/browser information, page interactions, and advertising data under Google's privacy terms and applicable law."],
+    bullets: ["Google provides its own privacy and advertising controls. Browser privacy settings or content blockers may provide additional controls.", "Website analytics and advertising are separate from the installer's terminal telemetry preference."]
+  },
+  {
+    title: "Access and deletion requests",
+    paragraphs: ["Email privacy@plexdev.xyz with an approximate UTC timestamp, product, instance name, and session ID if available so a stored installer event can be located. Do not send passwords, license keys, archives, or unredacted logs by email."],
+    bullets: ["Requests will be handled as reasonably possible and as required by applicable law; no fixed response or deletion time is promised here.", "Requests concerning Google data may also need to be directed to Google."]
   }
 ];

@@ -132,6 +132,28 @@ class TestSaveCredentials:
         assert "PASSWORD=s3cret" in content
         assert "URI=mongodb://plex_user:s3cret@localhost:27017/plextickets" in content
 
+    def test_remove_saved_credentials_removes_only_requested_instance(self, tmp_path: Path):
+        mgr = _make_manager()
+        credentials = tmp_path / "mongodb_credentials"
+        credentials.write_text(
+            "# first\nDATABASE=db1\nUSERNAME=u1\nPASSWORD=p1\nURI=mongodb://u1:p1@host/db1\n\n"
+            "# second\nDATABASE=db2\nUSERNAME=u2\nPASSWORD=p2\nURI=mongodb://u2:p2@host/db2\n"
+        )
+
+        assert mgr.remove_saved_credentials("first", credentials) is True
+        content = credentials.read_text()
+        assert "DATABASE=db1" not in content
+        assert "DATABASE=db2" in content
+
+    def test_cleanup_identity_preserves_database_unless_requested(self):
+        mgr = _make_manager()
+        result = subprocess.CompletedProcess(args=[], returncode=0, stdout="__PLEXINSTALLER_OK__")
+        with mock.patch.object(mgr, "run_shell", return_value=result) as shell:
+            assert mgr.cleanup_identity("db1", "u1", drop_database=False) is True
+        script = shell.call_args.args[0][-1]
+        assert "dropUser" in script
+        assert "dropDatabase" not in script
+
 
 # ---------------------------------------------------------------------------
 # update_config — YAML regex patching
@@ -270,3 +292,9 @@ class TestInstallArch:
 
         first_call_args = mock_run.call_args_list[0].args[0]
         assert first_call_args[0] == "yay"
+
+
+def test_mongodb_apt_repositories_use_https():
+    source = Path(__file__).parents[1].joinpath("mongodb_manager.py").read_text()
+    assert "http://repo.mongodb.org/apt/" not in source
+    assert "https://repo.mongodb.org/apt/" in source

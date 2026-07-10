@@ -4,15 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "plexinstaller"
-version = "3.2.0"
+version = "3.3.0"
 description = "Unofficial CLI installer and management tool for PlexDevelopment products"
 readme = "README.md"
-license = "GPL-3.0-only"
+license = "MIT"
 requires-python = ">=3.10"
 dependencies = [
-    "requests>=2.31.0",
-    "pyyaml>=6.0",
-    "colorama>=0.4.6",
+    "requests>=2.31,<3",
+    "PyYAML>=6.0,<7",
+    "colorama>=0.4.6,<1",
 ]
 
 [project.scripts]
@@ -21,15 +21,18 @@ plex = "plex_cli:main"
 
 [project.optional-dependencies]
 telemetry-server = [
-    "fastapi>=0.115.0",
-    "uvicorn>=0.30.0",
-    "pydantic>=2.0",
+    "fastapi>=0.115,<1",
+    "uvicorn>=0.30,<1",
+    "pydantic>=2,<3",
 ]
 dev = [
-    "pytest>=7.4",
-    "pytest-cov>=4.1",
-    "ruff>=0.4",
-    "mypy>=1.10",
+    "pytest>=7.4,<10",
+    "pytest-cov>=4.1,<8",
+    "ruff>=0.4,<1",
+    "mypy>=1.10,<2",
+    "types-colorama>=0.4.15",
+    "types-PyYAML>=6.0.12",
+    "types-requests>=2.31",
 ]
 
 [tool.setuptools]
@@ -58,7 +61,12 @@ ignore = ["E501"]
 python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
-ignore_missing_imports = true
+check_untyped_defs = true
+exclude = ["build/", "dist/", "web2/"]
+
+[[tool.mypy.overrides]]
+module = "telemetry.server"
+warn_return_any = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

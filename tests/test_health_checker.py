@@ -2,6 +2,7 @@
 
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 from health_checker import HealthChecker, SelfTestResult
@@ -212,6 +213,42 @@ class TestWaitForTcpPort:
             with mock.patch("health_checker.time.sleep"):
                 with mock.patch("health_checker.time.time", side_effect=[0, 0.5, 0.8, 1.0]):
                     assert HealthChecker.wait_for_tcp_port("localhost", 3000, timeout_seconds=5) is True
+
+
+class TestPostInstallWebDecision:
+    def _checker(self, tmp_path: Path) -> HealthChecker:
+        return HealthChecker(
+            printer=ColorPrinter(),
+            systemd=mock.MagicMock(),
+            install_dir=tmp_path,
+            node_min_version=18,
+            nginx_available=tmp_path / "available",
+            nginx_enabled=tmp_path / "enabled",
+        )
+
+    def test_web_product_uses_needs_web_setup_not_dashboard(self, tmp_path: Path):
+        (tmp_path / "package.json").write_text("{}")
+        (tmp_path / "node_modules").mkdir()
+        context = SimpleNamespace(
+            install_path=tmp_path,
+            instance_name="plexstore",
+            product="plexstore",
+            service_created=True,
+            needs_web_setup=True,
+            has_dashboard=False,
+            port=3003,
+            domain=None,
+        )
+        checker = self._checker(tmp_path)
+        checker.systemd.get_status.return_value = "active"
+        checker.check_node_version = mock.MagicMock(return_value=(True, "ok"))
+        checker.wait_for_tcp_port = mock.MagicMock(return_value=True)
+        checker.probe_http = mock.MagicMock(return_value=(True, "HTTP 200 OK"))
+
+        results = checker.run_post_install_self_tests(context, None)
+
+        checker.wait_for_tcp_port.assert_called_once_with("127.0.0.1", 3003, timeout_seconds=45)
+        assert any(result.name == "Local TCP port reachable" for result in results)
 
 
 # ---------------------------------------------------------------------------

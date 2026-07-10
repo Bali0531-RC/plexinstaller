@@ -21,6 +21,7 @@ env:
   CODENAME: stable
   COMPONENTS: main
   ARCHITECTURES: amd64
+  APT_SIGNING_FINGERPRINT: C1D43E70EF36AB0B47151196B669DC325581C77B
 
 jobs:
   build:
@@ -50,14 +51,18 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y reprepro
 
       - name: Import GPG key
+        env:
+          APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
         run: |
-          echo "${{ secrets.APT_SIGNING_KEY }}" | gpg --batch --import
+          printf '%s' "$APT_SIGNING_KEY" | gpg --batch --import
 
-      - name: Get GPG fingerprint
-        id: gpg
+      - name: Verify dedicated APT signing key
         run: |
-          FINGERPRINT=$(gpg --list-secret-keys --with-colons | grep '^fpr' | head -1 | cut -d: -f10)
-          echo "fingerprint=${FINGERPRINT}" >> "$GITHUB_OUTPUT"
+          if ! gpg --batch --with-colons --list-secret-keys "$APT_SIGNING_FINGERPRINT" \
+            | awk -F: -v expected="$APT_SIGNING_FINGERPRINT" '$1 == "fpr" && toupper($10) == expected { found=1 } END { exit !found }'; then
+            echo "APT_SIGNING_KEY does not contain the required key $APT_SIGNING_FINGERPRINT" >&2
+            exit 1
+          fi
 
       - name: Create APT repository
         run: |
@@ -72,7 +77,7 @@ jobs:
           Codename: ${{ env.CODENAME }}
           Components: ${{ env.COMPONENTS }}
           Architectures: ${{ env.ARCHITECTURES }}
-          SignWith: ${{ steps.gpg.outputs.fingerprint }}
+          SignWith: ${{ env.APT_SIGNING_FINGERPRINT }}
           EOF
           # Remove leading whitespace from heredoc
           sed -i 's/^          //' "${REPO_DIR}/conf/distributions"
@@ -87,7 +92,8 @@ jobs:
           done
 
           # Export public key
-          gpg --armor --export ${{ steps.gpg.outputs.fingerprint }} > "${REPO_DIR}/gpg.key"
+          gpg --armor --export "${{ env.APT_SIGNING_FINGERPRINT }}" > "${REPO_DIR}/gpg.key"
+          test -s "${REPO_DIR}/gpg.key"
 
           # Copy CNAME for custom domain
           cp CNAME "${REPO_DIR}/CNAME"
@@ -125,10 +131,10 @@ jobs:
           echo '' >> $GITHUB_STEP_SUMMARY
           echo '```bash' >> $GITHUB_STEP_SUMMARY
           echo '# Add the signing key' >> $GITHUB_STEP_SUMMARY
-          echo 'curl -fsSL https://apt.plexdev.xyz/gpg.key | sudo tee /etc/apt/trusted.gpg.d/plexinstaller.asc > /dev/null' >> $GITHUB_STEP_SUMMARY
+          echo 'curl -fsSL https://apt.plexdev.xyz/gpg.key | sudo tee /usr/share/keyrings/plexinstaller-archive-keyring.asc > /dev/null' >> $GITHUB_STEP_SUMMARY
           echo '' >> $GITHUB_STEP_SUMMARY
           echo '# Add the repository' >> $GITHUB_STEP_SUMMARY
-          echo 'echo "deb https://apt.plexdev.xyz stable main" | sudo tee /etc/apt/sources.list.d/plexinstaller.list' >> $GITHUB_STEP_SUMMARY
+          echo 'echo "deb [signed-by=/usr/share/keyrings/plexinstaller-archive-keyring.asc] https://apt.plexdev.xyz stable main" | sudo tee /etc/apt/sources.list.d/plexinstaller.list' >> $GITHUB_STEP_SUMMARY
           echo '' >> $GITHUB_STEP_SUMMARY
           echo '# Install' >> $GITHUB_STEP_SUMMARY
           echo 'sudo apt update && sudo apt install plexinstaller' >> $GITHUB_STEP_SUMMARY

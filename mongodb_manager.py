@@ -202,7 +202,7 @@ class MongoDBManager:
         alphabet = string.ascii_letters + string.digits
         random_suffix = "".join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(5))
         db_name = f"{instance_name}_{random_suffix}"
-        username = f"{instance_name}_user"
+        username = f"{instance_name}_{random_suffix}_user"
         password = "".join(secrets.choice(alphabet) for _ in range(24))
 
         self.printer.step(f"Creating MongoDB database: {db_name}")
@@ -292,6 +292,66 @@ class MongoDBManager:
             f.write(f"PASSWORD={creds['password']}\n")
             f.write(f"URI={creds['uri']}\n")
         self.printer.success(f"Credentials saved to {creds_file}")
+
+    @staticmethod
+    def _credential_block_pattern(instance_name: str) -> re.Pattern[str]:
+        """Build a line-bounded pattern for one stored credential block."""
+        escaped = re.escape(instance_name)
+        return re.compile(
+            rf"(?m)^# {escaped}\n"
+            r"DATABASE=[^\n]*\nUSERNAME=[^\n]*\nPASSWORD=[^\n]*\nURI=[^\n]*(?:\n|$)"
+        )
+
+    def remove_saved_credentials(self, instance_name: str, credentials_file: Path | None = None) -> bool:
+        """Remove only *instance_name*'s block from the shared credential file."""
+        creds_file = credentials_file or Path("/etc/plex/mongodb_credentials")
+        if not creds_file.exists():
+            return False
+
+        original = creds_file.read_text(encoding="utf-8", errors="replace")
+        updated, count = self._credential_block_pattern(instance_name).subn("", original, count=1)
+        if count == 0:
+            return False
+
+        updated = re.sub(r"\n{3,}", "\n\n", updated).lstrip("\n")
+        if updated.strip():
+            mode = creds_file.stat().st_mode & 0o777
+            temporary = creds_file.with_name(f".{creds_file.name}.{secrets.token_hex(6)}.tmp")
+            try:
+                fd = os.open(str(temporary), os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode or 0o600)
+                with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                    stream.write(updated)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                os.replace(temporary, creds_file)
+            finally:
+                temporary.unlink(missing_ok=True)
+        else:
+            creds_file.unlink(missing_ok=True)
+        return True
+
+    def cleanup_identity(self, database: str, username: str, *, drop_database: bool = False) -> bool:
+        """Remove an instance's Mongo user and optionally its database contents."""
+        if not database or not username:
+            return False
+        script = (
+            "(function() {\n"
+            f"  const dbName = {json.dumps(database)};\n"
+            f"  const username = {json.dumps(username)};\n"
+            "  try {\n"
+            "    const target = db.getSiblingDB(dbName);\n"
+            "    if (target.getUser(username)) target.dropUser(username);\n"
+            + ("    target.dropDatabase();\n" if drop_database else "")
+            + "    print('__PLEXINSTALLER_OK__');\n"
+            "  } catch (e) { print('__PLEXINSTALLER_ERROR__ ' + e); quit(2); }\n"
+            "})();"
+        )
+        try:
+            result = self.run_shell(["--quiet", "--eval", script], timeout=30)
+            combined = (result.stdout or "") + "\n" + (result.stderr or "")
+            return result.returncode == 0 and "__PLEXINSTALLER_OK__" in combined
+        except Exception:
+            return False
 
     # ------------------------------------------------------------------
     # Config patching
@@ -473,7 +533,7 @@ class MongoDBManager:
                 repo_line = (
                     f"deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/"
                     f"mongodb-server-{mongo_ver}.gpg ] "
-                    f"http://repo.mongodb.org/apt/ubuntu "
+                    f"https://repo.mongodb.org/apt/ubuntu "
                     f"{distro_codename}/mongodb-org/{mongo_ver} multiverse\n"
                 )
             elif "debian" in distro:
@@ -481,7 +541,7 @@ class MongoDBManager:
                     repo_line = (
                         f"deb [ signed-by=/usr/share/keyrings/"
                         f"mongodb-server-{mongo_ver}.gpg ] "
-                        f"http://repo.mongodb.org/apt/debian "
+                        f"https://repo.mongodb.org/apt/debian "
                         f"bullseye/mongodb-org/{mongo_ver} main\n"
                     )
                 else:
@@ -489,14 +549,14 @@ class MongoDBManager:
                     repo_line = (
                         f"deb [ signed-by=/usr/share/keyrings/"
                         f"mongodb-server-{mongo_ver}.gpg ] "
-                        f"http://repo.mongodb.org/apt/debian "
+                        f"https://repo.mongodb.org/apt/debian "
                         f"bookworm/mongodb-org/{mongo_ver_bookworm} main\n"
                     )
             else:
                 repo_line = (
                     f"deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/"
                     f"mongodb-server-{mongo_ver}.gpg ] "
-                    f"http://repo.mongodb.org/apt/ubuntu "
+                    f"https://repo.mongodb.org/apt/ubuntu "
                     f"focal/mongodb-org/{mongo_ver} multiverse\n"
                 )
 

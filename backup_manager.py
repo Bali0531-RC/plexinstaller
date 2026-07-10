@@ -4,14 +4,17 @@ Backup creation, listing, restoration, and deletion for installed products.
 Extracted from PlexInstaller to keep domain logic isolated and testable.
 """
 
+import json
 import os
+import pwd
 import shutil
 import subprocess
 import tarfile
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
-from utils import ColorPrinter, SystemdManager
+from utils import ColorPrinter, SystemdManager, safe_extract_tar, validate_path_component
 
 
 class BackupManager:
@@ -93,6 +96,7 @@ class BackupManager:
 
     def backup_product(self, product: str):
         """Backup a specific product (stop → tar.gz → restart)."""
+        validate_path_component(product, label="product name")
         install_path = self.install_dir / product
         self.backup_dir.mkdir(exist_ok=True)
 
@@ -109,19 +113,22 @@ class BackupManager:
             self.systemd.stop(service_name)
 
         try:
-            with tarfile.open(backup_file, "w:gz") as tar:
-                tar.add(install_path, arcname=product)
+            fd = os.open(backup_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "wb") as backup_stream:
+                with tarfile.open(fileobj=backup_stream, mode="w:gz") as tar:
+                    tar.add(install_path, arcname=product)
 
             size_mb = backup_file.stat().st_size / (1024 * 1024)
             self.printer.success(f"Backup created: {backup_file.name}")
             self.printer.step(f"Size: {size_mb:.2f} MB")
 
         except Exception as e:
+            backup_file.unlink(missing_ok=True)
             self.printer.error(f"Backup failed: {e}")
-
-        if was_running:
-            self.printer.step("Restarting service...")
-            self.systemd.start(service_name)
+        finally:
+            if was_running:
+                self.printer.step("Restarting service...")
+                self.systemd.start(service_name)
 
     # ------------------------------------------------------------------
     # List
@@ -151,7 +158,7 @@ class BackupManager:
             size_mb = backup_file.stat().st_size / (1024 * 1024)
             mtime = datetime.fromtimestamp(backup_file.stat().st_mtime)
             date_str = mtime.strftime("%Y-%m-%d %H:%M:%S")
-            product = backup_file.stem.replace("_backup_", " ").split()[0]
+            product = self._product_from_backup_name(backup_file)
             print(f"{i:<4} {product:<15} {date_str:<20} {size_mb:>8.2f} MB")
 
         return backups
@@ -184,7 +191,7 @@ class BackupManager:
             idx = int(choice) - 1
             if 0 <= idx < len(backups):
                 selected_backup = backups[idx]
-                product = selected_backup.stem.replace("_backup_", " ").split()[0]
+                product = self._product_from_backup_name(selected_backup)
 
                 self.printer.warning(f"This will restore {product} from backup.")
                 self.printer.warning("Current installation will be replaced!")
@@ -200,79 +207,118 @@ class BackupManager:
             self.printer.error("Invalid input")
 
     def restore_from_backup(self, backup_file: Path, product: str):
-        """Restore from a specific backup file."""
+        """Safely stage and transactionally restore a specific product backup."""
+        validate_path_component(product, label="product name")
+        backup_file = Path(backup_file)
         install_path = self.install_dir / product
         service_name = f"plex-{product}"
+        was_running = self.systemd.get_status(service_name).strip().lower() == "active"
+        rollback_path: Path | None = None
+        old_install_moved = False
+        new_install_published = False
+        service_stop_attempted = False
 
-        self.printer.step("Stopping service...")
-        self.systemd.stop(service_name)
-
-        temp_backup: Path | None = None
-        if install_path.exists():
-            self.printer.step("Backing up current installation...")
-            temp_backup = install_path.parent / f"{product}.backup.tmp"
-            if temp_backup.exists():
-                shutil.rmtree(temp_backup)
-            shutil.move(str(install_path), str(temp_backup))
-
+        self.install_dir.mkdir(parents=True, exist_ok=True)
         try:
             self.printer.step(f"Restoring from {backup_file.name}...")
+            with tempfile.TemporaryDirectory(prefix=f".{product}.restore-", dir=self.install_dir) as temp_dir:
+                extraction_root = Path(temp_dir) / "archive"
+                safe_extract_tar(backup_file, extraction_root, expected_top_level=product)
+                staged_product = extraction_root / product
 
-            with tarfile.open(backup_file, "r:gz") as tar:
-                tar.extractall(self.install_dir)
+                self.printer.step("Setting permissions...")
+                self._set_permissions(staged_product)
 
-            self.printer.step("Setting permissions...")
-            subprocess.run(["chown", "-R", "root:root", str(install_path)], check=True)
-            subprocess.run(
-                [
-                    "find",
-                    str(install_path),
-                    "-type",
-                    "d",
-                    "-exec",
-                    "chmod",
-                    "755",
-                    "{}",
-                    ";",
-                ],
-                check=True,
-            )
-            subprocess.run(
-                [
-                    "find",
-                    str(install_path),
-                    "-type",
-                    "f",
-                    "-exec",
-                    "chmod",
-                    "644",
-                    "{}",
-                    ";",
-                ],
-                check=True,
-            )
+                if was_running:
+                    self.printer.step("Stopping service...")
+                    service_stop_attempted = True
+                    self.systemd.stop(service_name)
+                    if self.systemd.get_status(service_name).strip().lower() == "active":
+                        raise RuntimeError(f"Service {service_name} did not stop; restore aborted")
 
-            # Remove temp backup on success
-            temp_backup2 = install_path.parent / f"{product}.backup.tmp"
-            if temp_backup2.exists():
-                shutil.rmtree(temp_backup2)
+                if install_path.exists() or install_path.is_symlink():
+                    self.printer.step("Preserving current installation for rollback...")
+                    rollback_path = Path(tempfile.mkdtemp(prefix=f".{product}.rollback-", dir=self.install_dir))
+                    rollback_path.rmdir()
+                    install_path.rename(rollback_path)
+                    old_install_moved = True
 
+                if install_path.exists() or install_path.is_symlink():
+                    raise FileExistsError(f"Restore target already exists: {install_path}")
+                staged_product.rename(install_path)
+                new_install_published = True
+
+            if rollback_path is not None:
+                try:
+                    shutil.rmtree(rollback_path)
+                except OSError as exc:
+                    self.printer.warning(f"Could not remove rollback copy {rollback_path}: {exc}")
             self.printer.success(f"Restore of {product} complete")
-
-            self.printer.step("Starting service...")
-            self.systemd.start(service_name)
 
         except Exception as e:
             self.printer.error(f"Restore failed: {e}")
 
-            rollback = install_path.parent / f"{product}.backup.tmp"
-            if rollback.exists():
+            if old_install_moved and rollback_path is not None and rollback_path.exists():
                 self.printer.warning("Attempting to restore previous installation...")
-                if install_path.exists():
+                if install_path.exists() or install_path.is_symlink():
+                    try:
+                        if install_path.is_dir() and not install_path.is_symlink():
+                            shutil.rmtree(install_path)
+                        else:
+                            install_path.unlink()
+                    except OSError as cleanup_error:
+                        self.printer.error(f"Could not clear failed restore target: {cleanup_error}")
+                if not (install_path.exists() or install_path.is_symlink()):
+                    rollback_path.rename(install_path)
+                else:
+                    self.printer.error(f"Previous installation remains preserved at {rollback_path}")
+            elif new_install_published and (install_path.exists() or install_path.is_symlink()):
+                if install_path.is_dir() and not install_path.is_symlink():
                     shutil.rmtree(install_path)
-                shutil.move(str(rollback), str(install_path))
-                self.printer.step("Starting service with previous installation...")
+                else:
+                    install_path.unlink()
+        finally:
+            if service_stop_attempted:
+                self.printer.step("Starting service...")
                 self.systemd.start(service_name)
+
+    @staticmethod
+    def _product_from_backup_name(backup_file: Path) -> str:
+        basename = backup_file.name.removesuffix(".tar.gz")
+        product, separator, _timestamp = basename.rpartition("_backup_")
+        if not separator:
+            raise ValueError(f"Invalid backup filename: {backup_file.name}")
+        return validate_path_component(product, label="product name")
+
+    @staticmethod
+    def _set_permissions(install_path: Path) -> None:
+        owner = "root"
+        manifest = install_path / ".plexinstaller-resources.json"
+        try:
+            data = json.loads(manifest.read_text(encoding="utf-8"))
+            expected = SystemdManager.service_user_name(install_path.name)
+            user = data.get("service_user")
+            if data.get("service_isolated") is True and user == expected:
+                pwd.getpwnam(user)
+                owner = user
+        except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+            pass
+        subprocess.run(["chown", "-R", f"{owner}:{owner}", str(install_path)], check=True)
+        subprocess.run(
+            ["find", str(install_path), "-type", "d", "-exec", "chmod", "750", "{}", ";"],
+            check=True,
+        )
+        for path in install_path.rglob("*"):
+            if not path.is_file() or path.is_symlink():
+                continue
+            sensitive = path.name.lower() in {
+                "config.yml",
+                "config.yaml",
+                "config.json",
+                ".env",
+            } or path.name.lower().endswith((".key", ".pem"))
+            executable = bool(path.stat().st_mode & 0o111) or path.suffix.lower() in {".sh", ".py"}
+            os.chmod(path, 0o600 if sensitive else 0o750 if executable else 0o640)
 
     # ------------------------------------------------------------------
     # Delete
