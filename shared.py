@@ -84,10 +84,16 @@ def _download_bytes(
         final_url = response.geturl() if hasattr(response, "geturl") else None
         if isinstance(final_url, str):
             _validate_download_url(final_url, allow_insecure_urls=allow_insecure_urls)
-        content = bytes(response.read(max_bytes + 1))
+        limit = max_bytes + 1
+        content = bytearray()
+        while len(content) < limit:
+            chunk = response.read(min(64 * 1024, limit - len(content)))
+            if not chunk:
+                break
+            content.extend(chunk)
     if len(content) > max_bytes:
         raise ValueError(f"Download exceeds the {max_bytes}-byte size limit")
-    return content
+    return bytes(content)
 
 
 def _parse_manifest(version_json_bytes: bytes) -> dict:

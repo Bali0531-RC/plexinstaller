@@ -230,6 +230,7 @@ def test_find_archive_skips_missing_search_dirs(tmp_path, monkeypatch):
     inst = _installer(tmp_path)
     archive = tmp_path / "plexstaff.zip"
     archive.write_bytes(b"data")
+    monkeypatch.setattr(installer_module, "_SYSTEM_TEMP_ROOTS", frozenset())
     monkeypatch.setattr(installer_module.Path, "home", classmethod(lambda cls: tmp_path))
     monkeypatch.setattr(installer_module.Path, "cwd", classmethod(lambda cls: tmp_path))
     real_exists = Path.exists

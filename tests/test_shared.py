@@ -79,7 +79,19 @@ def _response(content: bytes, url: str = "https://example.com/file"):
     response = mock.MagicMock()
     response.__enter__.return_value = response
     response.__exit__.return_value = False
-    response.read.side_effect = lambda *_args: content
+    offset = 0
+
+    def read(size: int = -1) -> bytes:
+        nonlocal offset
+        if size < 0:
+            chunk = content[offset:]
+            offset = len(content)
+            return chunk
+        chunk = content[offset : offset + size]
+        offset += len(chunk)
+        return chunk
+
+    response.read.side_effect = read
     response.geturl.return_value = url
     return response
 

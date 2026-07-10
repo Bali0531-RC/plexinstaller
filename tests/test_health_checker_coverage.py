@@ -83,9 +83,22 @@ class TestSelfTests:
         assert by_name["Node.js version"].status == "pass"
         assert by_name["package.json present"].status == "pass"
         assert by_name["node_modules present"].status == "warn"
-        assert by_name["Config file present"].status == "warn"
+        assert by_name["Config file present"].status == "pass"
         assert "config.yml" in by_name["Config file present"].detail
+        assert by_name["Config file present"].hint == ""
         assert by_name["systemd auto-start"].status == "warn"
+
+    def test_missing_config_remains_warning(self, tmp_path: Path):
+        checker = _checker(tmp_path)
+        ctx = _context(tmp_path)
+        ctx.install_path.mkdir(parents=True)
+
+        with self._base_patches(checker):
+            results = checker.run_post_install_self_tests(ctx, None)
+
+        config_result = next(result for result in results if result.name == "Config file present")
+        assert config_result.status == "warn"
+        assert config_result.hint
 
     def test_service_active_with_port_and_http(self, tmp_path: Path):
         checker = _checker(tmp_path)
@@ -122,6 +135,23 @@ class TestSelfTests:
         assert by_name["systemd service active"].status == "fail"
         assert by_name["Local TCP port reachable"].status == "fail"
         assert "Local HTTP responds" not in by_name
+
+    def test_service_detail_reuses_final_polled_status(self, tmp_path: Path):
+        checker = _checker(tmp_path)
+        ctx = _context(tmp_path, service_created=True)
+        ctx.install_path.mkdir(parents=True)
+
+        with (
+            self._base_patches(checker),
+            mock.patch.object(checker.systemd, "get_status", side_effect=["activating", "active", "failed"]) as status,
+            mock.patch("health_checker.time.sleep"),
+            mock.patch.object(checker, "wait_for_tcp_port", return_value=False),
+        ):
+            results = checker.run_post_install_self_tests(ctx, None)
+
+        service_result = next(result for result in results if result.name == "systemd service active")
+        assert service_result.detail == "plex-plextickets is active"
+        assert status.call_count == 2
 
     def test_bot_only_skips_port_check(self, tmp_path: Path):
         checker = _checker(tmp_path)
@@ -330,7 +360,7 @@ class TestSystemHealthCheck:
         meminfo = meminfo or "MemTotal: 8000000 kB\nMemAvailable: 4000000 kB\n"
 
         with (
-            mock.patch("health_checker.os.system"),
+            mock.patch("health_checker.clear_terminal"),
             mock.patch.object(checker.systemd, "get_status", side_effect=fake_systemd_status),
             mock.patch("health_checker.subprocess.run", side_effect=fake_run),
             mock.patch("builtins.open", mock.mock_open(read_data=meminfo)),
@@ -381,7 +411,7 @@ class TestSystemHealthCheck:
         checker = _checker(tmp_path)
         meminfo = "MemTotal: 8000000 kB\nMemAvailable: 100000 kB\n"
         with (
-            mock.patch("health_checker.os.system"),
+            mock.patch("health_checker.clear_terminal"),
             mock.patch("health_checker.subprocess.run", return_value=_completed(returncode=1)),
             mock.patch("builtins.open", mock.mock_open(read_data=meminfo)),
             mock.patch("health_checker.os.getloadavg", return_value=(9.0, 9.0, 9.0)),
@@ -398,7 +428,7 @@ class TestSystemHealthCheck:
         checker = _checker(tmp_path)
         meminfo = "MemTotal: 8000000 kB\nMemAvailable: 1200000 kB\n"
         with (
-            mock.patch("health_checker.os.system"),
+            mock.patch("health_checker.clear_terminal"),
             mock.patch("health_checker.subprocess.run", return_value=_completed(returncode=1)),
             mock.patch("builtins.open", mock.mock_open(read_data=meminfo)),
             mock.patch("health_checker.os.getloadavg", return_value=(5.0, 5.0, 5.0)),
@@ -420,7 +450,7 @@ class TestSystemHealthCheck:
             raise FileNotFoundError(cmd[0])
 
         with (
-            mock.patch("health_checker.os.system"),
+            mock.patch("health_checker.clear_terminal"),
             mock.patch("health_checker.subprocess.run", side_effect=fake_run),
             mock.patch("builtins.open", side_effect=OSError("no /proc")),
             mock.patch("health_checker.os.getloadavg", side_effect=OSError("unsupported")),
@@ -438,7 +468,7 @@ class TestSystemHealthCheck:
         stat.f_frsize = 1024**3
         stat.f_blocks = 100
         with (
-            mock.patch("health_checker.os.system"),
+            mock.patch("health_checker.clear_terminal"),
             mock.patch("health_checker.os.statvfs", return_value=stat),
             mock.patch("health_checker.subprocess.run", return_value=_completed(returncode=1)),
             mock.patch("builtins.open", side_effect=OSError),
@@ -455,7 +485,7 @@ class TestSystemHealthCheck:
         stat.f_frsize = 1024**3
         stat.f_blocks = 100
         with (
-            mock.patch("health_checker.os.system"),
+            mock.patch("health_checker.clear_terminal"),
             mock.patch("health_checker.os.statvfs", return_value=stat),
             mock.patch("health_checker.subprocess.run", return_value=_completed(returncode=1)),
             mock.patch("builtins.open", side_effect=OSError),
@@ -475,7 +505,7 @@ class TestSystemHealthCheck:
             raise FileNotFoundError(cmd[0])
 
         with (
-            mock.patch("health_checker.os.system"),
+            mock.patch("health_checker.clear_terminal"),
             mock.patch("health_checker.subprocess.run", side_effect=fake_run),
             mock.patch("builtins.open", side_effect=OSError),
             mock.patch("health_checker.os.getloadavg", side_effect=OSError),
@@ -500,7 +530,7 @@ class TestSystemHealthCheck:
             return _completed(stdout="inactive\n")
 
         with (
-            mock.patch("health_checker.os.system"),
+            mock.patch("health_checker.clear_terminal"),
             mock.patch("health_checker.subprocess.run", side_effect=fake_run),
             mock.patch("builtins.open", side_effect=OSError),
             mock.patch("health_checker.os.getloadavg", side_effect=OSError),

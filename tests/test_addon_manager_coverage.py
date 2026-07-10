@@ -95,6 +95,17 @@ class TestServiceOwner:
         with mock.patch("addon_manager.pwd.getpwnam", return_value=object()):
             assert AddonManager._service_owner(product) == expected
 
+    def test_legacy_long_isolated_user_returned(self, tmp_path: Path):
+        product = tmp_path / ("tickets-" + "x" * 40)
+        product.mkdir()
+        legacy = SystemdManager.legacy_service_user_name(product.name)
+        assert legacy != SystemdManager.service_user_name(product.name)
+        (product / ".plexinstaller-resources.json").write_text(
+            json.dumps({"service_isolated": True, "service_user": legacy})
+        )
+        with mock.patch("addon_manager.pwd.getpwnam", return_value=object()):
+            assert AddonManager._service_owner(product) == legacy
+
     def test_missing_system_user_is_root(self, tmp_path: Path):
         product = tmp_path / "tickets"
         product.mkdir()
@@ -353,6 +364,23 @@ class TestFindAddonArchive:
         ):
             result = _manager().find_addon_archive(None)
         assert isinstance(result, list)
+
+    def test_default_search_does_not_scan_system_temp(self, tmp_path: Path):
+        rglob = mock.MagicMock(side_effect=AssertionError("system temp directory was scanned"))
+        with (
+            mock.patch("addon_manager._SYSTEM_TEMP_ROOTS", frozenset({tmp_path.resolve()})),
+            mock.patch("addon_manager.Path.home", return_value=tmp_path),
+            mock.patch("addon_manager.Path.cwd", return_value=tmp_path / "nested"),
+            mock.patch.object(Path, "rglob", rglob),
+        ):
+            assert _manager().find_addon_archive() == []
+        rglob.assert_not_called()
+
+    def test_explicit_system_temp_search_is_still_supported(self, tmp_path: Path):
+        archive = tmp_path / "addon.zip"
+        archive.write_bytes(b"")
+        with mock.patch("addon_manager._SYSTEM_TEMP_ROOTS", frozenset({tmp_path.resolve()})):
+            assert _manager().find_addon_archive([tmp_path]) == [archive.resolve()]
 
 
 # ---------------------------------------------------------------------------

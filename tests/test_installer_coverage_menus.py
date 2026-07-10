@@ -124,6 +124,26 @@ def test_show_services_status_table(monkeypatch, tmp_path, capsys):
     assert "Product" in out
 
 
+def test_show_services_status_matches_only_yaml_port_key(tmp_path, capsys):
+    inst = _installer(tmp_path)
+    misleading = tmp_path / "misleading"
+    misleading.mkdir()
+    (misleading / "config.yml").write_text("# port: 1111\ndbPort: 2222\ntransport: 3333\n")
+    valid = tmp_path / "valid"
+    valid.mkdir()
+    (valid / "config.yaml").write_text("PoRt: 4444 # public port\n")
+    inst.systemd.get_status.return_value = "active"
+
+    inst._show_services_status()
+
+    out = capsys.readouterr().out
+    assert "4444" in out
+    assert "N/A" in out
+    assert "1111" not in out
+    assert "2222" not in out
+    assert "3333" not in out
+
+
 def test_show_services_status_empty_dirs(tmp_path):
     inst = _installer(tmp_path)
     inst.config.install_dir = tmp_path / "missing"
@@ -207,6 +227,18 @@ def test_manage_product_back(monkeypatch, tmp_path):
     inst.systemd.get_status.return_value = "inactive"
     _answers(monkeypatch, ["0"])
     inst._manage_product("plexstaff")
+
+
+def test_manage_product_stays_open_when_uninstall_returns_false(monkeypatch, tmp_path):
+    inst = _installer(tmp_path)
+    inst.systemd.get_status.return_value = "active"
+    inst._uninstall_product = mock.MagicMock(return_value=False)
+    _answers(monkeypatch, ["6", "0"])
+
+    inst._manage_product("plexstaff")
+
+    inst._uninstall_product.assert_called_once_with("plexstaff")
+    assert inst.systemd.get_status.call_count == 2
 
 
 def test_edit_config_paths(tmp_path):
@@ -591,8 +623,11 @@ def test_restore_addon_backup_rolls_back_previous(monkeypatch, tmp_path):
 def test_restore_addon_backup_invalid_name(tmp_path):
     inst = _installer(tmp_path)
     bad = _backup(tmp_path, name="../evil")
-    # Note: the name validation happens before the try/except in
-    # _restore_addon_backup, so the ValueError propagates to the caller
-    # instead of being reported via printer.error (possible bug).
-    with pytest.raises(ValueError, match="Invalid addon name"):
-        inst._restore_addon_backup("p", tmp_path, bad)
+    inst._restore_addon_backup("p", tmp_path, bad)
+    inst.printer.error.assert_called_with("Restore failed: Invalid addon name: '../evil'")
+
+
+def test_restore_addon_backup_missing_metadata_key(tmp_path):
+    inst = _installer(tmp_path)
+    inst._restore_addon_backup("p", tmp_path, {"addon_name": "MyAddon"})
+    inst.printer.error.assert_called_with("Restore failed: 'path'")

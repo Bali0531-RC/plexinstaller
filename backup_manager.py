@@ -14,7 +14,7 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
-from utils import ColorPrinter, SystemdManager, safe_extract_tar, validate_path_component
+from utils import ColorPrinter, SystemdManager, clear_terminal, safe_extract_tar, validate_path_component
 
 
 class BackupManager:
@@ -38,7 +38,7 @@ class BackupManager:
     def menu(self):
         """Interactive backup management menu."""
         while True:
-            os.system("clear" if os.name != "nt" else "cls")
+            clear_terminal()
             self.printer.header("Backup Management")
             print(f"Backup Location: {self.backup_dir}")
             print("---")
@@ -296,9 +296,8 @@ class BackupManager:
         manifest = install_path / ".plexinstaller-resources.json"
         try:
             data = json.loads(manifest.read_text(encoding="utf-8"))
-            expected = SystemdManager.service_user_name(install_path.name)
             user = data.get("service_user")
-            if data.get("service_isolated") is True and user == expected:
+            if data.get("service_isolated") is True and SystemdManager.is_service_user_name(install_path.name, user):
                 pwd.getpwnam(user)
                 owner = user
         except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):

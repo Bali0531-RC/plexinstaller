@@ -350,7 +350,7 @@ class TestSystemHealthCheck:
         fake_stat.f_frsize = 4096
         fake_stat.f_blocks = 100 * 1024 * 256
 
-        with mock.patch("health_checker.os.system"):
+        with mock.patch("health_checker.clear_terminal"):
             with mock.patch("health_checker.os.statvfs", return_value=fake_stat) as mock_statvfs:
                 with mock.patch("health_checker.subprocess.run"):
                     hc.system_health_check()
@@ -369,7 +369,7 @@ class TestSystemHealthCheck:
         fake_stat.f_frsize = 4096
         fake_stat.f_blocks = 100 * 1024 * 256
 
-        with mock.patch("health_checker.os.system"):
+        with mock.patch("health_checker.clear_terminal"):
             with mock.patch("health_checker.os.statvfs", return_value=fake_stat):
                 with mock.patch("health_checker.subprocess.run"):
                     hc.system_health_check()
@@ -391,7 +391,7 @@ class TestSystemHealthCheck:
         fake_stat.f_frsize = 4096
         fake_stat.f_blocks = 100 * 1024 * 256
 
-        with mock.patch("health_checker.os.system"):
+        with mock.patch("health_checker.clear_terminal"):
             with mock.patch("health_checker.os.statvfs", return_value=fake_stat):
                 with mock.patch.object(hc.systemd, "get_status", return_value="active") as mock_status:
                     with mock.patch("health_checker.subprocess.run"):

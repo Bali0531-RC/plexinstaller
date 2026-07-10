@@ -6,6 +6,16 @@ export type ReleaseNote = {
 
 export const releases: ReleaseNote[] = [
   {
+    version: "3.3.1",
+    date: "2026-07-10",
+    highlights: [
+      "Hardened debug-bundle redaction and bounded update downloads against malformed input and short-read edge cases.",
+      "Removed automatic archive discovery from shared temporary directories and kept atomic no-replace addon publication authoritative.",
+      "Made isolated service identities collision-resistant while preserving legacy installation ownership and cleanup compatibility.",
+      "Fixed installer rollback, uninstall, port detection, health reporting, nginx/npm diagnostics, and MongoDB setup error handling.",
+    ]
+  },
+  {
     version: "3.3.0",
     date: "2026-07-10",
     highlights: [

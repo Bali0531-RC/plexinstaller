@@ -258,36 +258,62 @@ class TestCreateUser:
         mgr = _make_manager()
         results = [_ok("__PLEXINSTALLER_ERROR__ x", returncode=2), _ok("__PLEXINSTALLER_OK__")]
         with (
-            mock.patch.object(mgr, "run_shell", side_effect=results),
-            mock.patch("mongodb_manager.time.sleep"),
+            mock.patch.object(mgr, "run_shell", side_effect=results) as shell,
+            mock.patch("mongodb_manager.time.sleep") as sleep,
         ):
             assert mgr.create_user("myapp") is not None
+        assert shell.call_count == 2
+        sleep.assert_called_once_with(2)
 
     def test_all_retries_fail_returns_none(self, capsys):
         mgr = _make_manager()
         with (
-            mock.patch.object(mgr, "run_shell", return_value=_ok("__PLEXINSTALLER_ERROR__ nope", returncode=2)),
-            mock.patch("mongodb_manager.time.sleep"),
+            mock.patch.object(
+                mgr,
+                "run_shell",
+                return_value=_ok("__PLEXINSTALLER_ERROR__ transient failure", returncode=2),
+            ) as shell,
+            mock.patch("mongodb_manager.time.sleep") as sleep,
         ):
             assert mgr.create_user("myapp") is None
-        assert "Failed to create MongoDB user" in capsys.readouterr().err
+        assert shell.call_count == 5
+        assert sleep.call_count == 4
+        assert "Failed to create MongoDB user after 5 attempts" in capsys.readouterr().err
 
-    def test_unauthorized_prints_auth_hint(self, capsys):
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "not authorized on admin",
+            "MongoServerError: Unauthorized",
+            "MongoServerError: Command createUser requires authentication",
+        ],
+    )
+    def test_unauthorized_stops_without_retrying(self, message, capsys):
         mgr = _make_manager()
         with (
-            mock.patch.object(mgr, "run_shell", return_value=_ok("not authorized on admin", returncode=1)),
-            mock.patch("mongodb_manager.time.sleep"),
+            mock.patch.object(mgr, "run_shell", return_value=_ok(message, returncode=1)) as shell,
+            mock.patch("mongodb_manager.time.sleep") as sleep,
         ):
             assert mgr.create_user("myapp") is None
-        assert "authentication enabled" in capsys.readouterr().err
+        shell.assert_called_once()
+        sleep.assert_not_called()
+        error = capsys.readouterr().err
+        assert "authentication enabled" in error
+        assert "due to an authorization error" in error
 
     def test_exception_in_shell_is_retried(self):
         mgr = _make_manager()
         with (
-            mock.patch.object(mgr, "run_shell", side_effect=subprocess.TimeoutExpired("mongosh", 30)),
-            mock.patch("mongodb_manager.time.sleep"),
+            mock.patch.object(
+                mgr,
+                "run_shell",
+                side_effect=subprocess.TimeoutExpired("mongosh", 30),
+            ) as shell,
+            mock.patch("mongodb_manager.time.sleep") as sleep,
         ):
             assert mgr.create_user("myapp") is None
+        assert shell.call_count == 5
+        assert sleep.call_count == 4
 
 
 # ---------------------------------------------------------------------------
@@ -448,6 +474,7 @@ class TestInstallDebian:
 
         popen = mock.MagicMock()
         popen.stdout = mock.MagicMock()
+        popen.wait.return_value = 0
         with (
             mock.patch("mongodb_manager.Path") as path_cls,
             mock.patch("builtins.open", side_effect=fake_open),
@@ -488,15 +515,68 @@ class TestInstallDebian:
 
     def test_cleans_old_repo_files(self):
         mgr = _make_manager(distro="ubuntu")
+        popen = mock.MagicMock()
+        popen.stdout = mock.MagicMock()
+        popen.wait.return_value = 0
         with (
             mock.patch("mongodb_manager.Path") as path_cls,
             mock.patch("builtins.open", mock.mock_open()),
             mock.patch("mongodb_manager.subprocess.run", return_value=_ok("jammy\n")),
-            mock.patch("mongodb_manager.subprocess.Popen", return_value=mock.MagicMock()),
+            mock.patch("mongodb_manager.subprocess.Popen", return_value=popen),
         ):
             path_cls.return_value.exists.return_value = True
             assert mgr._install_debian() is True
         assert path_cls.return_value.unlink.call_count == 8
+
+    def test_curl_failure_returns_false_and_removes_partial_key(self, capsys):
+        mgr = _make_manager(distro="ubuntu")
+        popen = mock.MagicMock()
+        popen.stdout = mock.MagicMock()
+        popen.wait.return_value = 22
+
+        with (
+            mock.patch("mongodb_manager.Path") as path_cls,
+            mock.patch("mongodb_manager.subprocess.run", return_value=_ok()) as run,
+            mock.patch("mongodb_manager.subprocess.Popen", return_value=popen),
+        ):
+            path_cls.return_value.exists.return_value = False
+            assert mgr._install_debian() is False
+
+        popen.stdout.close.assert_called_once()
+        popen.wait.assert_called_once()
+        path_cls.return_value.unlink.assert_called_once_with(missing_ok=True)
+        assert not any(call.args[0] == ["apt-get", "update"] for call in run.call_args_list)
+        error = capsys.readouterr().err
+        assert "curl" in error
+        assert "exit status 22" in error
+
+    def test_gpg_failure_reaps_curl_and_preserves_error(self, capsys):
+        mgr = _make_manager(distro="ubuntu")
+        popen = mock.MagicMock()
+        popen.stdout = mock.MagicMock()
+        popen.wait.return_value = 0
+        gpg_error = subprocess.CalledProcessError(2, ["gpg", "--dearmor"])
+
+        def run_side_effect(cmd, **kwargs):
+            if cmd[0] == "gpg":
+                raise gpg_error
+            return _ok()
+
+        with (
+            mock.patch("mongodb_manager.Path") as path_cls,
+            mock.patch("mongodb_manager.subprocess.run", side_effect=run_side_effect),
+            mock.patch("mongodb_manager.subprocess.Popen", return_value=popen),
+        ):
+            path_cls.return_value.exists.return_value = False
+            assert mgr._install_debian() is False
+
+        popen.stdout.close.assert_called_once()
+        popen.terminate.assert_called_once()
+        popen.wait.assert_called_once()
+        path_cls.return_value.unlink.assert_called_once_with(missing_ok=True)
+        error = capsys.readouterr().err
+        assert "gpg" in error
+        assert "exit status 2" in error
 
     def test_apt_failure_returns_false(self, capsys):
         mgr = _make_manager(distro="ubuntu")

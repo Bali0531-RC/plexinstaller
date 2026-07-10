@@ -38,7 +38,7 @@ def _make_backup(mgr: BackupManager, product: str = "plextickets", content: str 
 
 class TestMenu:
     def _run_menu(self, mgr, inputs):
-        with mock.patch("backup_manager.os.system"), mock.patch("builtins.input", side_effect=inputs):
+        with mock.patch("backup_manager.clear_terminal"), mock.patch("builtins.input", side_effect=inputs):
             mgr.menu()
 
     def test_exit_immediately(self, tmp_path: Path):
@@ -368,6 +368,27 @@ class TestSetPermissions:
         (install / ".plexinstaller-resources.json").write_text("{broken")
         calls = self._run(install)
         assert "root:root" in calls[0]
+
+    def test_legacy_long_isolated_owner_from_manifest(self, tmp_path: Path):
+        install = tmp_path / ("tickets-" + "x" * 40)
+        install.mkdir()
+        legacy_user = SystemdManager.legacy_service_user_name(install.name)
+        assert legacy_user != SystemdManager.service_user_name(install.name)
+        (install / ".plexinstaller-resources.json").write_text(
+            json.dumps({"service_isolated": True, "service_user": legacy_user})
+        )
+        calls = []
+
+        def fake_run(cmd, **kwargs):
+            calls.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0)
+
+        with (
+            mock.patch("backup_manager.subprocess.run", side_effect=fake_run),
+            mock.patch("backup_manager.pwd.getpwnam", return_value=object()),
+        ):
+            BackupManager._set_permissions(install)
+        assert f"{legacy_user}:{legacy_user}" in calls[0]
 
     def test_skips_symlinked_files(self, tmp_path: Path):
         install = tmp_path / "p"

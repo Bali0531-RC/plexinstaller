@@ -131,25 +131,52 @@ def _run_editor(path: Path) -> int:
     return EXIT_OK
 
 
-_SENSITIVE_KEY = re.compile(
-    r"(?i)(password|passwd|secret|token|api[_-]?key|client[_-]?secret|authorization|cookie|webhook)"
+_SENSITIVE_KEY_NAME = (
+    r"(?:password(?:[ _-]?hash)?|passwd|passphrase|pwd|secret(?:[ _-]?key)?|"
+    r"(?:access|refresh|auth(?:entication|orization)?|id|session|bearer|bot|discord|github|api)"
+    r"[ _-]?token|token|api[ _-]?key|x[ _-]?api[ _-]?key|client[ _-]?(?:secret|token)|"
+    r"private[ _-]?key|license[ _-]?key|authorization|set[ _-]?cookie|cookie|"
+    r"session[ _-]?id|webhook(?:[ _-]?(?:url|secret|token))?|credentials?)"
 )
-_MONGO_URI = re.compile(r"mongodb(?:\+srv)?://[^\s/@:]+:[^\s/@]+@", re.IGNORECASE)
+_SENSITIVE_KEY = re.compile(_SENSITIVE_KEY_NAME, re.IGNORECASE)
+_SENSITIVE_ASSIGNMENT = re.compile(
+    rf"""(?ix)
+    (?P<prefix>
+        (?<![A-Za-z0-9_-])
+        ["']?{_SENSITIVE_KEY_NAME}["']?
+        (?![A-Za-z0-9_-])
+        \s*(?::|=|\bis\b)\s*
+    )
+    (?P<value>
+        "(?:\\.|[^"\\])*"
+        | '(?:\\.|[^'\\])*'
+        | [^\r\n,}}\]]+
+    )
+    """
+)
+_URI_CREDENTIALS = re.compile(
+    r"(?P<scheme>\b[a-z][a-z0-9+.-]*://)(?P<username>[^/\s:@]+):(?P<password>[^/\s@]+)@",
+    re.IGNORECASE,
+)
 _BEARER = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+")
+_BASIC_AUTH = re.compile(r"(?i)\bBasic\s+[A-Za-z0-9+/=]+")
+_REDACTED_VALUES = {"<REDACTED>", "[REDACTED]"}
 
 
 def redact_debug_text(text: str) -> str:
-    """Redact YAML, JSON, URI credentials, bearer tokens, and log key/value secrets."""
+    """Redact known secret patterns in YAML-ish config and free-form debug text."""
     if redact_sensitive_yaml is not None:
         text = redact_sensitive_yaml(text)
-    text = _MONGO_URI.sub("mongodb://<REDACTED>:<REDACTED>@", text)
-    text = _BEARER.sub("Bearer <REDACTED>", text)
-    text = re.sub(
-        r'(?im)^(?P<prefix>\s*["\']?(?:password|passwd|secret|token|api[_-]?key|client[_-]?secret|authorization|cookie|webhook)["\']?\s*[:=]\s*)(?P<value>.+?)(?P<suffix>,?\s*)$',
-        lambda match: f'{match.group("prefix")}"<REDACTED>"{match.group("suffix")}',
+    text = _URI_CREDENTIALS.sub(
+        lambda match: f"{match.group('scheme')}<REDACTED>:<REDACTED>@",
         text,
     )
-    return text
+    text = _BEARER.sub("Bearer <REDACTED>", text)
+    text = _BASIC_AUTH.sub("Basic <REDACTED>", text)
+    return _SENSITIVE_ASSIGNMENT.sub(
+        lambda match: f'{match.group("prefix")}"<REDACTED>"',
+        text,
+    )
 
 
 def _redact_json_value(value: Any) -> Any:
@@ -166,7 +193,7 @@ def _redact_json_value(value: Any) -> Any:
 
 
 def redact_config_contents(contents: str, suffix: str) -> str:
-    """Strictly redact JSON configs and apply text redaction as defense in depth."""
+    """Recursively redact JSON configs and apply text-pattern redaction as defense in depth."""
     if suffix.lower() == ".json":
         try:
             parsed = json.loads(contents)
@@ -178,13 +205,16 @@ def redact_config_contents(contents: str, suffix: str) -> str:
 
 def debug_bundle_is_safe(text: str) -> bool:
     """Reject bundles that still contain obvious credential-bearing patterns."""
-    if _MONGO_URI.search(text) or _BEARER.search(text):
+    for match in _URI_CREDENTIALS.finditer(text):
+        if {match.group("username"), match.group("password")} != {"<REDACTED>"}:
+            return False
+    if _BEARER.search(text) or _BASIC_AUTH.search(text):
         return False
-    for line in text.splitlines():
-        if not _SENSITIVE_KEY.search(line) or ":" not in line and "=" not in line:
-            continue
-        value = re.split(r"[:=]", line, maxsplit=1)[1]
-        if value.strip(" \t\"',") not in {"", "<REDACTED>", "[REDACTED]"}:
+    for match in _SENSITIVE_ASSIGNMENT.finditer(text):
+        value = match.group("value").strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+            value = value[1:-1].strip()
+        if value not in _REDACTED_VALUES:
             return False
     return True
 
@@ -909,7 +939,7 @@ def addon_install(app: str, archive_path: str) -> int:
 
     if addon_mgr.addon_exists(potential_name, app_dir):
         print_error(f"Addon '{potential_name}' already exists.")
-        print_info("Remove the existing addon first: plex addon remove {instance} {potential_name}")
+        print_info(f"Remove the existing addon first: plex addon remove {instance} {potential_name}")
         return 1
 
     print_info(f"Installing addon from {archive.name}...")
@@ -1101,25 +1131,36 @@ def tool_setupdomain(app: str) -> int:
             except Exception:
                 pass
 
-    if port is None:
+    def prompt_for_port(prompt: str) -> int:
         while True:
-            port_input = input("Could not detect port from config. Enter port: ").strip()
+            port_input = input(prompt).strip()
             if port_input.isdigit():
-                port = int(port_input)
-                if 1 <= port <= 65535:
-                    break
-                else:
-                    print_error("Port must be between 1 and 65535.")
+                selected_port = int(port_input)
+                if 1 <= selected_port <= 65535:
+                    return selected_port
+                print_error("Port must be between 1 and 65535.")
             else:
                 print_error("Port must be a number.")
+
+    if port is None:
+        port = prompt_for_port("Could not detect port from config. Enter port: ")
     else:
         print_info(f"Detected port: {port}")
-        port_input = input("Use this port? (Y/n, or enter a different port): ").strip()
-        if port_input and port_input.lower() != "y":
-            if port_input.isdigit() and 1 <= int(port_input) <= 65535:
-                port = int(port_input)
+        while True:
+            port_input = input("Use this port? (Y/n, or enter a different port): ").strip().lower()
+            if port_input in {"", "y", "yes"}:
+                break
+            if port_input in {"n", "no"}:
+                port = prompt_for_port("Enter a new port: ")
+                break
+            if port_input.isdigit():
+                selected_port = int(port_input)
+                if 1 <= selected_port <= 65535:
+                    port = selected_port
+                    break
+                print_error("Port must be between 1 and 65535.")
             else:
-                print_error("Invalid port, using detected port.")
+                print_error("Port must be a number, or enter y/yes/n/no.")
 
     if Config is None:
         print_error("Configuration module unavailable; cannot persist the selected port safely")

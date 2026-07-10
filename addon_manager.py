@@ -17,6 +17,8 @@ import yaml
 
 from utils import ColorPrinter, SystemdManager, install_staged_directory, safe_extract_archive, validate_path_component
 
+_SYSTEM_TEMP_ROOTS = frozenset(path.resolve() for path in (Path(tempfile.gettempdir()), Path("/tmp"), Path("/var/tmp")))
+
 
 class AddonManager:
     """Manages addons for PlexTickets and PlexStaff products"""
@@ -84,18 +86,14 @@ class AddonManager:
                 validate_path_component(addon_name, label="addon name")
 
                 final_path = addons_path / addon_name
-                if final_path.exists() or final_path.is_symlink():
-                    raise FileExistsError(
-                        f"Addon '{addon_name}' already exists. Remove it first or use a different archive name."
-                    )
-
                 self._set_permissions(staged_addon, product_path=product_path)
                 addons_path.mkdir(parents=True, exist_ok=True)
-                if final_path.exists() or final_path.is_symlink():
+                try:
+                    install_staged_directory(staged_addon, final_path)
+                except FileExistsError as exc:
                     raise FileExistsError(
                         f"Addon '{addon_name}' already exists. Remove it first or use a different archive name."
-                    )
-                install_staged_directory(staged_addon, final_path)
+                    ) from exc
 
             config_path = self._find_addon_config(final_path)
             config_msg = f" (config: {config_path.name})" if config_path else " (no config file found)"
@@ -136,9 +134,12 @@ class AddonManager:
         manifest = product_path / ".plexinstaller-resources.json"
         try:
             data = json.loads(manifest.read_text(encoding="utf-8"))
-            expected = SystemdManager.service_user_name(product_path.name)
             user = data.get("service_user")
-            if data.get("service_isolated") is True and isinstance(user, str) and user == expected:
+            if (
+                data.get("service_isolated") is True
+                and isinstance(user, str)
+                and SystemdManager.is_service_user_name(product_path.name, user)
+            ):
                 pwd.getpwnam(user)
                 return user
         except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
@@ -276,20 +277,39 @@ class AddonManager:
 
         Returns list of found archive paths.
         """
-        if search_dirs is None:
-            search_dirs = [Path.home(), Path("/root"), Path("/tmp"), Path("/var/tmp"), Path.cwd()]
+        automatic_search = search_dirs is None
+        if automatic_search:
+            home = Path.home()
+            roots = [home, home / "Downloads", Path.cwd()]
+        else:
+            roots = search_dirs or []
 
         archives = []
         seen_paths = set()
+        seen_roots = set()
         patterns = ["*.zip", "*.tar", "*.tar.gz", "*.tgz", "*.tar.bz2", "*.tbz2", "*.tar.xz", "*.txz"]
 
-        for search_dir in search_dirs:
-            if not search_dir.exists():
+        for search_dir in roots:
+            try:
+                resolved_root = search_dir.resolve()
+            except (OSError, RuntimeError):
                 continue
+            if automatic_search and any(
+                resolved_root == temp_root or temp_root in resolved_root.parents for temp_root in _SYSTEM_TEMP_ROOTS
+            ):
+                continue
+            root_key = os.path.normcase(str(resolved_root))
+            if root_key in seen_roots or not resolved_root.exists():
+                continue
+            seen_roots.add(root_key)
 
             for pattern in patterns:
-                for archive in search_dir.rglob(pattern):
+                for archive in resolved_root.rglob(pattern):
                     resolved = archive.resolve()
+                    if automatic_search and any(
+                        resolved == temp_root or temp_root in resolved.parents for temp_root in _SYSTEM_TEMP_ROOTS
+                    ):
+                        continue
                     if str(resolved) in seen_paths:
                         continue
                     seen_paths.add(str(resolved))

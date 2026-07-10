@@ -5,6 +5,8 @@ Utility functions for PlexDevelopment Installer
 
 import ctypes
 import errno
+import hashlib
+import ipaddress
 import logging
 import os
 import pwd
@@ -27,6 +29,33 @@ from colorama import init as colorama_init
 colorama_init(autoreset=False)
 
 logger = logging.getLogger("plexinstaller")
+
+
+def clear_terminal() -> None:
+    """Clear an interactive terminal without invoking a shell."""
+    try:
+        if not sys.stdout.isatty():
+            return
+    except (AttributeError, OSError):
+        return
+
+    if os.name != "nt" and not os.environ.get("TERM"):
+        return
+
+    command = ["cmd", "/c", "cls"] if os.name == "nt" else ["clear"]
+    try:
+        subprocess.run(command, check=False)
+    except OSError:
+        pass
+
+
+def _subprocess_output_text(value: bytes | str | None) -> str:
+    """Return subprocess output as text regardless of capture mode."""
+    if isinstance(value, bytes):
+        return value.decode(errors="replace")
+    if isinstance(value, str):
+        return value
+    return ""
 
 
 def setup_logging(level: int = logging.INFO, log_file: str | None = None):
@@ -281,8 +310,15 @@ class DNSChecker:
         for service in services:
             try:
                 result = subprocess.run(["curl", "-s", "-m", "5", service], capture_output=True, text=True, timeout=10)
-                if result.returncode == 0 and result.stdout.strip():
-                    return result.stdout.strip()
+                candidate = result.stdout.strip() if result.returncode == 0 and isinstance(result.stdout, str) else ""
+                if not candidate:
+                    continue
+                try:
+                    address = ipaddress.ip_address(candidate)
+                except ValueError:
+                    continue
+                if isinstance(address, ipaddress.IPv4Address):
+                    return str(address)
             except (subprocess.TimeoutExpired, Exception):
                 continue
 
@@ -502,7 +538,10 @@ class NginxManager:
             subprocess.run(["systemctl", "reload", "nginx"], check=True)
             self.printer.success("Nginx configured")
         except subprocess.CalledProcessError as e:
-            self.printer.error(f"Nginx configuration failed: {e.stderr.decode()}")
+            stderr = _subprocess_output_text(e.stderr).strip()
+            stdout = _subprocess_output_text(e.stdout).strip()
+            detail = stderr or stdout or str(e)
+            self.printer.error(f"Nginx configuration failed: {detail}")
             raise
 
 
@@ -568,14 +607,46 @@ class SystemdManager:
         self.printer = ColorPrinter()
 
     @staticmethod
-    def service_user_name(service_name: str) -> str:
-        """Derive the bounded system identity used by opt-in isolation."""
+    def _normalized_service_name(service_name: str) -> str:
         safe_name = validate_path_component(service_name, label="service name")
         normalized = re.sub(r"[^a-z0-9_-]", "-", safe_name.lower())
-        user = f"plex-{normalized}"[:31]
-        if user == "plex-":  # pragma: no cover - defensive, unreachable
+        if not normalized:  # pragma: no cover - defensive, unreachable
             raise ValueError("Could not derive an isolated service user")
-        return user
+        return normalized
+
+    @staticmethod
+    def legacy_service_user_name(service_name: str) -> str:
+        """Return the pre-hash username for compatibility with old manifests."""
+        normalized = SystemdManager._normalized_service_name(service_name)
+        return f"plex-{normalized}"[:31]
+
+    @staticmethod
+    def service_user_name(service_name: str) -> str:
+        """Derive the bounded, collision-resistant opt-in service identity."""
+        safe_name = validate_path_component(service_name, label="service name")
+        normalized = SystemdManager._normalized_service_name(service_name)
+        full_name = f"plex-{normalized}"
+        if len(full_name) <= 31:
+            return full_name
+
+        suffix = hashlib.sha256(safe_name.encode("utf-8")).hexdigest()[:12]
+        prefix_length = 31 - len(suffix) - 1
+        return f"{full_name[:prefix_length]}-{suffix}"
+
+    @staticmethod
+    def accepted_service_user_names(service_name: str) -> frozenset[str]:
+        """Return current and legacy identities valid for a service name."""
+        return frozenset(
+            {
+                SystemdManager.service_user_name(service_name),
+                SystemdManager.legacy_service_user_name(service_name),
+            }
+        )
+
+    @staticmethod
+    def is_service_user_name(service_name: str, user_name: object) -> bool:
+        """Safely validate a current or legacy manifest service identity."""
+        return isinstance(user_name, str) and user_name in SystemdManager.accepted_service_user_names(service_name)
 
     def prepare_service_identity(self, service_name: str, install_path: Path) -> tuple[str, bool]:
         """Create/chown an isolated identity before dependency scripts run."""
@@ -615,9 +686,15 @@ class SystemdManager:
         install_path: Path,
         *,
         remove_user: bool,
+        user_name: str | None = None,
     ) -> None:
         """Restore root ownership and optionally delete an installer-created user."""
-        user = self.service_user_name(service_name)
+        if user_name is None:
+            user = self.service_user_name(service_name)
+        elif self.is_service_user_name(service_name, user_name):
+            user = user_name
+        else:
+            raise ValueError(f"Unexpected service user for {service_name!r}: {user_name!r}")
         if install_path.exists():
             subprocess.run(["chown", "-R", "root:root", str(install_path)], check=False, timeout=60)
         if remove_user:

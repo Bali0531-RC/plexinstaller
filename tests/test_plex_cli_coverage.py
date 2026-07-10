@@ -99,16 +99,41 @@ def test_redact_config_contents_invalid_json_falls_back():
     assert "abc123" not in out
 
 
+def test_redact_config_contents_invalid_json_masks_midline_assignments():
+    source = "not json { token: abc123\nrequest accessToken=hunter2, status=failed\ntoken is xyz789"
+    out = plex_cli.redact_config_contents(source, ".json")
+    assert "abc123" not in out
+    assert "hunter2" not in out
+    assert "xyz789" not in out
+    assert plex_cli.debug_bundle_is_safe(out) is True
+
+
+def test_redact_debug_text_masks_generic_uri_credentials_and_key_variants():
+    source = "connect https://alice:p%40ss@example.com/path\nclientSecret = swordfish\n"
+    out = plex_cli.redact_debug_text(source)
+    assert "alice:p%40ss" not in out
+    assert "swordfish" not in out
+    assert "https://<REDACTED>:<REDACTED>@example.com/path" in out
+    assert plex_cli.debug_bundle_is_safe(out) is True
+
+
 def test_redact_json_value_handles_lists():
-    result = plex_cli._redact_json_value({"items": [{"token": "x"}, "mongodb://a:b@h/db"]})
+    result = plex_cli._redact_json_value({"items": [{"token": "x", "refreshToken": "y"}, "mongodb://a:b@h/db"]})
     assert result["items"][0]["token"] == "<REDACTED>"
+    assert result["items"][0]["refreshToken"] == "<REDACTED>"
     assert "a:b" not in result["items"][1]
 
 
 def test_debug_bundle_is_safe_rejects_uri_and_leaks():
     assert plex_cli.debug_bundle_is_safe("mongodb://u:p@host/db") is False
+    assert plex_cli.debug_bundle_is_safe("https://u:p@host/path") is False
+    assert plex_cli.debug_bundle_is_safe("https://<REDACTED>:<REDACTED>@host/path") is True
     assert plex_cli.debug_bundle_is_safe("password: leaked") is False
+    assert plex_cli.debug_bundle_is_safe("prefix { token: leaked") is False
+    assert plex_cli.debug_bundle_is_safe("token is leaked") is False
     assert plex_cli.debug_bundle_is_safe('password: "<REDACTED>"') is True
+    assert plex_cli.debug_bundle_is_safe('prefix { token: "<REDACTED>"') is True
+    assert plex_cli.debug_bundle_is_safe("tokenizer: parser-name") is True
     assert plex_cli.debug_bundle_is_safe("all clear\n") is True
 
 
@@ -629,7 +654,9 @@ def test_addon_list_paths(install_dir: Path, monkeypatch: pytest.MonkeyPatch, ca
     assert "MyAddon" in out and "No config" in out and "Total: 2" in out
 
 
-def test_addon_install_error_paths(install_dir: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_addon_install_error_paths(
+    install_dir: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture
+):
     assert plex_cli.addon_install("missing", "x.zip") == 1
     make_app(install_dir, "plexstore")
     assert plex_cli.addon_install("plexstore", "x.zip") == 1
@@ -649,7 +676,9 @@ def test_addon_install_error_paths(install_dir: Path, monkeypatch: pytest.Monkey
     archive = tmp_path / "MyAddon-main.zip"
     archive.touch()
     manager.addon_exists.return_value = True
+    capsys.readouterr()
     assert plex_cli.addon_install("plextickets", str(archive)) == 1
+    assert "plex addon remove plextickets MyAddon" in capsys.readouterr().err
     manager.addon_exists.assert_called_with("MyAddon", install_dir / "plextickets")
 
     manager.addon_exists.return_value = False
@@ -764,25 +793,44 @@ def test_tool_setupdomain_prompts_for_port_and_validates(install_dir: Path, monk
             assert plex_cli.tool_setupdomain("plextickets") == 0
 
 
-def test_tool_setupdomain_detects_yaml_port_and_keeps_it(install_dir: Path, monkeypatch: pytest.MonkeyPatch):
+@pytest.mark.parametrize("confirmation", ["", "y", "yes"])
+def test_tool_setupdomain_detects_yaml_port_and_keeps_it(
+    install_dir: Path, monkeypatch: pytest.MonkeyPatch, confirmation: str
+):
     make_app(install_dir, "plextickets", config="port: 3010\n")
     monkeypatch.setattr(plex_cli.os, "geteuid", lambda: 0)
-    answers = iter(["y", "app.example.com", "a@b.io"])
+    answers = iter([confirmation, "app.example.com", "a@b.io"])
     monkeypatch.setattr("builtins.input", lambda _p="": next(answers))
     m1, m2, m3, m4, m5 = _tool_mocks()
-    with m1, m2, m3, m4, m5, mock.patch("plex_cli.Config") as config_cls:
+    with m1, m2 as nginx_setup, m3, m4, m5, mock.patch("plex_cli.Config") as config_cls:
         config_cls.return_value.persist_app_port = mock.MagicMock()
         assert plex_cli.tool_setupdomain("plextickets") == 0
+    assert nginx_setup.call_args.args[1] == 3010
 
 
-def test_tool_setupdomain_invalid_override_falls_back(install_dir: Path, monkeypatch: pytest.MonkeyPatch):
+def test_tool_setupdomain_invalid_override_reprompts(install_dir: Path, monkeypatch: pytest.MonkeyPatch):
     make_app(install_dir, "plextickets", config="port: 3010\n")
     monkeypatch.setattr(plex_cli.os, "geteuid", lambda: 0)
-    answers = iter(["999999", "app.example.com", "", "a@b.io"])
+    answers = iter(["999999", "notaport", "3020", "app.example.com", "a@b.io"])
     monkeypatch.setattr("builtins.input", lambda _p="": next(answers))
     m1, m2, m3, m4, m5 = _tool_mocks()
-    with m1, m2, m3, m4, m5, mock.patch("plex_cli.Config"):
+    with m1, m2 as nginx_setup, m3, m4, m5, mock.patch("plex_cli.Config"):
         assert plex_cli.tool_setupdomain("plextickets") == 0
+    assert nginx_setup.call_args.args[1] == 3020
+
+
+@pytest.mark.parametrize("decline", ["n", "no"])
+def test_tool_setupdomain_declining_detected_port_prompts_for_new_port(
+    install_dir: Path, monkeypatch: pytest.MonkeyPatch, decline: str
+):
+    make_app(install_dir, "plextickets", config="port: 3010\n")
+    monkeypatch.setattr(plex_cli.os, "geteuid", lambda: 0)
+    answers = iter([decline, "bad", "70000", "3021", "app.example.com", "a@b.io"])
+    monkeypatch.setattr("builtins.input", lambda _p="": next(answers))
+    m1, m2, m3, m4, m5 = _tool_mocks()
+    with m1, m2 as nginx_setup, m3, m4, m5, mock.patch("plex_cli.Config"):
+        assert plex_cli.tool_setupdomain("plextickets") == 0
+    assert nginx_setup.call_args.args[1] == 3021
 
 
 def test_tool_setupdomain_config_module_missing(install_dir: Path, monkeypatch: pytest.MonkeyPatch):

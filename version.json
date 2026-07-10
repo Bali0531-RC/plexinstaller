@@ -1,15 +1,11 @@
 {
-  "version": "3.3.0",
+  "version": "3.3.1",
   "release_date": "2026-07-10",
   "changelog": [
-    "Renamed Status, Store, Forms, Links, Paste, and Tracker to Drako for new installs while preserving legacy Plex installation aliases.",
-    "Hardened ZIP/TAR installation, add-on management, and backup restores with staged extraction and rollback.",
-    "Made stable bootstrap and self-updates fail closed with pinned release-key verification and signed dependency hashes.",
-    "Prevented existing installation overwrite and added deterministic per-instance resource cleanup manifests.",
-    "Kept root as the default service model and added optional isolated service users with safe fallback.",
-    "Added validated port persistence, health-gated outcomes, transactional domain setup, and conservative MongoDB cleanup.",
-    "Hardened telemetry redaction, request limits, authentication, retention, permissions, consent, and privacy disclosures.",
-    "Expanded CLI automation, frontend reproducibility, CI security checks, and test coverage."
+    "Hardened debug-bundle redaction and bounded update downloads against malformed input and short-read edge cases.",
+    "Removed automatic archive discovery from shared temporary directories and kept atomic no-replace addon publication authoritative.",
+    "Made isolated service identities collision-resistant while preserving legacy installation ownership and cleanup compatibility.",
+    "Fixed installer rollback, uninstall, port detection, health reporting, nginx/npm diagnostics, and MongoDB setup error handling."
   ],
   "download_urls": {
     "installer": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/installer.py",
@@ -26,16 +22,16 @@
     "requirements": "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/requirements.txt"
   },
   "checksums": {
-    "addon_manager": "d3daf8f8865ba79c0656ecbc6437aa547398e25ac6de586da2e3560e9b54cccc",
-    "backup_manager": "1cd1119ed021c35b238306dede7a9d0f164a16dce58ffcacdf946373efcdcb50",
+    "addon_manager": "094beeb27561f0f4be78d72c3d2adbd4fe3e1570d83524ba9fe3617c5bc53316",
+    "backup_manager": "47cdd3187580cc55609ce608065ecfdb6ef08b76c37da298d59d1d2c9bf2e997",
     "config": "1c80635f143cc83c05a01f1a1cfa9df24f95649cdbdf4b66441a3355fc68baeb",
-    "health_checker": "7ede7683b8f705b41753aa213e9d4ce91d105e52fe959d217cc828ad6b5f60e1",
-    "installer": "62cf7a26ddb4b0df7590073194147cadf3cdc54cc849bdc99a05e85ed436a796",
-    "mongodb_manager": "dbb1892ec54cd1e675789435b3dada1c66d7fe702b86457ac46f2c09a1b0f68d",
-    "plex_cli": "9c35f5078c73f2c1561089cea70703fc7f54eaa282b2b2cb50ffc2695d8130ba",
+    "health_checker": "e76e03ed8a881c2ab9816d2ee22aea04f3fc911268cf6247cec6aa0e3e87d02c",
+    "installer": "d39a29c9d95664157e746417d7ff899d69cb4dce2a67df55fec5a0d911db905d",
+    "mongodb_manager": "d5c908a07cd0b1e7b0f9a5bded9d57e333ef99fc2b3ca2fed462e34e5d2ac7b4",
+    "plex_cli": "4185506100eb2985834099ef25808f13e2644ee791eadbbeee612fb60980cc05",
     "requirements": "fd8f0565512b997c8c699eeb87dbf432d31e3b5de9dde4ef76f7e2a10e65df12",
-    "shared": "e0fe514f103ae13d523c8bfd68eca23b73d020e22151d25bb2c46231d38df9c0",
+    "shared": "d9792a05e9d2c1150f2e2c432d22ee41f42272f0068ac175996d606802906e21",
     "telemetry_client": "d499d80d9b8224adc51c5d6c60b33a6c9165e41446d5d5eb127f61561749f3fa",
-    "utils": "3a077072abd9d2341d6183397787093deaab0d1fce9ea3e67b26a1725212e56d"
+    "utils": "b5c4a3036519659ae4fdc9974648482676ee2bdafea8ec7c0220e5f43a024952"
   }
 }

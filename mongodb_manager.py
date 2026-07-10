@@ -197,6 +197,27 @@ class MongoDBManager:
     # User / database provisioning
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _is_permanent_auth_error(message: str) -> bool:
+        """Return whether *message* clearly indicates that authentication is required."""
+        normalized = message.casefold()
+        auth_markers = (
+            "not authorized",
+            "unauthorized",
+            "requires authentication",
+            "requires authorization",
+            "authentication is required",
+            "authorization is required",
+            "authentication required",
+            "authorization required",
+            "auth is required",
+            "auth required",
+            "requires auth",
+            "authenticationfailed",
+            "authentication failed",
+        )
+        return any(marker in normalized for marker in auth_markers)
+
     def create_user(self, instance_name: str) -> dict | None:
         """Create a MongoDB database and user for *instance_name*."""
         alphabet = string.ascii_letters + string.digits
@@ -232,6 +253,7 @@ class MongoDBManager:
         )
 
         last_error = ""
+        permanent_auth_error = False
         for attempt in range(1, 6):
             try:
                 result = self.run_shell(["--quiet", "--eval", create_user_script], timeout=30)
@@ -252,18 +274,25 @@ class MongoDBManager:
             except Exception as exc:
                 last_error = str(exc)
 
-            self.printer.warning(f"MongoDB user creation attempt {attempt}/5 failed; retrying...")
-            time.sleep(2)
+            if self._is_permanent_auth_error(last_error):
+                permanent_auth_error = True
+                break
 
-        if "not authorized" in last_error.lower() or "unauthorized" in last_error.lower():
+            if attempt < 5:
+                self.printer.warning(f"MongoDB user creation attempt {attempt}/5 failed; retrying...")
+                time.sleep(2)
+
+        if permanent_auth_error:
             self.printer.error("MongoDB appears to have authentication enabled already.")
             self.printer.step("This installer can only auto-provision users on a local MongoDB without prior auth.")
             self.printer.step(
                 "Workaround: temporarily disable auth or create the DB/user manually, "
                 "then paste the URI into your app config."
             )
+            self.printer.error(f"Failed to create MongoDB user due to an authorization error. Last error: {last_error}")
+            return None
 
-        self.printer.error(f"Failed to create MongoDB user after retries. Last error: {last_error}")
+        self.printer.error(f"Failed to create MongoDB user after 5 attempts. Last error: {last_error}")
         return None
 
     # ------------------------------------------------------------------
@@ -499,26 +528,52 @@ class MongoDBManager:
             mongo_ver = self.mongodb_version
             mongo_ver_bookworm = self.mongodb_repo_version_bookworm
             self.printer.step("Adding MongoDB repository...")
-            curl_process = subprocess.Popen(
-                [
-                    "curl",
-                    "-fsSL",
-                    f"https://www.mongodb.org/static/pgp/server-{mongo_ver}.asc",
-                ],
-                stdout=subprocess.PIPE,
-            )
-            subprocess.run(
-                [
-                    "gpg",
-                    "-o",
-                    f"/usr/share/keyrings/mongodb-server-{mongo_ver}.gpg",
-                    "--dearmor",
-                ],
-                stdin=curl_process.stdout,
-                check=True,
-                timeout=30,
-            )
-            curl_process.wait()
+            keyring_path = Path(f"/usr/share/keyrings/mongodb-server-{mongo_ver}.gpg")
+            curl_command = [
+                "curl",
+                "-fsSL",
+                f"https://www.mongodb.org/static/pgp/server-{mongo_ver}.asc",
+            ]
+            curl_process = subprocess.Popen(curl_command, stdout=subprocess.PIPE)
+            try:
+                if curl_process.stdout is None:
+                    raise RuntimeError("Failed to capture MongoDB signing-key download")
+                try:
+                    subprocess.run(
+                        [
+                            "gpg",
+                            "-o",
+                            str(keyring_path),
+                            "--dearmor",
+                        ],
+                        stdin=curl_process.stdout,
+                        check=True,
+                        timeout=30,
+                    )
+                finally:
+                    curl_process.stdout.close()
+            except Exception:
+                try:
+                    curl_process.terminate()
+                except OSError:
+                    pass
+                try:
+                    curl_process.wait()
+                except Exception:
+                    pass
+                try:
+                    keyring_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                raise
+
+            curl_returncode = curl_process.wait()
+            if curl_returncode != 0:
+                try:
+                    keyring_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                raise subprocess.CalledProcessError(curl_returncode, curl_command)
 
             distro = (self.system.distribution or "").lower()
             distro_codename = subprocess.run(

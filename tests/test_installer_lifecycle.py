@@ -76,6 +76,7 @@ def test_drako_archive_search_accepts_legacy_plex_filename(tmp_path: Path, monke
     installer = _installer(tmp_path)
     archive = tmp_path / "plexstore-release.zip"
     archive.write_bytes(b"archive")
+    monkeypatch.setattr("installer._SYSTEM_TEMP_ROOTS", frozenset())
     monkeypatch.setattr("installer.Path.home", lambda: tmp_path)
     monkeypatch.setattr("installer.Path.cwd", lambda: tmp_path)
     monkeypatch.setattr("builtins.input", lambda _prompt="": "1")

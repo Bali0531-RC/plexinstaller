@@ -371,6 +371,7 @@ def test_find_archive_custom_path_choice(monkeypatch, tmp_path):
     (tmp_path / "zzq3prod-a.zip").write_bytes(b"x")
     custom = tmp_path / "custom.zip"
     custom.write_bytes(b"x")
+    monkeypatch.setattr(installer_module, "_SYSTEM_TEMP_ROOTS", frozenset())
     monkeypatch.setattr("installer.Path.home", lambda: tmp_path)
     monkeypatch.setattr("installer.Path.cwd", lambda: tmp_path)
     _answers(monkeypatch, ["0", str(custom)])
@@ -380,6 +381,7 @@ def test_find_archive_custom_path_choice(monkeypatch, tmp_path):
 def test_find_archive_invalid_choice(monkeypatch, tmp_path):
     inst = _installer(tmp_path)
     (tmp_path / "zzq4prod-a.zip").write_bytes(b"x")
+    monkeypatch.setattr(installer_module, "_SYSTEM_TEMP_ROOTS", frozenset())
     monkeypatch.setattr("installer.Path.home", lambda: tmp_path)
     monkeypatch.setattr("installer.Path.cwd", lambda: tmp_path)
     _answers(monkeypatch, ["nope"])
@@ -389,10 +391,41 @@ def test_find_archive_invalid_choice(monkeypatch, tmp_path):
 def test_find_archive_out_of_range_choice(monkeypatch, tmp_path):
     inst = _installer(tmp_path)
     (tmp_path / "zzq5prod-a.zip").write_bytes(b"x")
+    monkeypatch.setattr(installer_module, "_SYSTEM_TEMP_ROOTS", frozenset())
     monkeypatch.setattr("installer.Path.home", lambda: tmp_path)
     monkeypatch.setattr("installer.Path.cwd", lambda: tmp_path)
     _answers(monkeypatch, ["99"])
     assert inst._find_archive("zzq5prod") is None
+
+
+def test_find_archive_does_not_recursively_scan_system_temp(monkeypatch, tmp_path):
+    inst = _installer(tmp_path)
+    (tmp_path / "nested").mkdir()
+    (tmp_path / "nested" / "temp-product.zip").write_bytes(b"x")
+    rglob = mock.MagicMock(side_effect=AssertionError("system temp directory was scanned"))
+    monkeypatch.setattr(installer_module, "_SYSTEM_TEMP_ROOTS", frozenset({tmp_path.resolve()}))
+    monkeypatch.setattr(Path, "rglob", rglob)
+    monkeypatch.setattr("installer.Path.home", lambda: tmp_path)
+    monkeypatch.setattr("installer.Path.cwd", lambda: tmp_path / "nested")
+    _answers(monkeypatch, [str(tmp_path / "missing.zip")])
+
+    assert inst._find_archive("temp-product") is None
+    rglob.assert_not_called()
+
+
+def test_find_archive_accepts_manual_system_temp_path(monkeypatch, tmp_path):
+    inst = _installer(tmp_path)
+    archive = tmp_path / "manual-product.zip"
+    archive.write_bytes(b"x")
+    rglob = mock.MagicMock(side_effect=AssertionError("system temp directory was scanned"))
+    monkeypatch.setattr(installer_module, "_SYSTEM_TEMP_ROOTS", frozenset({tmp_path.resolve()}))
+    monkeypatch.setattr(Path, "rglob", rglob)
+    monkeypatch.setattr("installer.Path.home", lambda: tmp_path)
+    monkeypatch.setattr("installer.Path.cwd", lambda: tmp_path)
+    _answers(monkeypatch, [str(archive)])
+
+    assert inst._find_archive("manual-product") == archive
+    rglob.assert_not_called()
 
 
 def test_extract_product_refuses_existing(tmp_path):
@@ -427,6 +460,15 @@ def test_npm_install_failure(tmp_path):
     err = subprocess.CalledProcessError(1, "npm", stderr=b"broken")
     with mock.patch("installer.subprocess.run", side_effect=err):
         assert inst._install_npm_dependencies(tmp_path) is False
+
+
+def test_npm_install_failure_without_stderr_is_reported(tmp_path):
+    inst = _installer(tmp_path)
+    (tmp_path / "package.json").write_text("{}")
+    err = subprocess.CalledProcessError(1, "npm", stderr=None)
+    with mock.patch("installer.subprocess.run", side_effect=err):
+        assert inst._install_npm_dependencies(tmp_path) is False
+    assert "exit status 1" in inst.printer.error.call_args.args[0]
 
 
 def test_create_502_page(tmp_path):
@@ -924,6 +966,29 @@ def test_install_product_isolation_service_fallback_releases_identity(tmp_path):
     inst._setup_systemd = mock.MagicMock(return_value=False)
     assert inst._install_product("plexstaff", 3001) == 0
     inst.systemd.release_service_identity.assert_called_once()
+
+
+def test_install_product_failed_root_fallback_releases_identity_once(tmp_path):
+    inst = _installer(tmp_path)
+    inst.assume_yes = True
+    inst.isolate_services = True
+    app = _wired_for_install(inst, tmp_path)
+    del inst._setup_systemd
+    inst.systemd.prepare_service_identity.return_value = ("plex-plexstaff", True)
+
+    def fail_isolated_and_root(_name, _path, **kwargs):
+        mode = "isolated" if kwargs else "root"
+        raise RuntimeError(f"{mode} service failed")
+
+    inst.systemd.create_service.side_effect = fail_isolated_and_root
+
+    assert inst._install_product("plexstaff", 3001, needs_web=False) == 1
+    inst.systemd.release_service_identity.assert_called_once_with(
+        "plexstaff",
+        app,
+        remove_user=True,
+        user_name="plex-plexstaff",
+    )
 
 
 def test_install_product_health_unavailable_returns_2(tmp_path):

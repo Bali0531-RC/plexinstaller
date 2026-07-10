@@ -32,6 +32,7 @@ from utils import (
     SSLManager,
     SystemDetector,
     SystemdManager,
+    clear_terminal,
     install_staged_directory,
     safe_extract_tar,
     validate_path_component,
@@ -85,10 +86,11 @@ except ImportError:
 from utils import setup_logging
 
 # Current installer version
-INSTALLER_VERSION = "3.3.0"
+INSTALLER_VERSION = "3.3.1"
 VERSION_CHECK_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/version.json"
 LOCK_FILE = "/var/run/plexinstaller.lock"
 RESOURCE_MANIFEST = ".plexinstaller-resources.json"
+_SYSTEM_TEMP_ROOTS = frozenset(path.resolve() for path in (Path(tempfile.gettempdir()), Path("/tmp"), Path("/var/tmp")))
 
 
 class UserAbortError(Exception):
@@ -235,7 +237,7 @@ class PlexInstaller:
 
     def run(self) -> int:
         """Main entry point"""
-        os.system("clear" if os.name != "nt" else "cls")
+        clear_terminal()
         self._display_banner()
 
         if not self.telemetry_enabled:
@@ -446,7 +448,7 @@ class PlexInstaller:
         """Display main menu and handle user choice"""
         exit_code = 0
         while True:
-            os.system("clear" if os.name != "nt" else "cls")
+            clear_terminal()
             self._display_banner()
             self.printer.header("Main Menu")
 
@@ -545,7 +547,11 @@ class PlexInstaller:
                     import re
 
                     content = config_file.read_text()
-                    match = re.search(r"port[:\s]+(\d+)", content, re.IGNORECASE)
+                    match = re.search(
+                        r"^[ \t]*port[ \t]*:[ \t]*(\d+)(?:[ \t]*(?:#.*)?)?$",
+                        content,
+                        re.IGNORECASE | re.MULTILINE,
+                    )
                     if match:
                         port = match.group(1)
                         break
@@ -717,12 +723,19 @@ class PlexInstaller:
 
             # Systemd service
             current_step = "systemd"
-            context.service_created = self._setup_systemd(
-                instance_name,
-                extracted_path,
-                isolated=context.service_isolated,
-                isolated_user_created=context.service_user_created,
-            )
+            try:
+                context.service_created = self._setup_systemd(
+                    instance_name,
+                    extracted_path,
+                    isolated=context.service_isolated,
+                    isolated_user_created=context.service_user_created,
+                    isolated_user=context.service_user,
+                )
+            finally:
+                if getattr(self, "_last_service_identity_released", False):
+                    context.service_isolated = False
+                    context.service_user = None
+                    context.service_user_created = False
             context.service_isolated = bool(getattr(self, "_last_service_isolated", False))
             if context.service_created and not context.service_isolated:
                 context.service_user = None
@@ -732,6 +745,7 @@ class PlexInstaller:
                     instance_name,
                     extracted_path,
                     remove_user=context.service_user_created,
+                    user_name=context.service_user,
                 )
                 context.service_user = None
                 context.service_user_created = False
@@ -864,7 +878,26 @@ class PlexInstaller:
         """Find product archive file"""
         self.printer.step(f"Searching for {product} archive...")
 
-        search_dirs = [Path.home(), Path("/root"), Path("/tmp"), Path("/var/tmp"), Path.cwd()]
+        home = Path.home()
+        trusted_roots = (home, home / "Downloads", Path.cwd())
+        search_dirs = []
+        seen_roots = set()
+
+        def is_system_temp_path(path: Path) -> bool:
+            return any(path == temp_root or temp_root in path.parents for temp_root in _SYSTEM_TEMP_ROOTS)
+
+        for candidate in trusted_roots:
+            try:
+                resolved_root = candidate.resolve()
+            except (OSError, RuntimeError):
+                continue
+            if is_system_temp_path(resolved_root):
+                continue
+            root_key = os.path.normcase(str(resolved_root))
+            if root_key in seen_roots:
+                continue
+            seen_roots.add(root_key)
+            search_dirs.append(resolved_root)
 
         archives = []
         seen_paths = set()
@@ -879,6 +912,8 @@ class PlexInstaller:
                 for archive in search_dir.rglob(pattern):
                     if any(product_name in archive.name.lower() for product_name in product_names):
                         resolved = archive.resolve()
+                        if is_system_temp_path(resolved):
+                            continue
                         if str(resolved) in seen_paths:
                             continue
                         seen_paths.add(str(resolved))
@@ -953,7 +988,13 @@ class PlexInstaller:
             self.printer.success("NPM dependencies installed")
             return True
         except subprocess.CalledProcessError as e:
-            self.printer.error(f"NPM install failed: {e.stderr.decode()}")
+            if isinstance(e.stderr, bytes):
+                detail = e.stderr.decode(errors="replace").strip()
+            elif isinstance(e.stderr, str):
+                detail = e.stderr.strip()
+            else:
+                detail = ""
+            self.printer.error(f"NPM install failed: {detail or str(e)}")
             return False
 
     def _create_502_page(self, install_path: Path, product: str):
@@ -1129,9 +1170,11 @@ class PlexInstaller:
         *,
         isolated: bool | None = None,
         isolated_user_created: bool = False,
+        isolated_user: str | None = None,
     ) -> bool:
         """Setup systemd service"""
         self._last_service_isolated = False
+        self._last_service_identity_released = False
         choice = self._confirm(f"Set up '{instance_name}' to auto-start on boot?", default=False)
 
         if choice:
@@ -1149,7 +1192,9 @@ class PlexInstaller:
                             instance_name,
                             install_path,
                             remove_user=isolated_user_created,
+                            user_name=isolated_user,
                         )
+                        self._last_service_identity_released = True
                     except Exception as cleanup_exc:
                         self.printer.warning(f"Could not fully reset isolated identity: {cleanup_exc}")
             self._create_systemd_service(instance_name, install_path, isolated=False)
@@ -1260,6 +1305,7 @@ class PlexInstaller:
                     context.instance_name,
                     context.install_path,
                     remove_user=context.service_user_created,
+                    user_name=context.service_user,
                 )
             except Exception as exc:
                 self.printer.warning(f"Could not remove isolated service identity: {exc}")
@@ -1373,8 +1419,8 @@ class PlexInstaller:
             elif choice == "5":
                 self._edit_config(product)
             elif choice == "6":
-                self._uninstall_product(product)
-                break
+                if self._uninstall_product(product):
+                    break
 
     def _edit_config(self, product: str):
         """Edit product configuration"""
@@ -1449,7 +1495,12 @@ class PlexInstaller:
         service_user = manifest.get("service_user")
         if isinstance(service_user, str) and service_user and manifest.get("service_user_created"):
             try:
-                self.systemd.release_service_identity(product, install_path, remove_user=True)
+                self.systemd.release_service_identity(
+                    product,
+                    install_path,
+                    remove_user=True,
+                    user_name=service_user,
+                )
             except Exception as exc:
                 self.printer.warning(f"Could not remove isolated service identity: {exc}")
 
@@ -1534,7 +1585,7 @@ class PlexInstaller:
     def _ssl_management_menu(self):
         """SSL certificate management menu"""
         while True:
-            os.system("clear" if os.name != "nt" else "cls")
+            clear_terminal()
             self.printer.header("SSL Certificate Management")
 
             print("\n1) View SSL Certificate Status")
@@ -1616,7 +1667,7 @@ class PlexInstaller:
             return
 
         while True:
-            os.system("clear" if os.name != "nt" else "cls")
+            clear_terminal()
             self.printer.header("Addon Management")
             print("Manage addons for PlexTickets and PlexStaff installations\n")
 
@@ -1679,7 +1730,7 @@ class PlexInstaller:
         """Manage addons for a specific product"""
         addon_manager = self._require_addon_manager()
         while True:
-            os.system("clear" if os.name != "nt" else "cls")
+            clear_terminal()
             self.printer.header(f"Addons for {product_name}")
 
             addons = addon_manager.list_addons(product_path)
@@ -1978,15 +2029,14 @@ class PlexInstaller:
 
     def _restore_addon_backup(self, product_name: str, product_path: Path, backup: dict):
         """Safely stage and transactionally restore an addon backup."""
-        addon_manager = self._require_addon_manager()
-
-        addon_name = validate_path_component(str(backup["addon_name"]), label="addon name")
-        backup_path = Path(backup["path"])
-        addons_path = addon_manager.get_addons_path(product_path)
-        addon_path = addons_path / addon_name
-        rollback_path: Path | None = None
-
         try:
+            addon_manager = self._require_addon_manager()
+            addon_name = validate_path_component(backup["addon_name"], label="addon name")
+            backup_path = Path(backup["path"])
+            addons_path = addon_manager.get_addons_path(product_path)
+            addon_path = addons_path / addon_name
+            rollback_path: Path | None = None
+
             self.printer.step("Restoring from backup...")
             addons_path.mkdir(parents=True, exist_ok=True)
             with tempfile.TemporaryDirectory(prefix=f".{addon_name}.restore-", dir=addons_path) as temp_dir:

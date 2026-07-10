@@ -215,8 +215,17 @@ def test_print_summary_failure_without_hint(tmp_path):
 
 def test_download_bytes_without_geturl(monkeypatch):
     class FakeResponse:
-        def read(self, _n=None):
-            return b"payload"
+        def __init__(self):
+            self._content = b"payload"
+
+        def read(self, size=-1):
+            if size < 0:
+                chunk = self._content
+                self._content = b""
+                return chunk
+            chunk = self._content[:size]
+            self._content = self._content[size:]
+            return chunk
 
         def __enter__(self):
             return self

@@ -14,7 +14,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from utils import ColorPrinter, SystemdManager
+from utils import ColorPrinter, SystemdManager, clear_terminal
 
 logger = logging.getLogger("plexinstaller.health")
 
@@ -156,11 +156,8 @@ class HealthChecker:
         config_files = list(context.install_path.glob("config.y*ml")) + list(context.install_path.glob("config.json"))
         if config_files:
             cfg_detail = config_files[0].name
-            cfg_hint = (
-                "Fill in the required values (tokens, secrets, etc.) in "
-                f"{config_files[0]} before the service will run correctly"
-            )
-            cfg_status = "warn"
+            cfg_hint = ""
+            cfg_status = "pass"
         else:
             cfg_detail = "no config.yml/config.json found"
             cfg_hint = "You may need to create/configure the app config manually"
@@ -177,6 +174,7 @@ class HealthChecker:
         service_name = f"plex-{context.instance_name}"
         if context.service_created:
             is_active = False
+            status = "unknown"
             for _ in range(20):
                 status = self.systemd.get_status(service_name)
                 if status.strip() == "active":
@@ -188,7 +186,7 @@ class HealthChecker:
                 SelfTestResult(
                     name="systemd service active",
                     status="pass" if is_active else "fail",
-                    detail=f"{service_name} is {self.systemd.get_status(service_name)}",
+                    detail=f"{service_name} is {status}",
                     hint=(
                         f"The service may have crashed because config.yml is not yet filled in. "
                         f"Edit the config, then: systemctl restart {service_name}"
@@ -317,7 +315,7 @@ class HealthChecker:
 
     def system_health_check(self):
         """Comprehensive system health check (disk, services, nginx, mongo, SSL, mem, load)."""
-        os.system("clear" if os.name != "nt" else "cls")
+        clear_terminal()
         self.printer.header("System Health Check")
 
         # Disk space

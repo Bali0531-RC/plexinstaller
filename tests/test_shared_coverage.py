@@ -38,12 +38,25 @@ _PRINTERS = dict(
 )
 
 
-def _response(content: bytes, url: str = "https://example.com/f"):
+def _response(content: bytes, url: str = "https://example.com/f", max_read_size: int | None = None):
     response = mock.MagicMock()
     response.__enter__.return_value = response
     response.__exit__.return_value = False
-    response.read.side_effect = lambda n=-1: content[:n] if n >= 0 else content
     response.geturl.return_value = url
+    offset = 0
+
+    def read(n: int = -1) -> bytes:
+        nonlocal offset
+        if offset >= len(content):
+            return b""
+        requested = len(content) - offset if n < 0 else n
+        if max_read_size is not None:
+            requested = min(requested, max_read_size)
+        chunk = content[offset : offset + requested]
+        offset += len(chunk)
+        return chunk
+
+    response.read.side_effect = read
     return response
 
 
@@ -99,6 +112,13 @@ class TestDownloadBytes:
         with mock.patch("shared.urllib.request.urlopen", return_value=_response(b"x" * 11)):
             with pytest.raises(ValueError, match="size limit"):
                 _download_bytes("https://example.com/f", timeout=5, max_bytes=10)
+
+    def test_short_reads_cannot_hide_oversized_download(self):
+        response = _response(b"x" * 11, max_read_size=3)
+        with mock.patch("shared.urllib.request.urlopen", return_value=response):
+            with pytest.raises(ValueError, match="size limit"):
+                _download_bytes("https://example.com/f", timeout=5, max_bytes=10)
+        assert response.read.call_count > 1
 
     def test_insecure_redirect_rejected(self):
         resp = _response(b"data", url="http://evil.example/f")

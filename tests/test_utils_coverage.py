@@ -25,6 +25,7 @@ from utils import (
     SystemDetector,
     SystemdManager,
     UnsafeArchiveError,
+    clear_terminal,
     install_staged_directory,
     redact_sensitive_yaml,
     safe_extract_archive,
@@ -213,6 +214,19 @@ class TestDNSChecker:
         with mock.patch("utils.subprocess.run", side_effect=results):
             assert checker._get_public_ip() == "8.8.8.8"
 
+    def test_get_public_ip_skips_invalid_and_non_ipv4_output(self):
+        checker = DNSChecker()
+        results = [_ok("<html>blocked</html>"), _ok("2001:4860:4860::8888"), _ok(" 1.1.1.1\n")]
+        with mock.patch("utils.subprocess.run", side_effect=results) as run:
+            assert checker._get_public_ip() == "1.1.1.1"
+        assert run.call_count == 3
+
+    def test_get_public_ip_all_outputs_invalid(self):
+        checker = DNSChecker()
+        results = [_ok("not an address"), _ok("<h1>error</h1>"), _ok("2001:db8::1")]
+        with mock.patch("utils.subprocess.run", side_effect=results):
+            assert checker._get_public_ip() is None
+
 
 # ---------------------------------------------------------------------------
 # FirewallManager
@@ -346,6 +360,18 @@ class TestNginxManager:
         ):
             mgr.setup("example.com", 3000, "svc", tmp_path / "app")
 
+    def test_setup_failure_with_none_stderr_preserves_exception(self, tmp_path: Path, capsys):
+        mgr = self._manager(tmp_path)
+        err = subprocess.CalledProcessError(1, ["nginx", "-t"], output="plain-text failure", stderr=None)
+        with (
+            mock.patch("utils.subprocess.run", side_effect=err),
+            pytest.raises(subprocess.CalledProcessError) as raised,
+        ):
+            mgr.setup("example.com", 3000, "svc", tmp_path / "app")
+
+        assert raised.value is err
+        assert "plain-text failure" in capsys.readouterr().err
+
 
 # ---------------------------------------------------------------------------
 # SSLManager
@@ -420,9 +446,37 @@ class TestSystemdManager:
     def test_service_user_name_normalizes(self):
         assert SystemdManager.service_user_name("My App") == "plex-my-app"
 
-    def test_service_user_name_truncates(self):
-        name = SystemdManager.service_user_name("a" * 60)
+    def test_service_user_name_long_value_is_stable_and_bounded(self):
+        service_name = "a" * 60
+        name = SystemdManager.service_user_name(service_name)
         assert len(name) == 31
+        assert name == SystemdManager.service_user_name(service_name)
+
+    def test_service_user_name_long_same_prefixes_do_not_collide(self):
+        shared_prefix = "shared-prefix-" + "x" * 30
+        first = shared_prefix + "a" * 20
+        second = shared_prefix + "b" * 20
+
+        assert SystemdManager.legacy_service_user_name(first) == SystemdManager.legacy_service_user_name(second)
+        assert SystemdManager.service_user_name(first) != SystemdManager.service_user_name(second)
+        assert len(SystemdManager.service_user_name(first)) <= 31
+        assert len(SystemdManager.service_user_name(second)) <= 31
+
+    def test_service_user_name_long_normalization_collisions_do_not_collide(self):
+        first = "instance." + "x" * 40
+        second = "instance-" + "x" * 40
+        assert SystemdManager.legacy_service_user_name(first) == SystemdManager.legacy_service_user_name(second)
+        assert SystemdManager.service_user_name(first) != SystemdManager.service_user_name(second)
+
+    def test_service_user_name_accepts_current_and_legacy_long_names(self):
+        service_name = "long-service-name-" + "x" * 40
+        current = SystemdManager.service_user_name(service_name)
+        legacy = SystemdManager.legacy_service_user_name(service_name)
+
+        assert SystemdManager.is_service_user_name(service_name, current)
+        assert SystemdManager.is_service_user_name(service_name, legacy)
+        assert not SystemdManager.is_service_user_name(service_name, "plex-someone-else")
+        assert not SystemdManager.is_service_user_name(service_name, None)
 
     @pytest.mark.parametrize("bad", ["..", ".", "", "a/b", "a\\b", "a\x00b"])
     def test_service_user_name_rejects_invalid(self, bad: str):
@@ -477,6 +531,29 @@ class TestSystemdManager:
         assert "chown" in cmds
         assert "userdel" in cmds
         assert "groupdel" in cmds
+
+    def test_release_identity_uses_recorded_legacy_user(self, tmp_path: Path):
+        mgr = SystemdManager()
+        service_name = "service-" + "x" * 40
+        legacy = mgr.legacy_service_user_name(service_name)
+        with (
+            mock.patch("utils.shutil.which", return_value="/usr/bin/groupdel"),
+            mock.patch("utils.subprocess.run", return_value=_ok()) as run,
+        ):
+            mgr.release_service_identity(
+                service_name,
+                tmp_path,
+                remove_user=True,
+                user_name=legacy,
+            )
+        commands = [call.args[0] for call in run.call_args_list]
+        assert ["userdel", legacy] in commands
+        assert ["groupdel", legacy] in commands
+
+    def test_release_identity_rejects_unexpected_recorded_user(self, tmp_path: Path):
+        mgr = SystemdManager()
+        with pytest.raises(ValueError, match="Unexpected service user"):
+            mgr.release_service_identity("service", tmp_path, remove_user=True, user_name="root")
 
     def test_release_identity_keeps_user(self, tmp_path: Path):
         mgr = SystemdManager()
@@ -594,6 +671,34 @@ class TestValidatePathComponent:
     def test_invalid(self, bad):
         with pytest.raises(ValueError):
             validate_path_component(bad)
+
+
+class TestClearTerminal:
+    def test_non_tty_does_not_execute(self):
+        with (
+            mock.patch("utils.sys.stdout.isatty", return_value=False),
+            mock.patch("utils.subprocess.run") as run,
+        ):
+            clear_terminal()
+        run.assert_not_called()
+
+    def test_tty_executes_clear_without_shell(self):
+        with (
+            mock.patch("utils.sys.stdout.isatty", return_value=True),
+            mock.patch.dict("utils.os.environ", {"TERM": "xterm"}),
+            mock.patch("utils.subprocess.run") as run,
+        ):
+            clear_terminal()
+        run.assert_called_once_with(["clear"], check=False)
+
+    def test_clear_os_error_is_swallowed(self):
+        with (
+            mock.patch("utils.sys.stdout.isatty", return_value=True),
+            mock.patch.dict("utils.os.environ", {"TERM": "xterm"}),
+            mock.patch("utils.subprocess.run", side_effect=OSError("clear unavailable")) as run,
+        ):
+            clear_terminal()
+        run.assert_called_once_with(["clear"], check=False)
 
 
 class TestInstallStagedDirectory:
