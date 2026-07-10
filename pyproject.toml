@@ -4,15 +4,26 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "plexinstaller"
-version = "3.2.0"
-description = "Unofficial CLI installer and management tool for PlexDevelopment products"
+version = "3.2.1"
+description = "Experimental Windows installer and management CLI for PlexDevelopment products"
 readme = "README.md"
-license = "GPL-3.0-only"
+license = "MIT"
 requires-python = ">=3.10"
 dependencies = [
-    "requests>=2.31.0",
-    "pyyaml>=6.0",
-    "colorama>=0.4.6",
+    "requests>=2.31,<3",
+    "PyYAML>=6.0,<7",
+    "colorama>=0.4.6,<1",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Win32 (MS Windows)",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows :: Windows 10",
+    "Operating System :: Microsoft :: Windows :: Windows 11",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
 ]
 
 [project.scripts]
@@ -20,16 +31,14 @@ plexinstaller = "installer:main"
 plex = "plex_cli:main"
 
 [project.optional-dependencies]
-telemetry-server = [
-    "fastapi>=0.115.0",
-    "uvicorn>=0.30.0",
-    "pydantic>=2.0",
-]
 dev = [
-    "pytest>=7.4",
-    "pytest-cov>=4.1",
-    "ruff>=0.4",
-    "mypy>=1.10",
+    "pytest>=7.4,<10",
+    "pytest-cov>=4.1,<8",
+    "ruff>=0.4,<1",
+    "mypy>=1.10,<2",
+    "types-colorama>=0.4.15",
+    "types-PyYAML>=6.0.12",
+    "types-requests>=2.31",
 ]
 
 [tool.setuptools]
@@ -44,11 +53,21 @@ py-modules = [
     "health_checker",
     "mongodb_manager",
     "backup_manager",
+    "release_windows",
 ]
 
 [tool.ruff]
 target-version = "py310"
 line-length = 120
+extend-exclude = [
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".venv",
+    "build",
+    "dist",
+    "web2",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B"]
@@ -59,7 +78,40 @@ python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
+check_untyped_defs = true
+exclude = [
+    "(?x)(^|/)(?:build|dist|web2|\\.mypy_cache|\\.pytest_cache|\\.ruff_cache|\\.venv)/",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[tool.coverage.run]
+branch = true
+source = [
+    "addon_manager",
+    "backup_manager",
+    "config",
+    "health_checker",
+    "installer",
+    "mongodb_manager",
+    "plex_cli",
+    "shared",
+    "telemetry_client",
+    "utils",
+]
+omit = [
+    "tests/*",
+    "*/tests/*",
+    ".venv/*",
+    "*/site-packages/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "if __name__ == ['\"]__main__['\"]:",
+]

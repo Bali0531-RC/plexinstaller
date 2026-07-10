@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import re
+import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -29,6 +31,40 @@ def _redact(text: str) -> str:
     return result
 
 
+def _make_private(path: Path, *, directory: bool) -> None:
+    """Apply restrictive permissions and a best-effort private Windows ACL."""
+    try:
+        path.chmod(0o700 if directory else 0o600)
+    except OSError:
+        pass
+
+    if os.name != "nt":
+        return
+    try:
+        username = os.environ.get("USERNAME")
+        if not username:
+            return
+        rights = "(OI)(CI)F" if directory else "F"
+        subprocess.run(
+            [
+                "icacls",
+                str(path),
+                "/inheritance:r",
+                "/grant:r",
+                f"{username}:{rights}",
+                "/grant:r",
+                f"*S-1-5-18:{rights}",
+                "/grant:r",
+                f"*S-1-5-32-544:{rights}",
+            ],
+            capture_output=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
 @dataclass
 class TelemetrySummary:
     """Summary returned after finishing a telemetry session."""
@@ -50,6 +86,7 @@ class TelemetryClient:
         self.log_dir = log_dir
         if self.enabled:
             self.log_dir.mkdir(parents=True, exist_ok=True)
+            _make_private(self.log_dir, directory=True)
         self.paste_endpoint = paste_endpoint
 
         self._active = False
@@ -105,17 +142,18 @@ class TelemetryClient:
         if not self.enabled or not self._active or not self._session_id:
             return None
 
+        redacted_error = _redact(error) if error else None
         summary = TelemetrySummary(
             session_id=self._session_id,
             status=status,
             failure_step=failure_step,
-            error=error,
+            error=redacted_error,
             log_path=self._current_log_path,
             events=self._events.copy(),
         )
 
-        if error:
-            self._write_line(f"Session error: {_redact(error)}")
+        if redacted_error:
+            self._write_line(f"Session error: {redacted_error}")
         self._write_line(f"Session completed with status: {status.upper()}")
 
         payload: dict[str, Any] = {
@@ -124,8 +162,8 @@ class TelemetryClient:
             "instance": self._instance,
             "status": status,
             "failure_step": failure_step,
-            "error": error,
-            "events": self._events,
+            "error": redacted_error,
+            "events": summary.events,
             "log": self._read_log_contents(),
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
@@ -181,5 +219,8 @@ class TelemetryClient:
         if not self.enabled or not self._current_log_path:
             return
         timestamp = datetime.now(timezone.utc).isoformat()
-        with self._current_log_path.open("a", encoding="utf-8") as handle:
+        flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_BINARY", 0)
+        fd = os.open(self._current_log_path, flags, 0o600)
+        with os.fdopen(fd, "a", encoding="utf-8") as handle:
             handle.write(f"{timestamp} :: {message}\n")
+        _make_private(self._current_log_path, directory=False)

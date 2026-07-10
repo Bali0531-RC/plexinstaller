@@ -195,14 +195,43 @@ class TestTelemetryClientSession:
 
     @mock.patch("telemetry_client.requests.post")
     def test_finish_session_redacts_error(self, mock_post, tmp_path: Path):
-        """Sensitive data in error is redacted in the log file."""
+        """Sensitive data in error is redacted everywhere before transmission."""
         mock_post.return_value = mock.MagicMock(status_code=200)
         client = self._make_client(tmp_path)
         client.start_session("plextickets", "default")
-        client.finish_session("failure", error="password=hunter2")
+        summary = client.finish_session("failure", error="password=hunter2")
 
         content = client.log_path.read_text()
         assert "hunter2" not in content
+        assert summary is not None
+        assert summary.error == "[REDACTED]"
+        payload = mock_post.call_args.kwargs["json"]
+        assert payload["error"] == "[REDACTED]"
+        assert "hunter2" not in str(payload)
+
+    @mock.patch("telemetry_client.requests.post")
+    def test_finish_session_redacts_raw_mongo_error_before_payload(self, mock_post, tmp_path: Path):
+        mock_post.return_value = mock.MagicMock(status_code=200)
+        client = self._make_client(tmp_path)
+        client.start_session("plextickets", "default")
+
+        summary = client.finish_session("failure", error="connect mongodb://admin:s3cret@db.local/app")
+
+        assert summary is not None
+        assert "admin" not in (summary.error or "")
+        assert "s3cret" not in (summary.error or "")
+        payload = mock_post.call_args.kwargs["json"]
+        assert "admin" not in str(payload)
+        assert "s3cret" not in str(payload)
+
+    @mock.patch("telemetry_client._make_private")
+    def test_log_directory_and_file_use_private_permissions(self, make_private, tmp_path: Path):
+        client = self._make_client(tmp_path)
+        client.start_session("plextickets", "default")
+
+        assert client.log_path is not None
+        assert mock.call(client.log_dir, directory=True) in make_private.call_args_list
+        assert mock.call(client.log_path, directory=False) in make_private.call_args_list
 
     @mock.patch("telemetry_client.requests.post")
     def test_finish_session_cannot_be_called_twice(self, mock_post, tmp_path: Path):

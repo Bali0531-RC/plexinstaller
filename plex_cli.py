@@ -4,14 +4,12 @@ Plex CLI Management Tool
 Command-line interface for managing PlexDevelopment applications
 """
 
-import ctypes
 import json
 import logging
 import os
 import re
 import subprocess
 import sys
-import urllib.request
 from pathlib import Path
 
 from colorama import Fore, Style
@@ -33,22 +31,29 @@ except Exception:  # pragma: no cover
     requests = None  # type: ignore[assignment]
 
 try:
+    from utils import is_admin as _is_admin
     from utils import redact_sensitive_yaml
 except Exception:  # pragma: no cover
     redact_sensitive_yaml = None  # type: ignore[assignment]
+
+    def _is_admin() -> bool:
+        return False
+
 
 try:
     from shared import (
         INSTALLER_DIR as _SHARED_INSTALLER_DIR,
     )
     from shared import (
-        VERSION_CHECK_URL as _SHARED_VERSION_CHECK_URL,
-    )
-    from shared import (
+        MAX_MANIFEST_BYTES,
+        _download_bytes,
         ensure_cli_entrypoints,
         is_newer_version,
         perform_update,
         verify_gpg_signature,
+    )
+    from shared import (
+        VERSION_CHECK_URL as _SHARED_VERSION_CHECK_URL,
     )
 except Exception:  # pragma: no cover
     is_newer_version = None  # type: ignore[assignment]
@@ -57,13 +62,16 @@ except Exception:  # pragma: no cover
     ensure_cli_entrypoints = None  # type: ignore[assignment]
     _SHARED_INSTALLER_DIR = None  # type: ignore[assignment]
     _SHARED_VERSION_CHECK_URL = None  # type: ignore[assignment]
+    MAX_MANIFEST_BYTES = 1024 * 1024
+    _download_bytes = None  # type: ignore[assignment]
 
 # Configuration
 _PROGRAMDATA = Path(os.environ.get("ProgramData", r"C:\ProgramData"))
 INSTALL_DIR = _PROGRAMDATA / "plex" / "apps"
 INSTALLER_DIR = _SHARED_INSTALLER_DIR or (_PROGRAMDATA / "plexinstaller")
 VERSION_CHECK_URL = (
-    _SHARED_VERSION_CHECK_URL or "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/version.json"
+    _SHARED_VERSION_CHECK_URL
+    or "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/windows-experimental/version.json"
 )
 
 # Initialize colorama
@@ -80,6 +88,48 @@ NC = Style.RESET_ALL
 
 _cli_logger = logging.getLogger("plexinstaller.cli")
 
+_SENSITIVE_KEY = re.compile(
+    r"(?i)(password|passwd|passphrase|secret|token|api[ _-]?key|client[ _-]?secret|authorization|cookie|webhook)"
+)
+_SENSITIVE_ASSIGNMENT = re.compile(
+    r"""(?ix)(?P<prefix>(?<![\w-])["']?(?:password|passwd|passphrase|secret|token|api[ _-]?key|client[ _-]?secret|authorization|cookie|webhook)["']?(?![\w-])\s*(?::|=|\bis\b)\s*)(?P<value>"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\r\n,}\]]+)"""
+)
+_URI_CREDENTIALS = re.compile(
+    r"(?P<scheme>\b[a-z][a-z0-9+.-]*://)(?P<username>[^/\s:@]+):(?P<password>[^/\s@]+)@",
+    re.IGNORECASE,
+)
+_AUTH_HEADER = re.compile(r"(?i)\b(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+")
+_REDACTED_VALUES = {"<REDACTED>", "[REDACTED]"}
+
+
+def redact_debug_text(text: str) -> str:
+    """Best-effort redaction for config and free-form log text."""
+    if redact_sensitive_yaml is not None:
+        text = redact_sensitive_yaml(text)
+    text = _URI_CREDENTIALS.sub(
+        lambda match: f"{match.group('scheme')}<REDACTED>:<REDACTED>@",
+        text,
+    )
+    text = _AUTH_HEADER.sub("Authorization <REDACTED>", text)
+    return _SENSITIVE_ASSIGNMENT.sub(
+        lambda match: f'{match.group("prefix")}"<REDACTED>"',
+        text,
+    )
+
+
+def debug_bundle_is_safe(text: str) -> bool:
+    """Fail closed when obvious credentials remain after redaction."""
+    for match in _URI_CREDENTIALS.finditer(text):
+        if {match.group("username"), match.group("password")} != {"<REDACTED>"}:
+            return False
+    if _AUTH_HEADER.search(text):
+        return False
+    for match in _SENSITIVE_ASSIGNMENT.finditer(text):
+        value = match.group("value").strip(" \t\"'")
+        if value not in _REDACTED_VALUES:
+            return False
+    return True
+
 
 def print_error(message: str):
     """Print error message"""
@@ -89,13 +139,13 @@ def print_error(message: str):
 
 def print_success(message: str):
     """Print success message"""
-    print(f"{GREEN}[✓] {message}{NC}", file=sys.stderr)
+    print(f"{GREEN}[✓] {message}{NC}")
     _cli_logger.info(message)
 
 
 def print_info(message: str):
     """Print info message"""
-    print(f"{BLUE}[i] {message}{NC}", file=sys.stderr)
+    print(f"{BLUE}[i] {message}{NC}")
     _cli_logger.info(message)
 
 
@@ -177,7 +227,7 @@ def _ensure_cli_entrypoints():
     if ensure_cli_entrypoints is not None:
         return ensure_cli_entrypoints()
     # Fallback if shared module not available
-    if not ctypes.windll.shell32.IsUserAnAdmin():
+    if not _is_admin():
         return
     try:
         for name, target in {
@@ -202,9 +252,8 @@ def _verify_gpg_signature(version_json_bytes: bytes) -> bool:
             print_warning=print_warning,
             print_error=print_error,
         )
-    # Fallback: skip verification if shared module unavailable
-    print_warning("Shared module unavailable — skipping GPG verification")
-    return True
+    print_error("Shared module unavailable — refusing to verify or install updates")
+    return False
 
 
 def _perform_update(version_data: dict, version_json_bytes: bytes = b""):
@@ -228,8 +277,16 @@ def _maybe_auto_update():
         return
 
     try:
-        with urllib.request.urlopen(VERSION_CHECK_URL, timeout=5) as response:
-            version_json_bytes = response.read()
+        if _download_bytes is None:
+            return
+        version_json_bytes = _download_bytes(
+            VERSION_CHECK_URL,
+            timeout=5,
+            max_bytes=MAX_MANIFEST_BYTES,
+        )
+        if not _verify_gpg_signature(version_json_bytes):
+            print_error("Update check ignored: manifest signature verification failed")
+            return
         version_data = json.loads(version_json_bytes.decode())
         remote_version = version_data.get("version", "0.0.0")
         local_version = _read_local_installer_version()
@@ -285,12 +342,18 @@ def resolve_app_instance(name: str) -> str | None:
     by_lower = {app.lower(): app for app in installed}
     normalized = name.strip().lower()
 
-    # Exact match
+    # Exact path always wins when current and legacy names coexist.
     if normalized in by_lower:
         return by_lower[normalized]
 
-    # Unambiguous prefix match for multi-instance installs (e.g. plextickets -> plextickets-ab12)
-    candidates = [app for app in installed if app.lower().startswith(f"{normalized}-")]
+    aliases = Config.equivalent_instance_names(normalized) if Config is not None else (normalized,)
+    exact_candidates = {by_lower[candidate] for candidate in aliases if candidate in by_lower}
+    if len(exact_candidates) == 1:
+        return next(iter(exact_candidates))
+
+    candidates = [
+        app for app in installed if any(app.casefold().startswith((f"{alias}-", f"{alias}_")) for alias in aliases)
+    ]
     if len(candidates) == 1:
         return candidates[0]
 
@@ -319,7 +382,8 @@ def get_service_status(service_name: str) -> dict[str, object]:
     try:
         result = subprocess.run(
             ["sc", "query", service_name],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         output = result.stdout
         is_active = "RUNNING" in output
@@ -327,7 +391,8 @@ def get_service_status(service_name: str) -> dict[str, object]:
         # Check if service is set to auto-start
         cfg_result = subprocess.run(
             ["sc", "qc", service_name],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         is_enabled = "AUTO_START" in cfg_result.stdout
 
@@ -521,8 +586,11 @@ def view_logs(app: str):
         print_info("No log files found. Checking Windows Event Log...")
         try:
             subprocess.run(
-                ["powershell", "-Command",
-                 f"Get-EventLog -LogName Application -Source '{service_name}' -Newest 50 | Format-List"],
+                [
+                    "powershell",
+                    "-Command",
+                    f"Get-EventLog -LogName Application -Source '{service_name}' -Newest 50 | Format-List",
+                ],
                 check=False,
             )
             return 0
@@ -619,7 +687,7 @@ def debug_app(app: str) -> int:
 
     app_dir = INSTALL_DIR / instance
     config_path = None
-    for config_name in ["config.yml", "config.yaml"]:
+    for config_name in ["config.yml", "config.yaml", "config.json"]:
         candidate = app_dir / config_name
         if candidate.exists():
             config_path = candidate
@@ -646,9 +714,13 @@ def debug_app(app: str) -> int:
         else:
             # Fallback to Event Log
             result = subprocess.run(
-                ["powershell", "-Command",
-                 f"Get-EventLog -LogName Application -Source '{service_name}' -Newest 500 | Format-List"],
-                capture_output=True, text=True,
+                [
+                    "powershell",
+                    "-Command",
+                    f"Get-EventLog -LogName Application -Source '{service_name}' -Newest 500 | Format-List",
+                ],
+                capture_output=True,
+                text=True,
             )
             logs_contents = result.stdout if result.stdout else "<No event log entries found>"
     except Exception as exc:
@@ -660,10 +732,10 @@ def debug_app(app: str) -> int:
         f"===== logs (last 500 lines) =====\n{logs_contents}\n"
     )
 
-    if redact_sensitive_yaml is not None:
-        bundle = redact_sensitive_yaml(bundle)
-    else:
-        print_warning("Redaction helper unavailable — sensitive values may not be masked")
+    bundle = redact_debug_text(bundle)
+    if not debug_bundle_is_safe(bundle):
+        print_error("Debug upload blocked because detected secrets remain after redaction")
+        return 1
 
     paste_endpoint = "https://paste.plexdev.xyz/documents"
     if Config is not None:
@@ -675,6 +747,11 @@ def debug_app(app: str) -> int:
     if requests is None:
         print_error("Python package 'requests' is required for plex debug uploads")
         return 1
+
+    print_warning("Review the redacted bundle before sharing; automated redaction is best-effort.")
+    if input("Upload this redacted debug bundle? (y/N): ").strip().casefold() not in {"y", "yes"}:
+        print_info("Debug upload cancelled")
+        return 0
 
     print_info("Uploading debug bundle to paste service...")
     try:
@@ -718,8 +795,8 @@ def _get_addon_manager():
 
 def _supports_addons(app: str) -> bool:
     """Check if an app supports addons"""
-    base_product = app.split("-")[0]
-    return base_product.lower() in ["plextickets", "plexstaff"]
+    product = Config().get_product(app) if Config is not None else None
+    return bool(product and product.supports_addons)
 
 
 def addon_list(app: str) -> int:
@@ -796,7 +873,7 @@ def addon_install(app: str, archive_path: str) -> int:
 
     if addon_mgr.addon_exists(potential_name, app_dir):
         print_error(f"Addon '{potential_name}' already exists.")
-        print_info("Remove the existing addon first: plex addon remove {instance} {potential_name}")
+        print_info(f"Remove the existing addon first: plex addon remove {instance} {potential_name}")
         return 1
 
     print_info(f"Installing addon from {archive.name}...")
@@ -967,7 +1044,7 @@ def tool_setupdomain(app: str) -> int:
         print_error(f"Application '{app}' not found. Use 'plex list' to see installed apps.")
         return 1
 
-    if not ctypes.windll.shell32.IsUserAnAdmin():
+    if not _is_admin():
         print_error("This command must be run as Administrator.")
         return 1
 
@@ -987,25 +1064,33 @@ def tool_setupdomain(app: str) -> int:
             except Exception:
                 pass
 
-    if port is None:
+    def prompt_port(prompt: str) -> int:
         while True:
-            port_input = input("Could not detect port from config. Enter port: ").strip()
+            port_input = input(prompt).strip()
             if port_input.isdigit():
-                port = int(port_input)
-                if 1 <= port <= 65535:
-                    break
-                else:
-                    print_error("Port must be between 1 and 65535.")
+                selected = int(port_input)
+                if 1 <= selected <= 65535:
+                    return selected
+                print_error("Port must be between 1 and 65535.")
             else:
                 print_error("Port must be a number.")
+
+    if port is None:
+        port = prompt_port("Could not detect port from config. Enter port: ")
     else:
         print_info(f"Detected port: {port}")
-        port_input = input("Use this port? (Y/n, or enter a different port): ").strip()
-        if port_input and port_input.lower() != "y":
+        while True:
+            port_input = input("Use this port? (Y/n, or enter a different port): ").strip().casefold()
+            if port_input in {"", "y", "yes"}:
+                break
+            if port_input in {"n", "no"}:
+                port = prompt_port("Enter a new port: ")
+                break
             if port_input.isdigit() and 1 <= int(port_input) <= 65535:
                 port = int(port_input)
+                break
             else:
-                print_error("Invalid port, using detected port.")
+                print_error("Enter y/yes/n/no or a port between 1 and 65535.")
 
     # Get domain
     domain_pattern = re.compile(
@@ -1058,14 +1143,25 @@ def tool_setupdomain(app: str) -> int:
     nginx = NginxManager()
     ssl_mgr = SSLManager()
 
-    # Open firewall port for the application
-    firewall.open_port(port, instance)
+    if Config is None:
+        print_error("Configuration module unavailable; cannot persist the selected port")
+        return 1
+    try:
+        Config().persist_app_port(app_dir, port)
+    except Exception as exc:
+        print_error(f"Could not persist selected port: {exc}")
+        return 1
+
+    if not firewall.open_port(port, instance):
+        print_error("Could not create the Windows Firewall rule")
+        return 1
 
     # Check DNS
     if not dns_checker.check(domain):
         proceed = input("DNS check failed. Proceed anyway? (y/n): ").strip().lower()
         if proceed != "y":
             print_error("Setup aborted due to DNS issues.")
+            firewall.close_port(port, instance)
             return 1
 
     # Setup nginx
@@ -1075,6 +1171,7 @@ def tool_setupdomain(app: str) -> int:
         print_success("Nginx configured successfully")
     except Exception as e:
         print_error(f"Nginx setup failed: {e}")
+        firewall.close_port(port, instance)
         return 1
 
     # Setup SSL
@@ -1084,7 +1181,8 @@ def tool_setupdomain(app: str) -> int:
         print_success("SSL certificate obtained successfully")
     except Exception as e:
         print_error(f"SSL setup failed: {e}")
-        print_warning("Nginx is configured but without SSL. You can retry SSL with: certbot --nginx -d " + domain)
+        nginx.remove(domain)
+        firewall.close_port(port, instance)
         return 1
 
     print()

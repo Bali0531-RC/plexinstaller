@@ -1,202 +1,111 @@
-"""Tests for config.py — product metadata and system package lists."""
+"""Windows-specific configuration contracts."""
 
+import json
 from pathlib import Path
+from unittest import mock
+
+import pytest
 
 from config import Config, ProductConfig
 
 
-class TestConfig:
-    def test_products_exist(self):
-        config = Config()
-        assert len(config.PRODUCTS) == 8
-
-    def test_known_products(self):
-        config = Config()
-        expected = [
-            "plextickets",
-            "plexstaff",
-            "plexstatus",
-            "plexstore",
-            "plexforms",
-            "plexlinks",
-            "plexpaste",
-            "plextracker",
-        ]
-        for name in expected:
-            assert name in config.PRODUCTS, f"Missing product: {name}"
-
-    def test_get_product_returns_config(self):
-        config = Config()
-        product = config.get_product("plextickets")
-        assert product is not None
-        assert isinstance(product, ProductConfig)
-        assert product.name == "plextickets"
-        assert product.default_port == 3000
-        assert product.requires_mongodb is True
-
-    def test_get_product_case_insensitive(self):
-        config = Config()
-        assert config.get_product("PlexTickets") is not None
-
-    def test_get_product_unknown_returns_none(self):
-        config = Config()
-        assert config.get_product("nonexistent") is None
-
-    def test_product_list(self):
-        config = Config()
-        assert isinstance(config.product_list, list)
-        assert "plextickets" in config.product_list
-
-    def test_all_products_have_ports(self):
-        config = Config()
-        for name, product in config.PRODUCTS.items():
-            assert isinstance(product.default_port, int), f"{name} missing port"
-            assert 1 <= product.default_port <= 65535
-
-    def test_system_packages_all_managers(self):
-        config = Config()
-        for mgr in ["apt", "dnf", "yum", "pacman", "zypper"]:
-            pkgs = config.SYSTEM_PACKAGES.get(mgr)
-            assert pkgs is not None, f"Missing packages for {mgr}"
-            assert len(pkgs) > 0
-
-    def test_plextickets_supports_addons(self):
-        config = Config()
-        pt = config.get_product("plextickets")
-        assert pt.supports_addons is True
-
-    def test_plexstatus_no_addons(self):
-        config = Config()
-        ps = config.get_product("plexstatus")
-        assert ps.supports_addons is False
+def test_canonical_products_and_legacy_aliases():
+    assert list(Config.PRODUCTS) == [
+        "plextickets",
+        "plexstaff",
+        "drakostatus",
+        "drakostore",
+        "drakoforms",
+        "drakolinks",
+        "drakopaste",
+        "drakotracker",
+    ]
+    assert Config.canonical_product_name("plexstore") == "drakostore"
+    assert Config.canonical_product_name("PlexStore-prod") == "drakostore"
+    assert Config.canonical_product_name("plexstore_prod") == "drakostore"
+    assert Config.equivalent_product_names("drakostore") == ("drakostore", "plexstore")
+    assert Config.equivalent_instance_names("plexstore-prod") == ("drakostore-prod", "plexstore-prod")
 
 
-# ---------------------------------------------------------------------------
-# ProductConfig dataclass
-# ---------------------------------------------------------------------------
+def test_product_lookup_is_case_and_whitespace_tolerant():
+    product = Config().get_product("  PlexStore  ")
+    assert product is not None
+    assert product.name == "drakostore"
+    assert product.display_name == "DrakoStore"
+    assert Config().get_product("missing") is None
 
 
-class TestProductConfig:
-    def test_defaults(self):
-        p = ProductConfig(name="test", default_port=5000)
-        assert p.requires_mongodb is False
-        assert p.has_dashboard_option is False
-        assert p.supports_addons is False
-        assert p.description == ""
-
-    def test_all_fields(self):
-        p = ProductConfig(
-            name="foo",
-            default_port=8080,
-            requires_mongodb=True,
-            has_dashboard_option=True,
-            supports_addons=True,
-            description="desc",
-        )
-        assert p.name == "foo"
-        assert p.default_port == 8080
-        assert p.requires_mongodb is True
-        assert p.has_dashboard_option is True
-        assert p.supports_addons is True
-        assert p.description == "desc"
+def test_product_defaults_and_capabilities():
+    product = ProductConfig(name="test", default_port=5000)
+    assert product.display_name == ""
+    assert product.requires_mongodb is False
+    assert product.has_dashboard_option is False
+    assert product.supports_addons is False
+    assert product.legacy_names == ()
+    assert Config.PRODUCTS["plextickets"].has_dashboard_option is True
+    assert Config.PRODUCTS["plextickets"].supports_addons is True
+    assert Config.PRODUCTS["plexstaff"].supports_addons is True
+    assert all(product.requires_mongodb for product in Config.PRODUCTS.values())
 
 
-# ---------------------------------------------------------------------------
-# Per-product validation
-# ---------------------------------------------------------------------------
+def test_ports_are_unique_and_sequential():
+    ports = [product.default_port for product in Config.PRODUCTS.values()]
+    assert sorted(ports) == list(range(3000, 3008))
+    assert len(ports) == len(set(ports))
 
 
-class TestProductDetails:
-    def test_all_products_require_mongodb(self):
-        """All current PlexDev products use MongoDB."""
-        config = Config()
-        for name, product in config.PRODUCTS.items():
-            assert product.requires_mongodb is True, f"{name} should require MongoDB"
-
-    def test_all_products_have_descriptions(self):
-        config = Config()
-        for name, product in config.PRODUCTS.items():
-            assert product.description != "", f"{name} missing description"
-
-    def test_ports_are_unique(self):
-        config = Config()
-        ports = [p.default_port for p in config.PRODUCTS.values()]
-        assert len(ports) == len(set(ports)), "Duplicate default ports found"
-
-    def test_port_range_sequential(self):
-        """Products use sequential ports starting from 3000."""
-        config = Config()
-        ports = sorted(p.default_port for p in config.PRODUCTS.values())
-        assert ports[0] == 3000
-        assert ports[-1] == 3007
-
-    def test_plextickets_has_dashboard_option(self):
-        config = Config()
-        pt = config.get_product("plextickets")
-        assert pt.has_dashboard_option is True
-
-    def test_other_products_no_dashboard_option(self):
-        config = Config()
-        for name in ["plexstatus", "plexstore", "plexforms", "plexlinks", "plexpaste", "plextracker"]:
-            p = config.get_product(name)
-            assert p.has_dashboard_option is False, f"{name} should not have dashboard option"
-
-    def test_product_name_matches_key(self):
-        config = Config()
-        for key, product in config.PRODUCTS.items():
-            assert key == product.name, f"Key {key} != product.name {product.name}"
+def test_windows_package_managers_only():
+    assert set(Config.SYSTEM_PACKAGES) == {"winget", "choco"}
+    assert "OpenJS.NodeJS.LTS" in Config.SYSTEM_PACKAGES["winget"]
+    assert "nodejs-lts" in Config.SYSTEM_PACKAGES["choco"]
+    assert "7zip.7zip" in Config.SYSTEM_PACKAGES["winget"]
 
 
-# ---------------------------------------------------------------------------
-# System packages
-# ---------------------------------------------------------------------------
+def test_paths_are_derived_from_programdata(monkeypatch, tmp_path: Path):
+    monkeypatch.setattr(Config, "INSTALL_DIR", tmp_path / "plex" / "apps")
+    monkeypatch.setattr(Config, "NGINX_AVAILABLE", tmp_path / "plex" / "nginx" / "sites-available")
+    monkeypatch.setattr(Config, "NGINX_ENABLED", tmp_path / "plex" / "nginx" / "sites-enabled")
+    config = Config()
+    assert config.install_dir == tmp_path / "plex" / "apps"
+    assert config.nginx_available == tmp_path / "plex" / "nginx" / "sites-available"
+    assert config.nginx_enabled == tmp_path / "plex" / "nginx" / "sites-enabled"
 
 
-class TestSystemPackages:
-    def test_all_managers_have_common_packages(self):
-        """All package managers include essential tools."""
-        config = Config()
-        for mgr, pkgs in config.SYSTEM_PACKAGES.items():
-            for required in ["curl", "wget", "git", "nginx", "sudo"]:
-                assert required in pkgs, f"{mgr} missing {required}"
-
-    def test_apt_has_dnsutils(self):
-        config = Config()
-        assert "dnsutils" in config.SYSTEM_PACKAGES["apt"]
-
-    def test_dnf_has_bind_utils(self):
-        config = Config()
-        assert "bind-utils" in config.SYSTEM_PACKAGES["dnf"]
+def test_find_app_config_prefers_yaml(tmp_path: Path):
+    (tmp_path / "config.json").write_text("{}")
+    (tmp_path / "config.yml").write_text("Port: 3000\n")
+    assert Config.find_app_config(tmp_path) == tmp_path / "config.yml"
 
 
-# ---------------------------------------------------------------------------
-# Config class-level attributes
-# ---------------------------------------------------------------------------
+def test_persist_yaml_port_updates_exact_key_atomically(tmp_path: Path):
+    config_file = tmp_path / "config.yml"
+    config_file.write_text("dbPort: 27017\nPort: 3000\n")
+    Config().persist_app_port(tmp_path, 4123)
+    assert config_file.read_text() == "dbPort: 27017\nPort: 4123\n"
 
 
-class TestConfigAttributes:
-    def test_install_dir(self):
-        config = Config()
-        assert config.install_dir == Path("/var/www/plex")
+def test_persist_json_port_preserves_other_values(tmp_path: Path):
+    config_file = tmp_path / "config.json"
+    config_file.write_text('{"port": 3000, "name": "app"}')
+    Config().persist_app_port(tmp_path, 4124)
+    assert json.loads(config_file.read_text()) == {"port": 4124, "name": "app"}
 
-    def test_mongodb_version(self):
-        config = Config()
-        assert config.MONGODB_VERSION == "8.0"
 
-    def test_node_min_version(self):
-        assert Config.NODE_MIN_VERSION == 20
+@pytest.mark.parametrize("port", [0, 65536, True, "3000"])
+def test_persist_port_rejects_invalid_values(tmp_path: Path, port):
+    (tmp_path / "config.yml").write_text("Port: 3000\n")
+    with pytest.raises(ValueError, match="between 1 and 65535"):
+        Config().persist_app_port(tmp_path, port)
 
-    def test_get_product_whitespace(self):
-        config = Config()
-        # lowercased but not stripped — should return None
-        assert config.get_product("  plextickets  ") is None
 
-    def test_product_list_returns_list(self):
-        config = Config()
-        pl = config.product_list
-        assert isinstance(pl, list)
-        assert len(pl) == 8
+def test_is_port_available_validates_range():
+    assert Config.is_port_available(0) is False
+    with mock.patch("config.socket.socket") as socket_cls:
+        assert Config.is_port_available(3000) is True
+    socket_cls.return_value.__enter__.return_value.bind.assert_called_once_with(("127.0.0.1", 3000))
 
-    def test_product_list_order_matches_keys(self):
-        config = Config()
-        assert config.product_list == list(config.PRODUCTS.keys())
+
+def test_product_list_matches_canonical_order():
+    assert Config().product_list == list(Config.PRODUCTS)
+    assert Config.MONGODB_VERSION == "8.0"
+    assert Config.NODE_MIN_VERSION == 20

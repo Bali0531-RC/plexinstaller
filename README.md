@@ -1,49 +1,43 @@
-# PlexInstaller — Windows Edition
+# PlexInstaller — Windows Experimental Edition
 
-> **Branch:** `windows-experimental` — a standalone Windows-only port of PlexInstaller. This branch will **not** be merged into `main`; the Linux version lives in the `dev` and `main` branches.
+> **Experimental:** This branch is an unofficial, Windows-only port. It can create services, firewall rules, databases, proxy configuration, and files under `C:\ProgramData`. Use it only on a disposable system or after taking backups, and review every prompt before accepting it.
 
-PlexInstaller is the unified Python-based installer and management tool for the PlexDevelopment product line (Tickets, Staff, Status, Store, Forms, Links, Paste, Tracker, and supporting dashboards). This Windows edition handles archive discovery, extraction, dependency installation, MongoDB/user provisioning, nginx configuration, firewall rules, telemetry, and post-install management from a single interactive CLI workflow — all on Windows.
+PlexInstaller installs and manages licensed PlexDevelopment and Drako products on Windows. New installs use PlexTickets, PlexStaff, DrakoStatus, DrakoStore, DrakoForms, DrakoLinks, DrakoPaste, and DrakoTracker. Existing legacy `plexstatus`, `plexstore`, `plexforms`, `plexlinks`, `plexpaste`, and `plextracker` installations remain discoverable and manageable without being renamed.
 
-## Highlights
-- **Windows-native** — uses NSSM/sc.exe for services, netsh for firewall, winget/choco for packages, and ProgramData for all system paths.
-- **Product-aware flows** covering MongoDB provisioning, port/domain validation, custom 502 page generation, dashboard add-ons, and backup/restore tooling.
-- **Windows services** with NSSM (Non-Sucking Service Manager) for registering and managing product instances as background services.
-- **Telemetry pipeline** (client + remote API) capturing anonymized install steps, failures, and installer health while respecting user opt-out.
-- **Multi-instance ready** with automatic instance naming, unique Mongo credentials, and per-service firewall openings.
+The installer handles local archive discovery and extraction, Node.js dependencies, MongoDB users, nginx configuration, firewall rules, backups, optional diagnostics, and post-install management. Product archives and licenses are not included.
 
-## Prerequisites
-- **Windows 10/11** or **Windows Server 2019+**
-- **Python 3.10+** — [python.org](https://www.python.org/downloads/) (make sure to check "Add to PATH" during install)
-- **Administrator privileges** — required for service management, firewall rules, and PATH configuration
-- **Package manager** — [winget](https://learn.microsoft.com/en-us/windows/package-manager/) (built-in on Win 11) or [Chocolatey](https://chocolatey.org/install)
+## Support boundary
 
-## Quick Start
-1. **Open an elevated Command Prompt or PowerShell** (Run as Administrator).
+- Supported runtime: Windows 10/11 and Windows Server 2019 or newer.
+- Required Python: 3.10 or newer.
+- Administrator privileges are required for installation and system changes.
+- [NSSM](https://nssm.cc/) is required for product services. A plain `sc.exe create` service is not a supported fallback for Node.js products.
+- `winget` or Chocolatey is required for automated dependency installation.
+- Windows CI exercises Python 3.10, 3.11, and 3.12. Full installation still requires manual validation on a clean Windows VM because CI cannot safely exercise Administrator elevation, real NSSM services, firewall changes, MongoDB provisioning, DNS, nginx, or certificate issuance.
 
-2. **Clone the repository** (or download the ZIP from the `windows-experimental` branch):
-   ```cmd
-   git clone -b windows-experimental https://github.com/Bali0531-RC/plexinstaller.git
-   cd plexinstaller
-   ```
+There is no Linux runtime or Linux bootstrap path in this branch.
 
-3. **Install Python dependencies:**
-   ```cmd
-   pip install -r requirements.txt
-   ```
+## Source installation
 
-4. **Run the installer:**
-   ```cmd
-   python installer.py
-   ```
+Open an elevated PowerShell window:
 
-5. **Select** the product to deploy and follow the interactive prompts for archives, domains, and MongoDB configuration.
+```powershell
+git clone --branch windows-experimental https://github.com/Bali0531-RC/plexinstaller.git
+Set-Location plexinstaller
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -e .
+python .\installer.py
+```
 
-> **Telemetry & privacy:** On first launch the installer asks whether you want to share anonymous diagnostics (step names, success/failure state, and the sanitized log). Your choice is stored in `C:\ProgramData\plex\telemetry_pref` and can be toggled manually at any time.
+Install NSSM first and ensure `nssm.exe` is on `PATH`. The installer may install other prerequisites through `winget` or Chocolatey, but service creation is supported only through NSSM.
 
-## CLI Tool
-After installation, the `plex` CLI is available system-wide:
-```cmd
-plex status
+After installation, the generated commands include:
+
+```text
+plex list
+plex status <product>
 plex start <product>
 plex stop <product>
 plex restart <product>
@@ -52,79 +46,71 @@ plex config <product>
 plex health
 ```
 
-The CLI creates `.cmd` wrapper scripts and adds them to the system PATH via `setx /M`.
+Service names use `plex-<instance>`, for example `plex-plextickets`. Use the `plex` commands or NSSM to manage them.
 
-## Windows Service Management
-Products are registered as Windows services using [NSSM](https://nssm.cc/). Common operations:
+## Update channel and signature trust
 
-| Action | Command |
-| --- | --- |
-| Start a service | `nssm start <service>` or `plex start <product>` |
-| Stop a service | `nssm stop <service>` or `plex stop <product>` |
-| Restart a service | `nssm restart <service>` or `plex restart <product>` |
-| Query service status | `sc query <service>` or `plex status` |
-| Enable auto-start | `sc config <service> start= auto` |
-| Disable auto-start | `sc config <service> start= demand` |
-| View logs | Check `C:\ProgramData\plex\apps\<product>\logs\` or Windows Event Viewer |
+Windows builds follow the `windows-experimental` update channel. The updater accepts `version.json`, `version.json.sig`, `release-key.gpg`, and managed file URLs from that branch. Managed downloads require manifest SHA-256 checksums. When GPG verification is available, the bundled release key must have fingerprint:
 
-## Key Paths
-| Path | Purpose |
-| --- | --- |
-| `C:\ProgramData\plex\apps\` | Installed product files |
-| `C:\ProgramData\plex\nginx\sites-available\` | nginx site configurations |
-| `C:\ProgramData\plex\nginx\sites-enabled\` | Active nginx site configurations |
-| `C:\ProgramData\plex\mongodb_credentials` | MongoDB credentials file |
-| `C:\ProgramData\plex\telemetry_pref` | Telemetry opt-in/out preference |
-| `C:\ProgramData\plexinstaller\` | Installer files and telemetry logs |
-| `%TEMP%\plexinstaller.lock` | Runtime lock file (prevents concurrent runs) |
-
-## Firewall
-The installer uses `netsh advfirewall` to open/close ports:
-```cmd
-netsh advfirewall firewall add rule name="Plex <product>" dir=in action=allow protocol=TCP localport=<port>
-netsh advfirewall firewall delete rule name="Plex <product>"
+```text
+431E 869D 5BB5 19AF F7B0  2837 9B0D FA4B F863 07BD
 ```
 
-## Repository Layout
+Do not substitute manifests, signatures, or keys from `main`: that channel targets a different platform. If a checkout still reports `main` as its update source, disable auto-update and update the Windows source before using it.
+
+## Diagnostics and privacy
+
+On first interactive launch, the installer asks whether to enable diagnostics. If enabled, it can send the product and instance names, installation steps and details, status, errors, timestamps, and generated installer log to the configured remote endpoint. Common secret patterns are redacted on a best-effort basis, but paths, domains, ports, or unrecognized sensitive values may remain; do not treat the payload as anonymous.
+
+The preference is stored at `C:\ProgramData\plex\telemetry_pref`. Write `disabled` to that file to opt out of future collection. Local diagnostic logs are stored under `C:\ProgramData\plexinstaller\telemetry\logs`. This repository contains only the diagnostics client; it does not include or operate the remote telemetry server.
+
+## Windows paths
+
 | Path | Purpose |
 | --- | --- |
-| `installer.py` | Main interactive installer/manager with product workflows. |
-| `config.py` | Shared configuration — Windows ProgramData paths, winget/choco packages, product metadata. |
-| `utils.py` | Helper classes for NSSM/sc services, netsh firewall, nginx-windows, win-acme SSL, archive extraction. |
-| `shared.py` | Shared utilities — .cmd entrypoint creation, self-update, admin checks. |
-| `plex_cli.py` | CLI tool — service management, logs, config editing via sc/nssm. |
-| `health_checker.py` | System health checks — disk, memory (GlobalMemoryStatusEx), CPU, service status. |
-| `mongodb_manager.py` | MongoDB install (winget/choco) and credential management. |
-| `backup_manager.py` | Product backup and restore. |
-| `addon_manager.py` | Addon installation, removal, and configuration for supported products. |
-| `telemetry_client.py` | Client that logs steps locally and POSTs payloads to the telemetry API. |
-| `linux/` | Original Linux source files preserved for reference (not used at runtime). |
+| `C:\ProgramData\plex\apps\<instance>` | Installed product instance |
+| `C:\ProgramData\plex\apps\backups` | Product backups |
+| `C:\ProgramData\plex\nginx\sites-available\<domain>.conf` | Generated nginx configuration |
+| `C:\ProgramData\plex\nginx\sites-enabled\<domain>.conf` | Enabled nginx configuration |
+| `C:\ProgramData\plex\mongodb_credentials` | Generated MongoDB credentials |
+| `C:\ProgramData\plex\telemetry_pref` | Diagnostics preference |
+| `C:\ProgramData\plexinstaller` | Installed manager modules and command wrappers |
+| `C:\ProgramData\plexinstaller\telemetry\logs` | Local diagnostic logs |
+| `C:\ProgramData\plexinstaller\plexinstaller.lock` | Single-process runtime lock |
 
-## Differences from the Linux Version
-| Area | Linux (`main` branch) | Windows (`windows-experimental`) |
-| --- | --- | --- |
-| Services | systemd (`systemctl`) | NSSM + sc.exe |
-| Packages | apt / yum / pacman | winget / choco |
-| Firewall | ufw / firewall-cmd | netsh advfirewall |
-| Paths | `/var/www/plex`, `/etc/plex` | `C:\ProgramData\plex\` |
-| File perms | `chmod`, `chown` | NTFS ACLs (no explicit management) |
-| SSL | Certbot with systemd timers | Certbot / win-acme |
-| Nginx | Package manager, symlinks | Portable install, file copy |
-| Process lock | `fcntl.flock()` | `msvcrt.locking()` |
-| Admin check | `os.geteuid() == 0` | `ctypes.windll.shell32.IsUserAnAdmin()` |
-| CLI entrypoints | `/usr/local/bin` symlinks | `.cmd` wrappers + `setx /M PATH` |
+## Development
 
-## Development Notes
-- Requires Python 3.10+ on Windows.
-- Install dependencies: `pip install -r requirements.txt`
-- The `linux/` folder contains the original Linux source files for reference when porting features.
-- This branch is independent and will not be merged into `main`.
+Use a regular, non-elevated PowerShell window for source checks:
 
-## Contributing
-1. Fork and clone the repository.
-2. Switch to `windows-experimental`: `git checkout windows-experimental`
-3. Create a feature branch: `git checkout -b feature/my-windows-change`
-4. Make changes and test on a Windows machine.
-5. Push and open a pull request targeting `windows-experimental`.
+```powershell
+git clone --branch windows-experimental https://github.com/Bali0531-RC/plexinstaller.git
+Set-Location plexinstaller
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]"
+ruff check addon_manager.py backup_manager.py config.py health_checker.py installer.py mongodb_manager.py plex_cli.py release_windows.py shared.py telemetry_client.py utils.py
+ruff format --check addon_manager.py backup_manager.py config.py health_checker.py installer.py mongodb_manager.py plex_cli.py release_windows.py shared.py telemetry_client.py utils.py
+mypy addon_manager.py backup_manager.py config.py health_checker.py installer.py mongodb_manager.py plex_cli.py release_windows.py shared.py telemetry_client.py utils.py
+pytest tests -v --tb=short --cov --cov-branch --cov-report=term-missing --cov-fail-under=40
+```
 
-Please open an issue for Windows-specific installer regressions or feature requests.
+The coverage gate measures every production Python module. Runtime-only dependencies are also listed in `requirements.txt` for tooling that does not install the project metadata. Contributors should use the `dev` extra. Open pull requests against `windows-experimental`, and report which Windows version and Python version were used for manual validation.
+
+Prepare branch release metadata with `python release_windows.py --version X.Y.Z --entry "..."`. The preparer synchronizes the installer and package versions, regenerates Windows-channel URLs and hashes, exports the pinned public key, signs `version.json`, and verifies the result before replacing existing artifacts.
+
+## Repository layout
+
+| Path | Purpose |
+| --- | --- |
+| `installer.py` | Interactive installer and manager |
+| `plex_cli.py` | Post-install product management CLI |
+| `config.py` | Windows paths and product metadata |
+| `utils.py` | Windows services, firewall, nginx, SSL, archive, and logging helpers |
+| `shared.py` | Update, signature, and command-wrapper utilities |
+| `mongodb_manager.py` | MongoDB installation and credential management |
+| `backup_manager.py` | Product backup and restore |
+| `health_checker.py` | Installation and system health checks |
+| `addon_manager.py` | Supported product add-on management |
+| `telemetry_client.py` | Optional diagnostics client and local session log |
+| `tests` | Automated Python tests |

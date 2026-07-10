@@ -1,7 +1,10 @@
 """Tests for utils.py — ColorPrinter, DNSChecker, FirewallManager, ArchiveExtractor, redaction, logging."""
 
 import logging
+import stat
+import tarfile
 import zipfile
+from io import BytesIO
 from pathlib import Path
 from unittest import mock
 
@@ -9,9 +12,14 @@ import pytest
 
 from utils import (
     ArchiveExtractor,
+    ArchiveLimitError,
     ColorPrinter,
+    UnsafeArchiveError,
+    _archive_member_parts,
     redact_mongo_uri_credentials,
     redact_sensitive_yaml,
+    safe_extract_tar,
+    safe_extract_zip,
     setup_logging,
 )
 
@@ -173,7 +181,6 @@ class TestArchiveExtractor:
         # Extract — mock subprocess.run so chown/chmod don't change ownership to root
         extractor = ArchiveExtractor()
         target_dir = tmp_path / "myapp"
-        target_dir.mkdir()
 
         with mock.patch("utils.subprocess.run"):
             extractor.extract(archive_path, target_dir)
@@ -200,7 +207,6 @@ class TestArchiveExtractor:
 
         extractor = ArchiveExtractor()
         target = tmp_path / "safe"
-        target.mkdir()
 
         with pytest.raises(ValueError, match="Path traversal"):
             extractor.extract(archive_path, target)
@@ -255,7 +261,6 @@ class TestArchiveExtractorEdgeCases:
 
         extractor = ArchiveExtractor()
         target_dir = tmp_path / "myapp"
-        target_dir.mkdir()
 
         with mock.patch("utils.subprocess.run"):
             extractor.extract(archive_path, target_dir)
@@ -276,8 +281,8 @@ class TestArchiveExtractorEdgeCases:
 
         assert target_dir.exists()
 
-    def test_extract_zip_overwrites_existing_files(self, tmp_path: Path):
-        """Existing files in target dir are replaced."""
+    def test_extract_zip_refuses_existing_target(self, tmp_path: Path):
+        """Existing installations are never overwritten."""
         archive_path = tmp_path / "test.zip"
         with zipfile.ZipFile(archive_path, "w") as zf:
             zf.writestr("myapp/file.txt", "new content")
@@ -287,10 +292,105 @@ class TestArchiveExtractorEdgeCases:
         (target_dir / "file.txt").write_text("old content")
 
         extractor = ArchiveExtractor()
-        with mock.patch("utils.subprocess.run"):
+        with pytest.raises(FileExistsError, match="already exists"):
             extractor.extract(archive_path, target_dir)
 
-        assert (target_dir / "file.txt").read_text() == "new content"
+        assert (target_dir / "file.txt").read_text() == "old content"
+
+
+class TestSafeArchiveValidation:
+    @pytest.mark.parametrize(
+        "member",
+        [
+            "../escape.txt",
+            "safe/../../escape.txt",
+            "/absolute.txt",
+            r"C:\\Windows\\evil.txt",
+            r"C:relative-drive.txt",
+            r"\\\\server\\share\\evil.txt",
+        ],
+    )
+    def test_zip_rejects_windows_unsafe_names_on_any_host(self, tmp_path: Path, member: str):
+        archive = tmp_path / "unsafe.zip"
+        with zipfile.ZipFile(archive, "w") as zip_ref:
+            zip_ref.writestr(member, "bad")
+
+        with pytest.raises(UnsafeArchiveError):
+            safe_extract_zip(archive, tmp_path / "out")
+
+    def test_nul_member_name_is_rejected(self):
+        # zipfile truncates NULs while writing, so exercise the shared lexical validator directly.
+        with pytest.raises(UnsafeArchiveError):
+            _archive_member_parts("bad\x00name.txt")
+
+    def test_prefix_sibling_is_not_mistaken_for_containment(self, tmp_path: Path):
+        archive = tmp_path / "prefix.zip"
+        with zipfile.ZipFile(archive, "w") as zip_ref:
+            zip_ref.writestr("../safe-other/escape.txt", "bad")
+
+        with pytest.raises(UnsafeArchiveError):
+            safe_extract_zip(archive, tmp_path / "safe")
+        assert not (tmp_path / "safe-other" / "escape.txt").exists()
+
+    def test_zip_rejects_case_insensitive_duplicate(self, tmp_path: Path):
+        archive = tmp_path / "duplicate.zip"
+        with zipfile.ZipFile(archive, "w") as zip_ref:
+            zip_ref.writestr("Addon/file.txt", "one")
+            zip_ref.writestr("addon/FILE.txt", "two")
+
+        with pytest.raises(UnsafeArchiveError, match="Duplicate or case-conflicting"):
+            safe_extract_zip(archive, tmp_path / "out")
+
+    def test_zip_rejects_file_directory_conflict(self, tmp_path: Path):
+        archive = tmp_path / "conflict.zip"
+        with zipfile.ZipFile(archive, "w") as zip_ref:
+            zip_ref.writestr("folder", "file")
+            zip_ref.writestr("folder/child.txt", "child")
+
+        with pytest.raises(UnsafeArchiveError, match="conflicts with a file"):
+            safe_extract_zip(archive, tmp_path / "out")
+
+    def test_zip_rejects_symlink(self, tmp_path: Path):
+        archive = tmp_path / "link.zip"
+        link = zipfile.ZipInfo("link")
+        link.create_system = 3
+        link.external_attr = (stat.S_IFLNK | 0o777) << 16
+        with zipfile.ZipFile(archive, "w") as zip_ref:
+            zip_ref.writestr(link, "target")
+
+        with pytest.raises(UnsafeArchiveError, match="links and special files"):
+            safe_extract_zip(archive, tmp_path / "out")
+
+    @pytest.mark.parametrize("member_type", [tarfile.SYMTYPE, tarfile.LNKTYPE, tarfile.CHRTYPE, tarfile.FIFOTYPE])
+    def test_tar_rejects_links_devices_and_fifo(self, tmp_path: Path, member_type: bytes):
+        archive = tmp_path / "special.tar"
+        member = tarfile.TarInfo("app/special")
+        member.type = member_type
+        member.linkname = "app/file.txt"
+        with tarfile.open(archive, "w") as tar_ref:
+            tar_ref.addfile(member)
+
+        with pytest.raises(UnsafeArchiveError, match="links and special files"):
+            safe_extract_tar(archive, tmp_path / "out")
+
+    def test_file_count_limit(self, tmp_path: Path):
+        archive = tmp_path / "many.zip"
+        with zipfile.ZipFile(archive, "w") as zip_ref:
+            zip_ref.writestr("one.txt", "1")
+            zip_ref.writestr("two.txt", "2")
+
+        with pytest.raises(ArchiveLimitError, match="too many files"):
+            safe_extract_zip(archive, tmp_path / "out", max_files=1)
+
+    def test_expanded_byte_limit(self, tmp_path: Path):
+        archive = tmp_path / "large.tar"
+        member = tarfile.TarInfo("large.bin")
+        member.size = 5
+        with tarfile.open(archive, "w") as tar_ref:
+            tar_ref.addfile(member, BytesIO(b"12345"))
+
+        with pytest.raises(ArchiveLimitError, match="too many bytes"):
+            safe_extract_tar(archive, tmp_path / "out", max_bytes=4)
 
 
 # ---------------------------------------------------------------------------

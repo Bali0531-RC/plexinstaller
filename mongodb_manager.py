@@ -8,9 +8,9 @@ import json
 import os
 import re
 import secrets
-import shutil
 import string
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 
@@ -25,10 +25,12 @@ class MongoDBManager:
         printer: ColorPrinter,
         system: SystemDetector,
         mongodb_version: str,
+        mongodb_repo_version_bookworm: str = "8.2",
     ):
         self.printer = printer
         self.system = system
         self.mongodb_version = mongodb_version
+        self.mongodb_repo_version_bookworm = mongodb_repo_version_bookworm
 
     # ------------------------------------------------------------------
     # Public API
@@ -84,13 +86,13 @@ class MongoDBManager:
             if not mongo_creds:
                 raise RuntimeError("Failed to create MongoDB database/user")
 
-            self.save_credentials(instance_name, mongo_creds)
-            self.update_config(install_path, mongo_creds)
-
             if not self.validate_uri(mongo_creds["uri"]):
                 raise RuntimeError(
                     "MongoDB credentials were created but authentication failed when validating the generated URI"
                 )
+
+            self.save_credentials(instance_name, mongo_creds)
+            self.update_config(install_path, mongo_creds)
 
             return mongo_creds
 
@@ -186,12 +188,32 @@ class MongoDBManager:
     # User / database provisioning
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _is_permanent_auth_error(message: str) -> bool:
+        """Return whether an error clearly indicates existing authentication."""
+        normalized = message.casefold()
+        return any(
+            marker in normalized
+            for marker in (
+                "not authorized",
+                "unauthorized",
+                "requires authentication",
+                "requires authorization",
+                "authentication is required",
+                "authorization is required",
+                "authentication required",
+                "authorization required",
+                "authenticationfailed",
+                "authentication failed",
+            )
+        )
+
     def create_user(self, instance_name: str) -> dict | None:
         """Create a MongoDB database and user for *instance_name*."""
         alphabet = string.ascii_letters + string.digits
         random_suffix = "".join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(5))
         db_name = f"{instance_name}_{random_suffix}"
-        username = f"{instance_name}_user"
+        username = f"{instance_name}_{random_suffix}_user"
         password = "".join(secrets.choice(alphabet) for _ in range(24))
 
         self.printer.step(f"Creating MongoDB database: {db_name}")
@@ -221,6 +243,7 @@ class MongoDBManager:
         )
 
         last_error = ""
+        permanent_auth_error = False
         for attempt in range(1, 6):
             try:
                 result = self.run_shell(["--quiet", "--eval", create_user_script], timeout=30)
@@ -234,46 +257,145 @@ class MongoDBManager:
                         "password": password,
                         "host": "localhost",
                         "port": 27017,
-                        "uri": (f"mongodb://{username}:{password}@localhost:27017/{db_name}?authSource={db_name}"),
+                        "uri": f"mongodb://{username}:{password}@localhost:27017/{db_name}?authSource={db_name}",
                     }
 
                 last_error = combined.strip()[-800:]
             except Exception as exc:
                 last_error = str(exc)
 
-            self.printer.warning(f"MongoDB user creation attempt {attempt}/5 failed; retrying...")
-            time.sleep(2)
+            if self._is_permanent_auth_error(last_error):
+                permanent_auth_error = True
+                break
 
-        if "not authorized" in last_error.lower() or "unauthorized" in last_error.lower():
+            if attempt < 5:
+                self.printer.warning(f"MongoDB user creation attempt {attempt}/5 failed; retrying...")
+                time.sleep(2)
+
+        if permanent_auth_error:
             self.printer.error("MongoDB appears to have authentication enabled already.")
             self.printer.step("This installer can only auto-provision users on a local MongoDB without prior auth.")
             self.printer.step(
                 "Workaround: temporarily disable auth or create the DB/user manually, "
                 "then paste the URI into your app config."
             )
+            self.printer.error("Failed to create MongoDB user due to an authorization error.")
+            return None
 
-        self.printer.error(f"Failed to create MongoDB user after retries. Last error: {last_error}")
+        self.printer.error(f"Failed to create MongoDB user after 5 attempts. Last error: {last_error}")
         return None
 
     # ------------------------------------------------------------------
     # Credentials persistence
     # ------------------------------------------------------------------
 
-    def save_credentials(self, instance_name: str, creds: dict):
-        """Append credentials to ProgramData/plex/mongodb_credentials."""
+    @staticmethod
+    def _atomic_write(path: Path, content: str, mode: int = 0o600) -> None:
+        """Atomically replace a sensitive text file."""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent, text=True)
+        temporary = Path(temporary_name)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                stream.write(content)
+                stream.flush()
+                os.fsync(stream.fileno())
+            try:
+                os.chmod(temporary, mode)
+            except OSError:
+                pass
+            os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+    @staticmethod
+    def _restrict_credentials_acl(path: Path) -> None:
+        """Best-effort restrictive permissions for Windows and test hosts."""
+        try:
+            os.chmod(path, 0o600)
+        except OSError:
+            pass
+        if os.name != "nt":
+            return
+        principal = os.environ.get("USERNAME")
+        command = ["icacls", str(path), "/inheritance:r"]
+        if principal:
+            command.extend(["/grant:r", f"{principal}:(R,W)"])
+        command.extend(["/grant:r", "SYSTEM:(F)", "Administrators:(F)"])
+        try:
+            subprocess.run(command, check=False, capture_output=True, timeout=30)
+        except OSError:
+            pass
+
+    def save_credentials(self, instance_name: str, creds: dict) -> Path:
+        """Atomically persist credentials under ProgramData with restrictive ACLs."""
         creds_dir = Path(os.environ.get("ProgramData", r"C:\ProgramData")) / "plex"
         creds_dir.mkdir(parents=True, exist_ok=True)
 
         creds_file = creds_dir / "mongodb_credentials"
 
-        with open(creds_file, "a", encoding="utf-8") as f:
-            f.write(f"\n# {instance_name}\n")
-            f.write(f"DATABASE={creds['database']}\n")
-            f.write(f"USERNAME={creds['username']}\n")
-            f.write(f"PASSWORD={creds['password']}\n")
-            f.write(f"URI={creds['uri']}\n")
+        original = creds_file.read_text(encoding="utf-8", errors="replace") if creds_file.exists() else ""
+        block = (
+            f"\n# {instance_name}\n"
+            f"DATABASE={creds['database']}\n"
+            f"USERNAME={creds['username']}\n"
+            f"PASSWORD={creds['password']}\n"
+            f"URI={creds['uri']}\n"
+        )
+        self._atomic_write(creds_file, original.rstrip("\n") + block)
+        self._restrict_credentials_acl(creds_file)
 
         self.printer.success(f"Credentials saved to {creds_file}")
+        return creds_file
+
+    @staticmethod
+    def _credential_block_pattern(instance_name: str) -> re.Pattern[str]:
+        escaped = re.escape(instance_name)
+        return re.compile(
+            rf"(?m)^# {escaped}\n"
+            r"DATABASE=[^\n]*\nUSERNAME=[^\n]*\nPASSWORD=[^\n]*\nURI=[^\n]*(?:\n|$)"
+        )
+
+    def remove_saved_credentials(self, instance_name: str, credentials_file: Path | None = None) -> bool:
+        """Remove only one instance's block from the shared credential file."""
+        default = Path(os.environ.get("ProgramData", r"C:\ProgramData")) / "plex" / "mongodb_credentials"
+        creds_file = credentials_file or default
+        if not creds_file.exists():
+            return False
+        original = creds_file.read_text(encoding="utf-8", errors="replace")
+        updated, count = self._credential_block_pattern(instance_name).subn("", original, count=1)
+        if count == 0:
+            return False
+        updated = re.sub(r"\n{3,}", "\n\n", updated).lstrip("\n")
+        if updated.strip():
+            self._atomic_write(creds_file, updated)
+            self._restrict_credentials_acl(creds_file)
+        else:
+            creds_file.unlink(missing_ok=True)
+        return True
+
+    def cleanup_identity(self, database: str, username: str, *, drop_database: bool = False) -> bool:
+        """Remove an instance's MongoDB user and optionally its data."""
+        if not database or not username:
+            return False
+        script = (
+            "(function() {\n"
+            f"  const dbName = {json.dumps(database)};\n"
+            f"  const username = {json.dumps(username)};\n"
+            "  try {\n"
+            "    const target = db.getSiblingDB(dbName);\n"
+            "    if (target.getUser(username)) target.dropUser(username);\n"
+            + ("    target.dropDatabase();\n" if drop_database else "")
+            + "    print('__PLEXINSTALLER_OK__');\n"
+            "  } catch (e) { print('__PLEXINSTALLER_ERROR__ ' + e); quit(2); }\n"
+            "})();"
+        )
+        try:
+            result = self.run_shell(["--quiet", "--eval", script], timeout=30)
+            combined = (result.stdout or "") + "\n" + (result.stderr or "")
+            return result.returncode == 0 and "__PLEXINSTALLER_OK__" in combined
+        except Exception:
+            return False
 
     # ------------------------------------------------------------------
     # Config patching
@@ -285,7 +407,7 @@ class MongoDBManager:
 
         if not config_files:
             self.printer.warning("No config file found to update with MongoDB settings")
-            self.printer.step(f"MongoDB URI: {creds['uri']}")
+            self.printer.step("Add the generated MongoDB URI from the protected credentials file manually.")
             return
 
         config_file = config_files[0]
@@ -310,12 +432,14 @@ class MongoDBManager:
                 if not set_key:
                     set_key = "mongoURI"
                 data[set_key] = mongo_uri
-                config_file.write_text(json.dumps(data, indent=2) + "\n")
+                if not isinstance(data, dict):
+                    raise ValueError("JSON config must contain an object")
+                self._atomic_write(config_file, json.dumps(data, indent=2) + "\n", mode=0o600)
                 self.printer.success(f"Updated MongoDB URI in {config_file.name} ({set_key})")
                 return
             except Exception as e:
                 self.printer.warning(f"Could not auto-update JSON config: {e}")
-                self.printer.step(f"MongoDB URI: {mongo_uri}")
+                self.printer.step("Use the protected credentials file to update the config manually.")
                 return
 
         # YAML-ish config update via regex
@@ -348,14 +472,15 @@ class MongoDBManager:
                     break
 
             if updated:
-                config_file.write_text(content)
+                mode = config_file.stat().st_mode & 0o777
+                self._atomic_write(config_file, content, mode=mode)
                 self.printer.success(f"Updated MongoDB URI in {config_file.name}")
             else:
                 self.printer.warning(f"Could not find MongoDB URI field in {config_file.name}")
-                self.printer.step(f"Please manually add MongoDB URI: {mongo_uri}")
+                self.printer.step("Use the protected credentials file to add the MongoDB URI manually.")
         except Exception as e:
             self.printer.warning(f"Could not auto-update config: {e}")
-            self.printer.step(f"MongoDB URI: {mongo_uri}")
+            self.printer.step("Use the protected credentials file to update the config manually.")
 
     # ------------------------------------------------------------------
     # Validation
@@ -393,14 +518,23 @@ class MongoDBManager:
             try:
                 result = subprocess.run(
                     ["winget", "--version"],
-                    capture_output=True, text=True, timeout=10,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
                 )
                 if result.returncode == 0:
                     self.printer.step("Installing MongoDB via winget...")
                     subprocess.run(
-                        ["winget", "install", "--id", "MongoDB.Server",
-                         "--accept-package-agreements", "--accept-source-agreements"],
-                        check=True, timeout=600,
+                        [
+                            "winget",
+                            "install",
+                            "--id",
+                            "MongoDB.Server",
+                            "--accept-package-agreements",
+                            "--accept-source-agreements",
+                        ],
+                        check=True,
+                        timeout=600,
                     )
                     self.printer.success("MongoDB installed successfully via winget")
                     return True
@@ -411,13 +545,16 @@ class MongoDBManager:
             try:
                 result = subprocess.run(
                     ["choco", "--version"],
-                    capture_output=True, text=True, timeout=10,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
                 )
                 if result.returncode == 0:
                     self.printer.step("Installing MongoDB via Chocolatey...")
                     subprocess.run(
                         ["choco", "install", "mongodb", "-y"],
-                        check=True, timeout=600,
+                        check=True,
+                        timeout=600,
                     )
                     self.printer.success("MongoDB installed successfully via Chocolatey")
                     return True
@@ -425,9 +562,7 @@ class MongoDBManager:
                 pass
 
             self.printer.error("Neither winget nor Chocolatey found.")
-            self.printer.step(
-                "Please install MongoDB manually: https://www.mongodb.com/try/download/community"
-            )
+            self.printer.step("Please install MongoDB manually: https://www.mongodb.com/try/download/community")
             return False
 
         except Exception as e:

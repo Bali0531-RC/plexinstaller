@@ -5,20 +5,29 @@ Modular, maintainable installer for Plex products
 """
 
 import atexit
-import ctypes
-import hashlib
 import io
 import json
-import msvcrt
 import os
 import re
+import secrets
 import shlex
 import shutil
 import subprocess
 import sys
-import urllib.request
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
+
+try:
+    import msvcrt as _msvcrt
+except ImportError:  # pragma: no cover - exercised on non-Windows test hosts
+    _msvcrt = None  # type: ignore[assignment]
+
+try:
+    import fcntl as _fcntl
+except ImportError:  # pragma: no cover - exercised on Windows
+    _fcntl = None  # type: ignore[assignment]
 
 from config import Config
 from utils import (
@@ -30,6 +39,9 @@ from utils import (
     SSLManager,
     SystemDetector,
     SystemdManager,
+    clear_terminal,
+    is_admin,
+    validate_path_component,
 )
 
 try:
@@ -41,7 +53,6 @@ from telemetry_client import TelemetryClient
 try:
     from shared import (
         INSTALLER_DIR,
-        UPDATE_FILE_MAP,
     )
     from shared import (
         download_missing_files as _shared_download_missing,
@@ -65,18 +76,6 @@ except ImportError:
     _shared_ensure_cli = None  # type: ignore[assignment]
     _shared_download_missing = None  # type: ignore[assignment]
     INSTALLER_DIR = Path(os.environ.get("ProgramData", r"C:\ProgramData")) / "plexinstaller"
-    UPDATE_FILE_MAP = {
-        "installer": "installer.py",
-        "config": "config.py",
-        "utils": "utils.py",
-        "plex_cli": "plex_cli.py",
-        "telemetry_client": "telemetry_client.py",
-        "addon_manager": "addon_manager.py",
-        "shared": "shared.py",
-        "health_checker": "health_checker.py",
-        "mongodb_manager": "mongodb_manager.py",
-        "backup_manager": "backup_manager.py",
-    }
 try:
     from mongodb_manager import MongoDBManager
 except ImportError:
@@ -93,9 +92,18 @@ except ImportError:
 from utils import setup_logging
 
 # Current installer version
-INSTALLER_VERSION = "3.2.0"
-VERSION_CHECK_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/main/version.json"
-LOCK_FILE = str(Path(os.environ.get("TEMP", r"C:\Windows\Temp")) / "plexinstaller.lock")
+INSTALLER_VERSION = "3.2.1"
+VERSION_CHECK_URL = "https://raw.githubusercontent.com/Bali0531-RC/plexinstaller/windows-experimental/version.json"
+LOCK_FILE = Path(os.environ.get("ProgramData", r"C:\ProgramData")) / "plexinstaller" / "plexinstaller.lock"
+RESOURCE_MANIFEST = ".plexinstaller-resources.json"
+_SYSTEM_TEMP_ROOTS = frozenset(
+    path.resolve()
+    for path in {
+        Path(tempfile.gettempdir()),
+        Path(os.environ.get("TEMP", tempfile.gettempdir())),
+        Path(os.environ.get("TMP", tempfile.gettempdir())),
+    }
+)
 
 
 class UserAbortError(Exception):
@@ -115,13 +123,16 @@ class InstallationContext:
     needs_web_setup: bool = True
     has_dashboard: bool = False
     install_path_ready: bool = False
+    install_path_created: bool = False
     service_created: bool = False
     nginx_configured: bool = False
     ssl_configured: bool = False
+    nginx_paths_created: bool = False
     domain_skipped: bool = False
     opened_port: int | None = None
     telemetry_session: str | None = None
     log_path: Path | None = None
+    mongo_identity: dict[str, str] | None = None
 
 
 class PlexInstaller:
@@ -134,7 +145,7 @@ class PlexInstaller:
         self._lock_fd: io.TextIOWrapper | None = None
 
         # Check admin FIRST before any file operations
-        if not ctypes.windll.shell32.IsUserAnAdmin():
+        if not is_admin():
             self.printer.error("This installer must be run as Administrator")
             sys.exit(1)
 
@@ -195,8 +206,20 @@ class PlexInstaller:
     def _acquire_lock(self) -> bool:
         """Acquire exclusive lock to prevent concurrent installer runs"""
         try:
-            self._lock_fd = open(LOCK_FILE, "w")
-            msvcrt.locking(self._lock_fd.fileno(), msvcrt.LK_NBLCK, 1)
+            LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
+            self._lock_fd = LOCK_FILE.open("a+", encoding="utf-8")
+            if _msvcrt is not None:
+                lock_api: Any = _msvcrt
+                self._lock_fd.seek(0)
+                if not self._lock_fd.read(1):
+                    self._lock_fd.write("\0")
+                    self._lock_fd.flush()
+                self._lock_fd.seek(0)
+                lock_api.locking(self._lock_fd.fileno(), lock_api.LK_NBLCK, 1)
+            elif _fcntl is not None:
+                _fcntl.flock(self._lock_fd.fileno(), _fcntl.LOCK_EX | _fcntl.LOCK_NB)
+            self._lock_fd.seek(0)
+            self._lock_fd.truncate()
             self._lock_fd.write(str(os.getpid()))
             self._lock_fd.flush()
             return True
@@ -210,12 +233,17 @@ class PlexInstaller:
         """Release the lock file"""
         if self._lock_fd:
             try:
-                msvcrt.locking(self._lock_fd.fileno(), msvcrt.LK_UNLCK, 1)
+                if _msvcrt is not None:
+                    lock_api: Any = _msvcrt
+                    self._lock_fd.seek(0)
+                    lock_api.locking(self._lock_fd.fileno(), lock_api.LK_UNLCK, 1)
+                elif _fcntl is not None:
+                    _fcntl.flock(self._lock_fd.fileno(), _fcntl.LOCK_UN)
                 self._lock_fd.close()
                 self._lock_fd = None
                 # Remove lock file
                 try:
-                    os.unlink(LOCK_FILE)
+                    LOCK_FILE.unlink()
                 except OSError:
                     pass
             except Exception:
@@ -223,7 +251,7 @@ class PlexInstaller:
 
     def run(self):
         """Main entry point"""
-        os.system("cls")
+        clear_terminal()
         self._display_banner()
 
         if not self.telemetry_enabled:
@@ -297,9 +325,18 @@ class PlexInstaller:
         try:
             self.printer.step("Checking for installer updates...")
 
-            # Fetch version info
-            with urllib.request.urlopen(VERSION_CHECK_URL, timeout=5) as response:
-                version_json_bytes = response.read()
+            if _shared_download_missing is None or _shared_verify_gpg is None:
+                raise RuntimeError("Shared update security module is unavailable")
+
+            from shared import MAX_MANIFEST_BYTES, _download_bytes
+
+            version_json_bytes = _download_bytes(
+                VERSION_CHECK_URL,
+                timeout=5,
+                max_bytes=MAX_MANIFEST_BYTES,
+            )
+            if not self._verify_gpg_signature(version_json_bytes):
+                raise RuntimeError("Version manifest signature verification failed")
             version_data = json.loads(version_json_bytes.decode())
 
             remote_version = version_data.get("version", "0.0.0")
@@ -342,10 +379,8 @@ class PlexInstaller:
     def _download_missing_files(self, version_data: dict) -> None:
         """Download any managed files that are missing from the install directory.
 
-        Uses version_data already fetched during the update check so no extra
-        network round-trip is needed.  Falls back to a self-contained
-        implementation when shared.py itself is unavailable (first upgrade
-        from an older installer that predates shared.py).
+        The shared security module re-fetches and authenticates the manifest
+        before using any download URL. Missing shared.py disables repair.
         """
         if _shared_download_missing is not None:
             _shared_download_missing(
@@ -356,32 +391,7 @@ class PlexInstaller:
             )
             return
 
-        # Inline fallback — shared.py is missing, download everything we need
-        install_dir = INSTALLER_DIR
-        urls = version_data.get("download_urls", {})
-        checksums = version_data.get("checksums", {})
-
-        for key, filename in UPDATE_FILE_MAP.items():
-            target = install_dir / filename
-            if target.exists():
-                continue
-            if key not in urls or key not in checksums:
-                continue
-
-            try:
-                self.printer.step(f"Downloading missing file {filename}...")
-                with urllib.request.urlopen(urls[key], timeout=30) as resp:
-                    content = resp.read()
-
-                actual = hashlib.sha256(content).hexdigest()
-                if actual != checksums[key]:
-                    self.printer.error(f"Checksum mismatch for {filename}: expected {checksums[key]}, got {actual}")
-                    continue
-
-                target.write_bytes(content)
-                self.printer.success(f"Installed missing file {filename}")
-            except Exception as e:
-                self.printer.error(f"Failed to download {filename}: {e}")
+        self.printer.error("shared.py is unavailable — refusing unauthenticated missing-file repair")
 
     def _ensure_cli_entrypoints(self):
         """Ensure `plexinstaller` and `plex` commands point at the current installer bundle."""
@@ -406,8 +416,8 @@ class PlexInstaller:
     def _verify_gpg_signature(self, version_json_bytes: bytes) -> bool:
         """Download version.json.sig and verify version.json against it."""
         if _shared_verify_gpg is None:
-            self.printer.warning("shared.py not available — skipping GPG verification")
-            return True
+            self.printer.error("shared.py is unavailable — refusing to verify or install updates")
+            return False
         return _shared_verify_gpg(
             version_json_bytes,
             print_info=self.printer.step,
@@ -433,7 +443,7 @@ class PlexInstaller:
     def _show_main_menu(self):
         """Display main menu and handle user choice"""
         while True:
-            os.system("cls")
+            clear_terminal()
             self._display_banner()
             self.printer.header("Main Menu")
 
@@ -441,14 +451,16 @@ class PlexInstaller:
             self._show_services_status()
             print()
 
+            print("Plex Development Products")
             print("1) Install PlexTickets")
             print("2) Install PlexStaff")
-            print("3) Install PlexStatus")
-            print("4) Install PlexStore")
-            print("5) Install PlexForms")
-            print("6) Install PlexLinks")
-            print("7) Install PlexPaste")
-            print("8) Install PlexTracker")
+            print("Drako Development Products")
+            print("3) Install DrakoStatus")
+            print("4) Install DrakoStore")
+            print("5) Install DrakoForms")
+            print("6) Install DrakoLinks")
+            print("7) Install DrakoPaste")
+            print("8) Install DrakoTracker")
             print("----------------------------------------")
             print("9) Manage Installations")
             print("10) Manage Backups")
@@ -468,17 +480,17 @@ class PlexInstaller:
             elif choice == "2":
                 self._install_product("plexstaff", 3001)
             elif choice == "3":
-                self._install_product("plexstatus", 3002)
+                self._install_product("drakostatus", 3002)
             elif choice == "4":
-                self._install_product("plexstore", 3003)
+                self._install_product("drakostore", 3003)
             elif choice == "5":
-                self._install_product("plexforms", 3004)
+                self._install_product("drakoforms", 3004)
             elif choice == "6":
-                self._install_product("plexlinks", 3005)
+                self._install_product("drakolinks", 3005)
             elif choice == "7":
-                self._install_product("plexpaste", 3006)
+                self._install_product("drakopaste", 3006)
             elif choice == "8":
-                self._install_product("plextracker", 3007)
+                self._install_product("drakotracker", 3007)
             elif choice == "9":
                 self._manage_installations()
             elif choice == "10":
@@ -516,14 +528,22 @@ class PlexInstaller:
 
             # Get port from config if possible
             port = "N/A"
-            for config_file in product_dir.glob("config.y*ml"):
+            for config_file in list(product_dir.glob("config.y*ml")) + list(product_dir.glob("config.json")):
                 try:
-                    import re
-
                     content = config_file.read_text()
-                    match = re.search(r"port[:\s]+(\d+)", content, re.IGNORECASE)
-                    if match:
-                        port = match.group(1)
+                    if config_file.suffix.lower() == ".json":
+                        data = json.loads(content)
+                        value = next((data[key] for key in ("Port", "port", "PORT") if key in data), None)
+                        match_port = str(value) if isinstance(value, int) and 1 <= value <= 65535 else None
+                    else:
+                        match = re.search(
+                            r"^[ \t]*port[ \t]*:[ \t]*(\d+)(?:[ \t]*(?:#.*)?)?$",
+                            content,
+                            re.IGNORECASE | re.MULTILINE,
+                        )
+                        match_port = match.group(1) if match else None
+                    if match_port:
+                        port = match_port
                         break
                 except Exception:
                     pass
@@ -569,6 +589,8 @@ class PlexInstaller:
             # Check for multi-instance
             instance_name = self._handle_multi_instance(product)
             install_path = self.config.install_dir / instance_name
+            if install_path.exists():
+                raise UserAbortError(f"Install path already exists: {install_path}")
             context = InstallationContext(
                 product=product,
                 instance_name=instance_name,
@@ -600,6 +622,7 @@ class PlexInstaller:
                 raise UserAbortError("Archive extraction failed — check the file path and format")
             context.install_path = extracted_path
             context.install_path_ready = True
+            context.install_path_created = True
             self.telemetry.log_step(current_step, "success", f"Extracted to {extracted_path}")
 
             # Install NPM dependencies
@@ -618,12 +641,23 @@ class PlexInstaller:
             current_step = "mongodb"
             product_config = self.config.get_product(product) if hasattr(self.config, "get_product") else None
             requires_mongo = bool(getattr(product_config, "requires_mongodb", False))
-            mongo_creds = self.mongo_manager.setup(
-                instance_name,
-                extracted_path,
-                required=requires_mongo,
-                wait_for_tcp_port=self.health.wait_for_tcp_port,
-            )
+            if self.mongo_manager is None:
+                if requires_mongo:
+                    raise RuntimeError("MongoDB manager is unavailable for a product that requires MongoDB")
+                mongo_creds = None
+            else:
+                wait_for_port = self.health.wait_for_tcp_port if self.health is not None else None
+                mongo_creds = self.mongo_manager.setup(
+                    instance_name,
+                    extracted_path,
+                    required=requires_mongo,
+                    wait_for_tcp_port=wait_for_port,
+                )
+            if mongo_creds:
+                context.mongo_identity = {
+                    "database": str(mongo_creds.get("database", "")),
+                    "username": str(mongo_creds.get("username", "")),
+                }
             detail = "configured" if mongo_creds else "skipped"
             self.telemetry.log_step(current_step, "success", detail)
 
@@ -641,21 +675,10 @@ class PlexInstaller:
                     self.telemetry.log_step(current_step, "success", f"{domain}:{port}")
                 else:
                     # Let user pick a port but skip domain/nginx/SSL
-                    while True:
-                        port_input = input(f"Enter port (default: {default_port}): ").strip()
-                        if not port_input:
-                            port = default_port
-                            break
-                        if port_input.isdigit():
-                            port = int(port_input)
-                            if 1 <= port <= 65535:
-                                break
-                            else:
-                                self.printer.error("Port must be between 1 and 65535. Please try again.")
-                        else:
-                            self.printer.error("Port must be a number. Please try again.")
+                    port = self._select_available_port(default_port)
                     context.port = port
                     context.domain_skipped = True
+                    self.config.persist_app_port(extracted_path, port)
                     self.firewall.open_port(port, instance_name)
                     context.opened_port = port
                     self.printer.warning("Domain setup skipped. You can set it up later with:")
@@ -675,11 +698,15 @@ class PlexInstaller:
 
             # Post-install self-tests
             current_step = "self_tests"
-            results = self.health.run_post_install_self_tests(
-                context,
-                mongo_creds=mongo_creds,
-                config=self.config,
-                mongo_manager=self.mongo_manager,
+            results = (
+                self.health.run_post_install_self_tests(
+                    context,
+                    mongo_creds=mongo_creds,
+                    config=self.config,
+                    mongo_manager=self.mongo_manager,
+                )
+                if self.health is not None
+                else []
             )
             failed = [r for r in results if r.status == "fail"]
             warned = [r for r in results if r.status == "warn"]
@@ -690,6 +717,13 @@ class PlexInstaller:
             else:
                 self.telemetry.log_step(current_step, "success")
 
+            self._write_resource_manifest(context)
+
+            if failed:
+                self.printer.error(f"{product} is installed but unhealthy: {len(failed)} required self-test(s) failed")
+                self.telemetry.finish_session("failure", "self_tests", f"failures={len(failed)}")
+                return False
+
             # Post-installation
             current_step = "post_install"
             self._post_install(instance_name, extracted_path, domain, needs_web)
@@ -697,6 +731,7 @@ class PlexInstaller:
 
             self.printer.success(f"{product} installed successfully!")
             self.telemetry.finish_session("success")
+            return True
         except KeyboardInterrupt:
             self.printer.warning("\nInstallation cancelled by user")
             if self.telemetry:
@@ -730,13 +765,25 @@ class PlexInstaller:
                 )
         finally:
             pass
+        return False
 
     def _handle_multi_instance(self, product: str) -> str:
         """Handle multi-instance installations"""
-        install_dir = self.config.install_dir / product
+        canonical_product = self.config.canonical_product_name(product)
+        existing_instances = []
+        if self.config.install_dir.exists():
+            existing_instances = [
+                path
+                for path in self.config.install_dir.iterdir()
+                if path.is_dir()
+                and path.name != "backups"
+                and self.config.canonical_product_name(path.name) == canonical_product
+            ]
 
-        if install_dir.exists():
-            self.printer.warning(f"Found existing installation of {product}")
+        if existing_instances:
+            self.printer.warning(
+                f"Found existing installation(s): {', '.join(sorted(p.name for p in existing_instances))}"
+            )
             choice = input("Install another instance (multi-instance)? (y/n): ").strip().lower()
 
             if choice == "y":
@@ -744,37 +791,49 @@ class PlexInstaller:
                 import string
 
                 suffix = "".join(random.choices(string.ascii_lowercase + string.digits, k=4))
-                default_name = f"{product}-{suffix}"
+                default_name = f"{canonical_product}-{suffix}"
 
                 instance_name = input(f"Enter unique instance name (default: {default_name}): ").strip()
                 if not instance_name:
                     instance_name = default_name
 
                 # Validate instance name
-                if not re.match(r"^[a-zA-Z0-9_-]+$", instance_name):
+                validate_path_component(instance_name, label="instance name")
+                if not re.fullmatch(r"[A-Za-z0-9_-]+", instance_name):
                     raise ValueError("Invalid instance name. Use only letters, numbers, dash, underscore")
+                if (self.config.install_dir / instance_name).exists():
+                    raise UserAbortError(f"Instance '{instance_name}' already exists")
 
                 self.printer.success(f"Installing {product} as instance: {instance_name}")
                 return instance_name
 
-        return product
+            raise UserAbortError("Existing installation preserved; multi-instance install declined")
+
+        return canonical_product
 
     def _find_archive(self, product: str) -> Path | None:
         """Find product archive file"""
         self.printer.step(f"Searching for {product} archive...")
 
-        search_dirs = [
-            Path.home(),
-            Path(os.environ.get("USERPROFILE", "")),
-            Path(os.environ.get("TEMP", "")),
-            Path.home() / "Downloads",
-            Path.cwd(),
-        ]
+        trusted_roots = (Path.home(), Path.home() / "Downloads", Path.cwd())
+        search_dirs: list[Path] = []
+        seen_roots: set[str] = set()
+        for candidate in trusted_roots:
+            try:
+                resolved_root = candidate.resolve()
+            except (OSError, RuntimeError):
+                continue
+            if any(resolved_root == root or root in resolved_root.parents for root in _SYSTEM_TEMP_ROOTS):
+                continue
+            key = os.path.normcase(str(resolved_root))
+            if key not in seen_roots:
+                seen_roots.add(key)
+                search_dirs.append(resolved_root)
 
         archives = []
         seen_paths = set()
-        product_lower = product.lower()
-        patterns = ["*.zip", "*.rar"]
+        product_names = self.config.equivalent_product_names(product)
+        patterns = ["*.zip", "*.rar", "*.tar", "*.tar.gz", "*.tgz", "*.tar.bz2", "*.tbz2", "*.tar.xz", "*.txz"]
 
         for search_dir in search_dirs:
             if not search_dir.exists():
@@ -782,8 +841,10 @@ class PlexInstaller:
 
             for pattern in patterns:
                 for archive in search_dir.rglob(pattern):
-                    if product_lower in archive.name.lower():
+                    if any(name in archive.name.lower() for name in product_names):
                         resolved = archive.resolve()
+                        if any(resolved == root or root in resolved.parents for root in _SYSTEM_TEMP_ROOTS):
+                            continue
                         if str(resolved) in seen_paths:
                             continue
                         seen_paths.add(str(resolved))
@@ -826,6 +887,11 @@ class PlexInstaller:
         """Extract product archive"""
         target_dir = self.config.install_dir / instance_name
 
+        validate_path_component(instance_name, label="instance name")
+        if target_dir.exists():
+            self.printer.error(f"Refusing to overwrite existing install path: {target_dir}")
+            return None
+
         self.printer.step(f"Extracting to {target_dir}")
 
         try:
@@ -848,12 +914,22 @@ class PlexInstaller:
 
         try:
             subprocess.run(
-                ["npm.cmd", "install", "--loglevel=error"], cwd=install_path, check=True, capture_output=True, timeout=300
+                ["npm.cmd", "install", "--loglevel=error"],
+                cwd=install_path,
+                check=True,
+                capture_output=True,
+                timeout=300,
             )
             self.printer.success("NPM dependencies installed")
             return True
         except subprocess.CalledProcessError as e:
-            self.printer.error(f"NPM install failed: {e.stderr.decode()}")
+            if isinstance(e.stderr, bytes):
+                detail = e.stderr.decode(errors="replace").strip()
+            elif isinstance(e.stderr, str):
+                detail = e.stderr.strip()
+            else:
+                detail = ""
+            self.printer.error(f"NPM install failed: {detail or str(e)}")
             return False
 
     def _create_502_page(self, install_path: Path, product: str):
@@ -918,20 +994,7 @@ class PlexInstaller:
     ) -> tuple[str, int, str]:
         """Setup web server (nginx, SSL) with validation and context tracking."""
 
-        # Get port with validation (including range check)
-        while True:
-            port_input = input(f"Enter port (default: {default_port}): ").strip()
-            if not port_input:
-                port = default_port
-                break
-            if port_input.isdigit():
-                port = int(port_input)
-                if 1 <= port <= 65535:
-                    break
-                else:
-                    self.printer.error("Port must be between 1 and 65535. Please try again.")
-            else:
-                self.printer.error("Port must be a number. Please try again.")
+        port = self._select_available_port(default_port)
 
         # Get domain with format validation
         domain_pattern = re.compile(
@@ -960,8 +1023,7 @@ class PlexInstaller:
         context.opened_port = port
         context.domain = domain
         context.email = email
-
-        # Open firewall port
+        self.config.persist_app_port(install_path, port)
         self.firewall.open_port(port, instance_name)
 
         # Check DNS
@@ -971,14 +1033,37 @@ class PlexInstaller:
                 raise UserAbortError("Installation aborted due to DNS issues")
 
         # Setup nginx
-        self.nginx.setup(domain, port, instance_name, install_path)
-        context.nginx_configured = True
+        nginx_config = self.config.nginx_available / f"{domain}.conf"
+        nginx_enabled = self.config.nginx_enabled / f"{domain}.conf"
+        if nginx_config.exists() or nginx_enabled.exists():
+            raise UserAbortError(f"Nginx configuration already exists for {domain}")
 
-        # Setup SSL
-        self.ssl.setup(domain, email)
-        context.ssl_configured = True
+        context.nginx_paths_created = True
+        try:
+            self.nginx.setup(domain, port, instance_name, install_path)
+            context.nginx_configured = True
+
+            # Setup SSL
+            self.ssl.setup(domain, email)
+            context.ssl_configured = True
+        except Exception:
+            self._remove_nginx_config(domain)
+            context.nginx_configured = False
+            raise
 
         return domain, port, email
+
+    def _select_available_port(self, default_port: int) -> int:
+        """Prompt for and verify a port before committing configuration."""
+        while True:
+            raw = input(f"Enter port (default: {default_port}): ").strip() or str(default_port)
+            if raw.isdigit() and 1 <= int(raw) <= 65535:
+                port = int(raw)
+                if self.config.is_port_available(port):
+                    return port
+                self.printer.error(f"Port {port} is already in use. Choose another port.")
+            else:
+                self.printer.error("Port must be a number between 1 and 65535.")
 
     def _install_dashboard(self, install_path: Path):
         """Install PlexTickets dashboard addon"""
@@ -1003,7 +1088,8 @@ class PlexInstaller:
         choice = input(f"Set up '{instance_name}' to auto-start on boot? (y/n): ").strip().lower()
 
         if choice == "y":
-            self.systemd.create_service(instance_name, install_path)
+            if not self.systemd.create_service(instance_name, install_path):
+                raise RuntimeError(f"Failed to create Windows service plex-{instance_name}")
             self.printer.success("Windows service configured")
             return True
         else:
@@ -1033,7 +1119,7 @@ class PlexInstaller:
             self.printer.step(f"Set up a domain later with: plex tool setupdomain {instance_name}")
 
         print(f"\nManage service: nssm [start|stop|restart] plex-{instance_name}")
-        print(f"View logs: Check Windows Event Viewer or application log files")
+        print("View logs: Check Windows Event Viewer or application log files")
 
     def _cleanup_failed_install(self, context: InstallationContext):
         """Attempt to roll back artifacts from a failed installation."""
@@ -1045,13 +1131,13 @@ class PlexInstaller:
         except Exception as exc:
             self.printer.warning(f"Could not remove systemd service: {exc}")
 
-        if context.nginx_configured and context.domain:
+        if context.nginx_paths_created and context.domain:
             self._remove_nginx_config(context.domain)
 
         if context.ssl_configured and context.domain:
             self._remove_ssl_certificate(context.domain)
 
-        if context.install_path and context.install_path.exists():
+        if context.install_path_created and context.install_path and context.install_path.exists():
             try:
                 shutil.rmtree(context.install_path, ignore_errors=True)
                 self.printer.step(f"Removed {context.install_path}")
@@ -1059,39 +1145,31 @@ class PlexInstaller:
                 self.printer.warning(f"Failed to remove install directory: {exc}")
 
         if context.opened_port:
-            self.firewall.close_port(context.opened_port)
+            self.firewall.close_port(context.opened_port, context.instance_name)
+
+        if context.mongo_identity and self.mongo_manager is not None:
+            database = context.mongo_identity.get("database", "")
+            username = context.mongo_identity.get("username", "")
+            try:
+                if database and username:
+                    self.mongo_manager.cleanup_identity(database, username, drop_database=False)
+                self.mongo_manager.remove_saved_credentials(context.instance_name)
+            except Exception as exc:
+                self.printer.warning(f"Could not fully roll back MongoDB resources: {exc}")
 
     def _remove_nginx_config(self, domain: str):
-        config_file = self.config.nginx_available / f"{domain}.conf"
-        enabled_link = self.config.nginx_enabled / f"{domain}.conf"
-
-        if enabled_link.exists() or enabled_link.is_symlink():
-            try:
-                enabled_link.unlink()
-            except Exception as exc:
-                self.printer.warning(f"Failed to remove enabled nginx config: {exc}")
-
-        if config_file.exists():
-            try:
-                config_file.unlink()
-            except Exception as exc:
-                self.printer.warning(f"Failed to remove nginx config: {exc}")
-
         try:
-            subprocess.run(["nginx", "-t"], check=False, capture_output=True)
-            subprocess.run(["nginx", "-s", "reload"], check=False)
-        except Exception:
-            pass
+            self.nginx.remove(domain)
+        except Exception as exc:
+            self.printer.warning(f"Failed to remove nginx config: {exc}")
 
     def _remove_ssl_certificate(self, domain: str):
         try:
-            subprocess.run(
-                ["certbot", "delete", "--cert-name", domain, "--non-interactive"],
-                check=True,
-                capture_output=True,
-            )
-            self.printer.step(f"Removed SSL certificate for {domain}")
-        except subprocess.CalledProcessError:
+            if self.ssl.delete(domain):
+                self.printer.step(f"Removed SSL certificate for {domain}")
+            else:
+                self.printer.warning("Could not remove SSL certificate (may not have been issued)")
+        except (OSError, subprocess.SubprocessError):
             self.printer.warning("Could not remove SSL certificate (may not have been issued)")
 
     def _manage_installations(self):
@@ -1160,8 +1238,8 @@ class PlexInstaller:
             elif choice == "5":
                 self._edit_config(product)
             elif choice == "6":
-                self._uninstall_product(product)
-                break
+                if self._uninstall_product(product):
+                    break
 
     def _edit_config(self, product: str):
         """Edit product configuration"""
@@ -1177,17 +1255,60 @@ class PlexInstaller:
 
     def _uninstall_product(self, product: str):
         """Uninstall a product"""
+        try:
+            validate_path_component(product, label="installation name")
+        except ValueError:
+            self.printer.error("Invalid installation name")
+            return False
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", product):
+            self.printer.error("Invalid installation name")
+            return False
+        install_path = self.config.install_dir / product
+        try:
+            install_path.resolve().relative_to(self.config.install_dir.resolve())
+        except ValueError:
+            self.printer.error("Refusing to uninstall a path outside the installation directory")
+            return False
+
         confirm = input(f"Uninstall {product}? This will remove all files. (y/n): ").strip().lower()
 
         if confirm != "y":
-            return
+            return False
 
-        service_name = f"plex-{product}"
-        install_path = self.config.install_dir / product
+        manifest = self._load_resource_manifest(install_path, product)
+        service_name = str(manifest.get("service") or f"plex-{product}")
 
         # Stop and remove service
-        self.systemd.stop(service_name)
-        self.systemd.remove_service(service_name)
+        try:
+            self.systemd.stop(service_name)
+            self.systemd.remove_service(service_name)
+        except Exception as exc:
+            self.printer.warning(f"Could not remove service {service_name}: {exc}")
+
+        port = manifest.get("firewall_port")
+        if isinstance(port, int):
+            try:
+                description = str(manifest.get("firewall_description") or product)
+                self.firewall.close_port(port, description)
+            except Exception as exc:
+                self.printer.warning(f"Could not remove firewall rule for {port}: {exc}")
+
+        domain = manifest.get("domain")
+        if isinstance(domain, str) and domain:
+            if manifest.get("nginx"):
+                self._remove_nginx_config(domain)
+            if manifest.get("certificate"):
+                self._remove_ssl_certificate(domain)
+
+        mongo = manifest.get("mongodb") or {}
+        if self.mongo_manager is not None and isinstance(mongo, dict):
+            database = str(mongo.get("database") or "")
+            username = str(mongo.get("username") or "")
+            removed = True
+            if database and username:
+                removed = self.mongo_manager.cleanup_identity(database, username, drop_database=False)
+            if removed:
+                self.mongo_manager.remove_saved_credentials(product)
 
         # Remove installation directory
         if install_path.exists():
@@ -1195,11 +1316,72 @@ class PlexInstaller:
             self.printer.success(f"Removed {install_path}")
 
         self.printer.success(f"{product} uninstalled")
+        return True
+
+    def _write_resource_manifest(self, context: InstallationContext) -> Path:
+        """Persist resources owned by one instance for deterministic uninstall."""
+        manifest = {
+            "schema_version": 1,
+            "instance": context.instance_name,
+            "product": context.product,
+            "install_path": str(context.install_path.resolve()),
+            "port": context.port,
+            "firewall_port": context.opened_port,
+            "firewall_description": context.instance_name if context.opened_port else None,
+            "domain": context.domain,
+            "nginx": context.nginx_configured,
+            "certificate": context.ssl_configured,
+            "service": f"plex-{context.instance_name}" if context.service_created else None,
+            "mongodb": context.mongo_identity or {},
+        }
+        path = context.install_path / RESOURCE_MANIFEST
+        temporary = path.with_name(f".{path.name}.{secrets.token_hex(6)}.tmp")
+        try:
+            fd = os.open(str(temporary), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                json.dump(manifest, stream, indent=2)
+                stream.write("\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
+        return path
+
+    def _load_resource_manifest(self, install_path: Path, instance_name: str) -> dict[str, Any]:
+        """Load a validated manifest, using conservative legacy defaults."""
+        path = install_path / RESOURCE_MANIFEST
+        if path.exists():
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                if not isinstance(data, dict) or data.get("instance") != instance_name:
+                    raise ValueError("manifest instance mismatch")
+                if Path(str(data.get("install_path", install_path))).resolve() != install_path.resolve():
+                    raise ValueError("manifest path mismatch")
+                service = data.get("service")
+                if service not in {None, f"plex-{instance_name}"}:
+                    raise ValueError("manifest service mismatch")
+                port = data.get("firewall_port")
+                if port is not None and (not isinstance(port, int) or isinstance(port, bool) or not 1 <= port <= 65535):
+                    raise ValueError("manifest firewall port is invalid")
+                mongo = data.get("mongodb") or {}
+                if not isinstance(mongo, dict):
+                    raise ValueError("manifest MongoDB identity is invalid")
+                return data
+            except (OSError, ValueError, json.JSONDecodeError):
+                self.printer.warning(f"Could not read resource manifest {path}; using safe defaults")
+        return {
+            "schema_version": 0,
+            "instance": instance_name,
+            "install_path": str(install_path),
+            "service": f"plex-{instance_name}",
+            "mongodb": {},
+        }
 
     def _ssl_management_menu(self):
         """SSL certificate management menu"""
         while True:
-            os.system("cls")
+            clear_terminal()
             self.printer.header("SSL Certificate Management")
 
             print("\n1) View SSL Certificate Status")
@@ -1232,19 +1414,17 @@ class PlexInstaller:
     def _show_ssl_status(self):
         """Show SSL certificate status"""
         self.printer.step("Checking SSL certificates...")
-        subprocess.run(["certbot", "certificates"])
+        try:
+            self.ssl.status()
+        except OSError as exc:
+            self.printer.warning(str(exc))
 
     def _view_ssl_logs(self):
         """View SSL renewal logs"""
-        log_dir = Path(os.environ.get("ProgramData", r"C:\ProgramData")) / "certbot" / "log"
-        log_file = log_dir / "letsencrypt.log"
-        if log_file.exists():
-            content = log_file.read_text()
-            lines = content.splitlines()
-            for line in lines[-50:]:
-                print(line)
-        else:
-            self.printer.warning(f"SSL log file not found at {log_file}")
+        try:
+            self.ssl.view_logs()
+        except OSError as exc:
+            self.printer.warning(str(exc))
 
     def _force_ssl_renewal(self):
         """Force SSL certificate renewal"""
@@ -1254,11 +1434,13 @@ class PlexInstaller:
         if confirm == "y":
             self.printer.step("Forcing SSL certificate renewal...")
             try:
-                subprocess.run(["certbot", "renew", "--force-renewal"], check=True)
+                self.ssl.renew(force=True)
                 self.printer.success("SSL certificates renewed successfully!")
                 self.printer.step("Reloading Nginx...")
-                subprocess.run(["nginx", "-s", "reload"])
-            except subprocess.CalledProcessError:
+                nginx = shutil.which("nginx")
+                if nginx:
+                    subprocess.run([nginx, "-s", "reload"], check=False, timeout=30)
+            except (OSError, subprocess.SubprocessError):
                 self.printer.error("SSL certificate renewal failed")
         else:
             self.printer.step("SSL renewal cancelled")
@@ -1267,9 +1449,9 @@ class PlexInstaller:
         """Test SSL certificate renewal (dry run)"""
         self.printer.step("Running SSL renewal test (dry run)...")
         try:
-            subprocess.run(["certbot", "renew", "--dry-run"], check=True)
+            self.ssl.test_renewal()
             self.printer.success("SSL renewal test successful! All certificates can be renewed.")
-        except subprocess.CalledProcessError:
+        except (OSError, subprocess.SubprocessError):
             self.printer.error("SSL renewal test failed. Check output above for details.")
 
     # ========== ADDON MANAGEMENT ==========
@@ -1285,7 +1467,7 @@ class PlexInstaller:
             return
 
         while True:
-            os.system("cls")
+            clear_terminal()
             self.printer.header("Addon Management")
             print("Manage addons for PlexTickets and PlexStaff installations\n")
 
@@ -1331,7 +1513,7 @@ class PlexInstaller:
         for product_dir in self.config.install_dir.iterdir():
             if product_dir.is_dir() and product_dir.name != "backups":
                 # Check if this product type supports addons
-                base_product = product_dir.name.split("-")[0]  # Handle multi-instance names
+                base_product = self.config.instance_product_base(product_dir.name)
                 product_config = self.config.get_product(base_product)
 
                 if product_config and getattr(product_config, "supports_addons", False):
@@ -1342,7 +1524,7 @@ class PlexInstaller:
     def _manage_product_addons(self, product_name: str, product_path: Path):
         """Manage addons for a specific product"""
         while True:
-            os.system("cls")
+            clear_terminal()
             self.printer.header(f"Addons for {product_name}")
 
             addons = self.addon_manager.list_addons(product_path)
@@ -1638,28 +1820,30 @@ class PlexInstaller:
 
     def _restore_addon_backup(self, product_name: str, product_path: Path, backup: dict):
         """Restore an addon from backup"""
-        import tarfile
-
-        addon_name = backup["addon_name"]
-        backup_path = backup["path"]
-        addons_path = self.addon_manager.get_addons_path(product_path)
-        addon_path = addons_path / addon_name
-
         try:
-            # Remove existing addon if present
-            if addon_path.exists():
-                self.printer.step(f"Removing existing addon '{addon_name}'...")
-                shutil.rmtree(addon_path)
+            from utils import install_staged_directory, safe_extract_tar
 
-            # Extract backup
+            addon_name = validate_path_component(str(backup["addon_name"]), label="addon name")
+            backup_path = Path(backup["path"])
+            addons_path = self.addon_manager.get_addons_path(product_path)
+            addon_path = addons_path / addon_name
+            rollback_path: Path | None = None
             self.printer.step("Restoring from backup...")
             addons_path.mkdir(parents=True, exist_ok=True)
-
-            with tarfile.open(backup_path, "r:gz") as tar:
-                tar.extractall(addons_path)
-
-            # Set permissions
-            self.addon_manager._set_permissions(addon_path)
+            with tempfile.TemporaryDirectory(prefix=f".{addon_name}.restore-", dir=addons_path) as temp_dir:
+                extraction_root = Path(temp_dir) / "archive"
+                safe_extract_tar(backup_path, extraction_root, expected_top_level=addon_name)
+                staged_addon = extraction_root / addon_name
+                self.addon_manager._set_permissions(staged_addon)
+                if addon_path.exists() or addon_path.is_symlink():
+                    rollback_path = Path(temp_dir) / "previous"
+                    addon_path.rename(rollback_path)
+                try:
+                    install_staged_directory(staged_addon, addon_path)
+                except Exception:
+                    if rollback_path is not None and rollback_path.exists() and not addon_path.exists():
+                        rollback_path.rename(addon_path)
+                    raise
 
             self.printer.success(f"Addon '{addon_name}' restored successfully")
 

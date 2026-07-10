@@ -15,7 +15,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from utils import ColorPrinter, SystemdManager
+from utils import ColorPrinter, SSLManager, SystemdManager, clear_terminal
 
 logger = logging.getLogger("plexinstaller.health")
 
@@ -86,7 +86,7 @@ class HealthChecker:
             version = (result.stdout or "").strip().lstrip("v")
             major = int(version.split(".")[0])
             if major < self.node_min_version:
-                return False, (f"Node.js v{version} (needs >= {self.node_min_version})")
+                return False, f"Node.js v{version} (needs >= {self.node_min_version})"
             return True, f"Node.js v{version}"
         except Exception as exc:
             return False, str(exc)
@@ -157,11 +157,8 @@ class HealthChecker:
         config_files = list(context.install_path.glob("config.y*ml")) + list(context.install_path.glob("config.json"))
         if config_files:
             cfg_detail = config_files[0].name
-            cfg_hint = (
-                "Fill in the required values (tokens, secrets, etc.) in "
-                f"{config_files[0]} before the service will run correctly"
-            )
-            cfg_status = "warn"
+            cfg_hint = ""
+            cfg_status = "pass"
         else:
             cfg_detail = "no config.yml/config.json found"
             cfg_hint = "You may need to create/configure the app config manually"
@@ -178,6 +175,7 @@ class HealthChecker:
         service_name = f"plex-{context.instance_name}"
         if context.service_created:
             is_active = False
+            status = "unknown"
             for _ in range(20):
                 status = self.systemd.get_status(service_name)
                 if status.strip().lower() in ("active", "running"):
@@ -189,7 +187,7 @@ class HealthChecker:
                 SelfTestResult(
                     name="Windows service active",
                     status="pass" if is_active else "warn",
-                    detail=f"{service_name} is {self.systemd.get_status(service_name)}",
+                    detail=f"{service_name} is {status}",
                     hint=(
                         f"The service may have crashed because config.yml is not yet filled in. "
                         f"Edit the config, then: nssm restart {service_name}"
@@ -208,20 +206,15 @@ class HealthChecker:
                 )
             )
 
-        # App port checks — only meaningful when a dashboard/web UI is installed.
-        # Without a dashboard the product is a headless bot; nothing listens on the port.
-        if context.service_created and getattr(context, "has_dashboard", False):
+        needs_web_setup = bool(getattr(context, "needs_web_setup", True))
+        if context.service_created and needs_web_setup:
             port_ready = self.wait_for_tcp_port("127.0.0.1", context.port, timeout_seconds=45)
             results.append(
                 SelfTestResult(
                     name="Local TCP port reachable",
                     status="pass" if port_ready else "fail",
                     detail=f"127.0.0.1:{context.port}",
-                    hint=(
-                        f"Check the service logs or event viewer for {service_name}"
-                        if not port_ready
-                        else ""
-                    ),
+                    hint=(f"Check the service logs or event viewer for {service_name}" if not port_ready else ""),
                 )
             )
 
@@ -235,13 +228,13 @@ class HealthChecker:
                         hint=("The app may not expose /; verify the configured bind/port" if not http_ok else ""),
                     )
                 )
-        elif context.service_created and not getattr(context, "has_dashboard", False):
+        elif context.service_created and not needs_web_setup:
             results.append(
                 SelfTestResult(
                     name="Local TCP port check",
                     status="warn",
-                    detail=f"skipped — no dashboard installed (port {context.port} unused)",
-                    hint="Install with a dashboard if you need a web UI on this port",
+                    detail=f"skipped — web setup not required (port {context.port} unused)",
+                    hint="Enable the product's web interface if you need an HTTP endpoint",
                 )
             )
 
@@ -317,15 +310,19 @@ class HealthChecker:
 
     def system_health_check(self):
         """Comprehensive system health check (disk, services, nginx, mongo, SSL, mem, load)."""
-        os.system("cls")
+        clear_terminal()
         self.printer.header("System Health Check")
 
         # Disk space
-        disk_path = self.install_dir if self.install_dir.exists() else Path("C:\\")
-        usage = shutil.disk_usage(disk_path)
-        free_gb = usage.free / (1024**3)
-        total_gb = usage.total / (1024**3)
-        used_percent = ((total_gb - free_gb) / total_gb) * 100
+        disk_path = self.install_dir if self.install_dir.exists() else (Path("C:\\") if os.name == "nt" else Path("/"))
+        try:
+            usage = shutil.disk_usage(disk_path)
+            free_gb = usage.free / (1024**3)
+            total_gb = usage.total / (1024**3)
+            used_percent = ((total_gb - free_gb) / total_gb) * 100 if total_gb else 0.0
+        except OSError as exc:
+            self.printer.warning(f"Could not check disk usage: {exc}")
+            free_gb = total_gb = used_percent = 0.0
 
         logger.info("=== Disk Space ===")
         logger.info("Location: %s", self.install_dir)
@@ -333,7 +330,9 @@ class HealthChecker:
         logger.info("Free: %.1f GB", free_gb)
         logger.info("Used: %.1f%%", used_percent)
 
-        if used_percent > 90:
+        if total_gb <= 0:
+            pass
+        elif used_percent > 90:
             self.printer.error("WARNING: Disk usage above 90%!")
         elif used_percent > 80:
             self.printer.warning("Disk usage above 80%")
@@ -398,24 +397,19 @@ class HealthChecker:
 
         # SSL certificates
         logger.info("=== SSL Certificates ===")
-        certbot_available = shutil.which("certbot") is not None
-        if certbot_available:
-            try:
-                result = subprocess.run(["certbot", "certificates"], capture_output=True, text=True)
-                if "No certificates found" in result.stdout:
-                    self.printer.step("No SSL certificates found")
-                else:
-                    cert_count = result.stdout.count("Certificate Name:")
-                    self.printer.success(f"Found {cert_count} SSL certificate(s)")
-            except Exception:
-                self.printer.warning("Could not check SSL certificates")
-        else:
-            self.printer.step("Certbot not installed")
+        try:
+            if SSLManager().status():
+                self.printer.success("SSL backend is available")
+            else:
+                self.printer.warning("SSL backend status command failed")
+        except (OSError, subprocess.SubprocessError):
+            self.printer.step("No supported SSL backend installed")
 
         # Memory
         logger.info("=== Memory Usage ===")
         try:
             import ctypes
+
             class MEMORYSTATUSEX(ctypes.Structure):
                 _fields_ = [
                     ("dwLength", ctypes.c_ulong),
@@ -428,13 +422,19 @@ class HealthChecker:
                     ("ullAvailVirtual", ctypes.c_ulonglong),
                     ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
                 ]
+
             stat = MEMORYSTATUSEX()
             stat.dwLength = ctypes.sizeof(stat)
-            ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat))
+            if not hasattr(ctypes, "windll"):
+                raise OSError("Windows memory API unavailable")
+            if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat)):
+                raise OSError("GlobalMemoryStatusEx failed")
 
             mem_total = stat.ullTotalPhys / (1024 * 1024)
             mem_available = stat.ullAvailPhys / (1024 * 1024)
             mem_used = mem_total - mem_available
+            if mem_total <= 0:
+                raise OSError("Windows reported zero physical memory")
             mem_percent = (mem_used / mem_total) * 100
 
             logger.info("Total: %.0f MB", mem_total)
@@ -454,9 +454,14 @@ class HealthChecker:
         logger.info("=== CPU Usage ===")
         try:
             result = subprocess.run(
-                ["powershell", "-Command",
-                 "Get-CimInstance Win32_Processor | Select-Object -ExpandProperty LoadPercentage"],
-                capture_output=True, text=True, timeout=10,
+                [
+                    "powershell",
+                    "-Command",
+                    "Get-CimInstance Win32_Processor | Select-Object -ExpandProperty LoadPercentage",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             cpu_load = int(result.stdout.strip())
             cpu_count = os.cpu_count() or 1
@@ -574,15 +579,13 @@ class HealthChecker:
                 )
             )
 
-        # Check for cert files in common Windows certbot location
-        cert_dir = Path(os.environ.get("ProgramData", r"C:\ProgramData")) / "certbot" / "live" / context.domain
-        cert_path = cert_dir / "fullchain.pem"
+        ssl_present = SSLManager().certificate_present(context.domain)
         results.append(
             SelfTestResult(
                 name="SSL certificate present",
-                status="pass" if cert_path.exists() else "warn",
-                detail=str(cert_path) if cert_path.exists() else "not found",
-                hint=("Re-run SSL setup or run certbot manually" if not cert_path.exists() else ""),
+                status="pass" if ssl_present else "warn",
+                detail="reported by SSL backend" if ssl_present else "not found",
+                hint=("Re-run SSL setup with win-acme or certbot" if not ssl_present else ""),
             )
         )
 
