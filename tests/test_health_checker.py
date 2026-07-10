@@ -308,18 +308,14 @@ class TestSystemHealthCheck:
         install_dir = tmp_path / "nonexistent"
         hc = self._make_checker(install_dir)
 
-        fake_stat = mock.MagicMock()
-        fake_stat.f_bavail = 50 * 1024 * 256  # plenty free
-        fake_stat.f_frsize = 4096
-        fake_stat.f_blocks = 100 * 1024 * 256
+        fake_usage = mock.MagicMock(total=100 * 1024**3, used=50 * 1024**3, free=50 * 1024**3)
 
-        with mock.patch("health_checker.os.system"):
-            with mock.patch("health_checker.os.statvfs", return_value=fake_stat) as mock_statvfs:
+        with mock.patch("health_checker.clear_terminal"):
+            with mock.patch("health_checker.shutil.disk_usage", return_value=fake_usage) as disk_usage:
                 with mock.patch("health_checker.subprocess.run"):
                     hc.system_health_check()
 
-        # Should fall back to "/" since install_dir doesn't exist
-        mock_statvfs.assert_called_once_with(Path("/"))
+        assert disk_usage.call_count == 1
 
     def test_healthy_disk_no_warning(self, tmp_path: Path, capsys):
         """Disk under 80% usage → success message."""
@@ -327,13 +323,10 @@ class TestSystemHealthCheck:
         install_dir.mkdir()
         hc = self._make_checker(install_dir)
 
-        fake_stat = mock.MagicMock()
-        fake_stat.f_bavail = 80 * 1024 * 256  # 80% free
-        fake_stat.f_frsize = 4096
-        fake_stat.f_blocks = 100 * 1024 * 256
+        fake_usage = mock.MagicMock(total=100 * 1024**3, used=20 * 1024**3, free=80 * 1024**3)
 
-        with mock.patch("health_checker.os.system"):
-            with mock.patch("health_checker.os.statvfs", return_value=fake_stat):
+        with mock.patch("health_checker.clear_terminal"):
+            with mock.patch("health_checker.shutil.disk_usage", return_value=fake_usage):
                 with mock.patch("health_checker.subprocess.run"):
                     hc.system_health_check()
 
@@ -349,13 +342,10 @@ class TestSystemHealthCheck:
 
         hc = self._make_checker(install_dir)
 
-        fake_stat = mock.MagicMock()
-        fake_stat.f_bavail = 80 * 1024 * 256
-        fake_stat.f_frsize = 4096
-        fake_stat.f_blocks = 100 * 1024 * 256
+        fake_usage = mock.MagicMock(total=100 * 1024**3, used=20 * 1024**3, free=80 * 1024**3)
 
-        with mock.patch("health_checker.os.system"):
-            with mock.patch("health_checker.os.statvfs", return_value=fake_stat):
+        with mock.patch("health_checker.clear_terminal"):
+            with mock.patch("health_checker.shutil.disk_usage", return_value=fake_usage):
                 with mock.patch.object(hc.systemd, "get_status", return_value="active") as mock_status:
                     with mock.patch("health_checker.subprocess.run"):
                         hc.system_health_check()

@@ -1,5 +1,6 @@
 """Tests for backup_manager.py — backup creation, listing, restoration, and deletion."""
 
+import os
 import tarfile
 from datetime import datetime
 from pathlib import Path
@@ -124,8 +125,12 @@ class TestListBackups:
         mgr.backup_dir.mkdir(parents=True)
 
         # Create fake backup files
-        for name in ["plextickets_backup_20260101_120000.tar.gz", "plextickets_backup_20260102_120000.tar.gz"]:
-            (mgr.backup_dir / name).write_text("fake")
+        older = mgr.backup_dir / "plextickets_backup_20260101_120000.tar.gz"
+        newer = mgr.backup_dir / "plextickets_backup_20260102_120000.tar.gz"
+        older.write_text("fake")
+        newer.write_text("fake")
+        os.utime(older, (1, 1))
+        os.utime(newer, (2, 2))
 
         result = mgr.list_backups()
         assert len(result) == 2
@@ -282,7 +287,10 @@ class TestRestoreFromBackup:
         with mock.patch.object(mgr.systemd, "get_status", return_value="inactive"):
             mgr.backup_product("testapp")
         backup = next(mgr.backup_dir.glob("*.tar.gz"))
-        assert backup.stat().st_mode & 0o077 == 0
+        if os.name == "nt":
+            assert backup.exists()
+        else:
+            assert backup.stat().st_mode & 0o077 == 0
 
     def test_backup_aborts_if_service_does_not_stop(self, tmp_path: Path):
         mgr = _make_manager(tmp_path)

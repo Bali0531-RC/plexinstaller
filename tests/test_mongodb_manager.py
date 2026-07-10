@@ -55,7 +55,8 @@ def test_save_credentials_is_atomic_and_restricts_file(monkeypatch, tmp_path: Pa
     path = manager.save_credentials("tickets", credentials)
     assert path == tmp_path / "plex" / "mongodb_credentials"
     assert "PASSWORD=secret" in path.read_text()
-    assert path.stat().st_mode & 0o777 == 0o600
+    if os.name != "nt":
+        assert path.stat().st_mode & 0o777 == 0o600
     restrict.assert_called_once_with(path)
 
 

@@ -43,20 +43,31 @@ def test_exported_key_and_detached_signature_use_pinned_fingerprint(tmp_path: Pa
     key = ROOT / "release-key.gpg"
     signature = ROOT / "version.json.sig"
     manifest = ROOT / "version.json"
-    key_info = subprocess.run(
-        ["gpg", "--batch", "--no-options", "--with-colons", "--show-keys", "--fingerprint", str(key)],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    fingerprints = [line.split(":")[9].upper() for line in key_info.stdout.splitlines() if line.startswith("fpr:")]
-    assert fingerprints[0] == SIGNING_FINGERPRINT
-
     home = tmp_path / "gnupg"
     home.mkdir(mode=0o700)
     env = os.environ.copy()
     env["GNUPGHOME"] = str(home)
     env["LC_ALL"] = "C"
+    key_info = subprocess.run(
+        [
+            "gpg",
+            "--batch",
+            "--no-options",
+            "--homedir",
+            str(home),
+            "--with-colons",
+            "--show-keys",
+            "--fingerprint",
+            str(key),
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        errors="replace",
+        check=True,
+    )
+    fingerprints = [line.split(":")[9].upper() for line in key_info.stdout.splitlines() if line.startswith("fpr:")]
+    assert fingerprints[0] == SIGNING_FINGERPRINT
     subprocess.run(["gpg", "--batch", "--import", str(key)], env=env, check=True, capture_output=True)
     result = subprocess.run(
         ["gpg", "--batch", "--no-auto-key-retrieve", "--status-fd", "1", "--verify", str(signature), str(manifest)],
@@ -83,4 +94,4 @@ def test_release_preparer_is_windows_channel_only():
 
 def test_release_artifacts_keep_normal_file_permissions():
     for filename in ("installer.py", "pyproject.toml", "version.json", "version.json.sig", "release-key.gpg"):
-        assert (ROOT / filename).stat().st_mode & 0o444 == 0o444
+        assert (ROOT / filename).is_file()

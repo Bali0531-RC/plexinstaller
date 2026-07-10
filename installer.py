@@ -494,13 +494,19 @@ class PlexInstaller:
             elif choice == "9":
                 self._manage_installations()
             elif choice == "10":
-                self.backup_mgr.menu()
+                if self.backup_mgr is None:
+                    self.printer.warning("Backup manager module is unavailable")
+                else:
+                    self.backup_mgr.menu()
             elif choice == "11":
                 self._manage_addons_menu()
             elif choice == "12":
                 self._ssl_management_menu()
             elif choice == "13":
-                self.health.system_health_check()
+                if self.health is None:
+                    self.printer.warning("Health checker module is unavailable")
+                else:
+                    self.health.system_health_check()
             else:
                 self.printer.error("Invalid choice")
 
@@ -1456,6 +1462,12 @@ class PlexInstaller:
 
     # ========== ADDON MANAGEMENT ==========
 
+    def _require_addon_manager(self) -> Any:
+        """Return the loaded addon manager or fail with an actionable error."""
+        if self.addon_manager is None:
+            raise RuntimeError("Addon manager module is unavailable")
+        return self.addon_manager
+
     def _manage_addons_menu(self):
         """Main addon management menu"""
         # Check if addon manager is available
@@ -1465,6 +1477,8 @@ class PlexInstaller:
             self.printer.step("This can happen after an update from an older version.")
             self.printer.step("Please restart the installer to complete the update.")
             return
+
+        addon_manager = self._require_addon_manager()
 
         while True:
             clear_terminal()
@@ -1481,7 +1495,7 @@ class PlexInstaller:
 
             print("Select a product to manage addons:")
             for i, (name, path) in enumerate(addon_products, 1):
-                addons = self.addon_manager.list_addons(path)
+                addons = addon_manager.list_addons(path)
                 addon_count = len(addons)
                 status = self.systemd.get_status(f"plex-{name}")
                 print(f"{i}) {name} - {addon_count} addon(s) installed - Service: {status}")
@@ -1523,11 +1537,12 @@ class PlexInstaller:
 
     def _manage_product_addons(self, product_name: str, product_path: Path):
         """Manage addons for a specific product"""
+        addon_manager = self._require_addon_manager()
         while True:
             clear_terminal()
             self.printer.header(f"Addons for {product_name}")
 
-            addons = self.addon_manager.list_addons(product_path)
+            addons = addon_manager.list_addons(product_path)
 
             if addons:
                 print("\nInstalled Addons:")
@@ -1566,11 +1581,12 @@ class PlexInstaller:
 
     def _install_addon(self, product_name: str, product_path: Path):
         """Install an addon for a product"""
+        addon_manager = self._require_addon_manager()
         self.printer.header(f"Install Addon for {product_name}")
 
         # Search for addon archives
         self.printer.step("Searching for addon archives...")
-        archives = self.addon_manager.find_addon_archive()
+        archives = addon_manager.find_addon_archive()
 
         if not archives:
             self.printer.warning("No addon archives (.zip/.rar) found automatically")
@@ -1621,13 +1637,13 @@ class PlexInstaller:
             if potential_name.lower().endswith(suffix):
                 potential_name = potential_name[: -len(suffix)]
 
-        if self.addon_manager.addon_exists(potential_name, product_path):
+        if addon_manager.addon_exists(potential_name, product_path):
             self.printer.error(f"An addon named '{potential_name}' already exists.")
             self.printer.step("Remove the existing addon first if you want to reinstall.")
             return
 
         # Install the addon
-        success, message, addon_name = self.addon_manager.install_addon(archive_path, product_path)
+        success, message, addon_name = addon_manager.install_addon(archive_path, product_path)
 
         if success:
             self.printer.success(message)
@@ -1648,6 +1664,7 @@ class PlexInstaller:
 
     def _remove_addon(self, product_name: str, product_path: Path, addons: list[dict]):
         """Remove an addon from a product"""
+        addon_manager = self._require_addon_manager()
         if not addons:
             self.printer.warning("No addons installed to remove")
             return
@@ -1679,9 +1696,7 @@ class PlexInstaller:
                 confirm = input(f"Confirm removal of '{addon_name}'? (y/n): ").strip().lower()
 
                 if confirm == "y":
-                    success, message = self.addon_manager.remove_addon(
-                        addon_name, product_path, backup_first=backup_first
-                    )
+                    success, message = addon_manager.remove_addon(addon_name, product_path, backup_first=backup_first)
 
                     if success:
                         self.printer.success(message)
@@ -1706,6 +1721,7 @@ class PlexInstaller:
 
     def _configure_addon(self, product_name: str, product_path: Path, addons: list[dict]):
         """Configure an addon's config.yml/yaml file"""
+        addon_manager = self._require_addon_manager()
         # Filter to addons with config files
         configurable_addons = [a for a in addons if a["has_config"]]
 
@@ -1739,7 +1755,7 @@ class PlexInstaller:
                 subprocess.run([*shlex.split(editor), str(config_path)])
 
                 # Validate YAML after editing
-                is_valid, error = self.addon_manager.validate_yaml(config_path)
+                is_valid, error = addon_manager.validate_yaml(config_path)
 
                 if is_valid:
                     self.printer.success("Configuration file is valid YAML")
@@ -1750,7 +1766,7 @@ class PlexInstaller:
                     fix_choice = input("Open editor again to fix? (y/n): ").strip().lower()
                     if fix_choice == "y":
                         subprocess.run([*shlex.split(editor), str(config_path)])
-                        is_valid, error = self.addon_manager.validate_yaml(config_path)
+                        is_valid, error = addon_manager.validate_yaml(config_path)
                         if is_valid:
                             self.printer.success("Configuration file is now valid YAML")
                         else:
@@ -1774,9 +1790,10 @@ class PlexInstaller:
 
     def _view_addon_backups(self, product_name: str, product_path: Path):
         """View and optionally restore addon backups"""
+        addon_manager = self._require_addon_manager()
         self.printer.header(f"Addon Backups for {product_name}")
 
-        backups = self.addon_manager.list_addon_backups(product_path)
+        backups = addon_manager.list_addon_backups(product_path)
 
         if not backups:
             self.printer.warning("No addon backups found")
@@ -1806,7 +1823,7 @@ class PlexInstaller:
                 self.printer.warning(f"This will restore addon '{backup['addon_name']}' from backup")
 
                 # Check if addon currently exists
-                if self.addon_manager.addon_exists(backup["addon_name"], product_path):
+                if addon_manager.addon_exists(backup["addon_name"], product_path):
                     self.printer.warning("Current addon will be replaced!")
 
                 confirm = input("Continue with restore? (y/n): ").strip().lower()
@@ -1823,9 +1840,10 @@ class PlexInstaller:
         try:
             from utils import install_staged_directory, safe_extract_tar
 
+            addon_manager = self._require_addon_manager()
             addon_name = validate_path_component(str(backup["addon_name"]), label="addon name")
             backup_path = Path(backup["path"])
-            addons_path = self.addon_manager.get_addons_path(product_path)
+            addons_path = addon_manager.get_addons_path(product_path)
             addon_path = addons_path / addon_name
             rollback_path: Path | None = None
             self.printer.step("Restoring from backup...")
@@ -1834,7 +1852,7 @@ class PlexInstaller:
                 extraction_root = Path(temp_dir) / "archive"
                 safe_extract_tar(backup_path, extraction_root, expected_top_level=addon_name)
                 staged_addon = extraction_root / addon_name
-                self.addon_manager._set_permissions(staged_addon)
+                addon_manager._set_permissions(staged_addon)
                 if addon_path.exists() or addon_path.is_symlink():
                     rollback_path = Path(temp_dir) / "previous"
                     addon_path.rename(rollback_path)

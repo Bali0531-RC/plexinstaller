@@ -350,6 +350,7 @@ class TestTransactionalReplacement:
         with (
             mock.patch("shared.INSTALLER_DIR", tmp_path),
             mock.patch("shared.is_admin", return_value=True),
+            mock.patch("shared._is_windows", return_value=True),
             mock.patch("shared.verify_gpg_signature", return_value=True),
             mock.patch("shared._download_bytes") as download,
         ):
@@ -367,6 +368,7 @@ class TestTransactionalReplacement:
         with (
             mock.patch("shared.INSTALLER_DIR", tmp_path),
             mock.patch("shared.is_admin", return_value=True),
+            mock.patch("shared._is_windows", return_value=True),
             mock.patch("shared.verify_gpg_signature", return_value=True),
             mock.patch("shared._download_bytes", side_effect=downloads),
             mock.patch("shared.ensure_cli_entrypoints") as wrappers,
@@ -388,6 +390,7 @@ class TestTransactionalReplacement:
         with (
             mock.patch("shared.INSTALLER_DIR", tmp_path),
             mock.patch("shared.is_admin", return_value=True),
+            mock.patch("shared._is_windows", return_value=True),
             mock.patch("shared.verify_gpg_signature", return_value=True),
             mock.patch("shared._download_bytes", side_effect=[files[key] for key in UPDATE_FILE_MAP]),
             mock.patch("shared.ensure_cli_entrypoints") as wrappers,
