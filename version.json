@@ -28,7 +28,7 @@
     "installer": "76a7f84db662dd75bedc98f8edf028043c057821aae15ff67876ed5e4e859ce0",
     "mongodb_manager": "b6cebc0940a9613d51fd02344a087adc21c6114449270788b1d6ce573e145f5b",
     "plex_cli": "1eb1a05ad1a58426cbf47cecdba4bf6259076023985021f031bb194c28ff3646",
-    "shared": "5cff362bf03ccdc81b73eb6bc57740beb3ce8bd68712a0e28108be8b7bb5c956",
+    "shared": "1925ba8cc79b9664864d3188cad4bee04c72691025dfe2ad19c92c6f8b298a1a",
     "telemetry_client": "6aed99ebbc7f074ab9310609efafe31296e12ac62713a271e8ad8e054d712b31",
     "utils": "444abdcccd35dddf10c23ddbc991883bf002e69a035f0b0156fc884132c463f7"
   }

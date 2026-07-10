@@ -372,7 +372,7 @@ class TestTransactionalReplacement:
             mock.patch("shared.verify_gpg_signature", return_value=True),
             mock.patch("shared._download_bytes", side_effect=downloads),
             mock.patch("shared.ensure_cli_entrypoints") as wrappers,
-            mock.patch("shared.subprocess.Popen") as restart,
+            mock.patch("shared._restart_current_process") as restart,
         ):
             perform_update(data, manifest_bytes, **_PRINTER_KWARGS)
 
@@ -394,7 +394,7 @@ class TestTransactionalReplacement:
             mock.patch("shared.verify_gpg_signature", return_value=True),
             mock.patch("shared._download_bytes", side_effect=[files[key] for key in UPDATE_FILE_MAP]),
             mock.patch("shared.ensure_cli_entrypoints") as wrappers,
-            mock.patch("shared.subprocess.Popen") as restart,
+            mock.patch("shared._restart_current_process") as restart,
             mock.patch("shared.sys.exit", side_effect=SystemExit(0)) as exit_process,
         ):
             with pytest.raises(SystemExit):
@@ -403,7 +403,7 @@ class TestTransactionalReplacement:
         for key, filename in UPDATE_FILE_MAP.items():
             assert (tmp_path / filename).read_bytes() == files[key]
         wrappers.assert_called_once_with()
-        restart.assert_called_once_with([sys.executable, *sys.argv])
+        restart.assert_called_once_with()
         exit_process.assert_called_once_with(0)
 
 

@@ -649,6 +649,11 @@ def _add_to_system_path(directory: Path) -> None:
         return
 
 
+def _restart_current_process() -> None:
+    """Start the updated command in a replacement process."""
+    subprocess.Popen([sys.executable, *sys.argv])
+
+
 def perform_update(
     version_data: dict,
     version_json_bytes: bytes,
@@ -713,7 +718,7 @@ def perform_update(
     ensure_cli_entrypoints()
     print_success("Update completed successfully. Restarting...")
     try:
-        subprocess.Popen([sys.executable, *sys.argv])
+        _restart_current_process()
     except Exception as exc:
         print_warning(f"Update installed, but automatic restart failed: {exc}")
         return

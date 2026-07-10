@@ -7,6 +7,8 @@ import re
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from release_windows import MANAGED_FILES, SIGNING_FINGERPRINT, UPDATE_BRANCH
 
 ROOT = Path(__file__).parents[1]
@@ -39,6 +41,7 @@ def test_all_managed_urls_and_hashes_are_current():
         assert "/main/" not in url and "/dev/" not in url
 
 
+@pytest.mark.skipif(os.name == "nt", reason="Real GPG verification runs in the Linux release-integrity job")
 def test_exported_key_and_detached_signature_use_pinned_fingerprint(tmp_path: Path):
     key = ROOT / "release-key.gpg"
     signature = ROOT / "version.json.sig"
